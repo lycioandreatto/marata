@@ -12,41 +12,61 @@ url = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQ
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 try:
-    # Lê os dados
-    df = conn.read(spreadsheet=url, ttl=0)
+    # 1. Carregar as abas necessárias
+    df_base = conn.read(spreadsheet=url, worksheet="BASE", ttl=0)
+    df_just = conn.read(spreadsheet=url, worksheet="JUSTIFICATIVA DE ATENDIMENTOS", ttl=0)
     
-    # 1. Seleção do Supervisor (Primeira Coluna)
-    col_supervisor = 'Supervisor' # Ajuste se o nome na planilha for diferente
-    vendedores = sorted(df[col_supervisor].dropna().unique())
-    vendedor_sel = st.selectbox("Selecione seu nome:", ["Selecione..."] + list(vendedores))
+    # 2. Seleção do Supervisor (Coluna: Região de vendas)
+    supervisores = sorted(df_base['Região de vendas'].dropna().unique())
+    sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + list(supervisores))
 
-    if vendedor_sel != "Selecione...":
-        # 2. Filtrar clientes apenas desse supervisor
-        # Ajuste 'Nome_Cliente' para o nome exato da sua coluna de clientes
-        col_cliente = 'Nome_Cliente' 
+    if sup_sel != "Selecione...":
+        # 3. Filtrar Clientes (Coluna: Nome 1 e Cliente para o código)
+        clientes_filtrados = df_base[df_base['Região de vendas'] == sup_sel]
+        # Criamos uma lista formatada "CÓDIGO - NOME" para facilitar
+        lista_exibicao = clientes_filtrados.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist()
         
-        filtro = df[df[col_supervisor] == vendedor_sel]
-        lista_clientes = sorted(filtro[col_cliente].dropna().unique())
-        
-        cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_clientes)
+        cliente_escolhido = st.selectbox("Selecione o Cliente:", ["Selecione..."] + sorted(lista_exibicao))
 
-        if cliente_sel != "Selecione...":
-            # 3. Formulário de Check-in
-            with st.form("checkin_form"):
-                status = st.radio("Status da Visita:", ("Planejado (X)", "Realizado", "Reagendado"))
-                obs = st.text_area("Observações / Justificativa:")
+        if cliente_escolhido != "Selecione...":
+            # Extrair código e nome do que foi selecionado
+            cod_cliente = cliente_escolhido.split(" - ")[0]
+            nome_cliente = cliente_escolhido.split(" - ")[1]
+
+            # 4. Seleção da Justificativa (Vem da aba JUSTIFICATIVA DE ATENDIMENTOS)
+            opcoes_just = df_just['JUSTIFICATIVA DE ATENDIMENTOS'].dropna().unique()
+            
+            with st.form("form_agenda"):
+                status = st.radio("STATUS:", ("Planejado (X)", "Realizado", "Reagendado"))
+                justificativa = st.selectbox("JUSTIFICATIVA:", opcoes_just)
+                data_visita = st.date_input("DATA DA VISITA:", datetime.now())
                 
-                botao = st.form_submit_button("Confirmar Visita")
-                
-                if botao:
-                    # Aqui preparamos os dados para salvar
-                    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                    
-                    # No Streamlit, para salvar de volta na planilha, geralmente 
-                    # criamos uma aba chamada "LOG" ou "RESPOSTAS"
-                    st.success(f"Visita ao cliente {cliente_sel} registrada com sucesso!")
-                    st.info(f"Dados: {vendedor_sel} | {status} | {data_hora}")
-                    st.balloons()
+                submit = st.form_submit_button("SALVAR NA AGENDA")
+
+                if submit:
+                    # Preparar os dados para a aba AGENDA
+                    nova_linha = pd.DataFrame([{
+                        "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
+                        "DATA": data_visita.strftime("%d/%m/%Y"),
+                        "SUPERVISOR": sup_sel,
+                        "CÓDIGO CLIENTE": cod_cliente,
+                        "CLIENTE": nome_cliente,
+                        "JUSTIFICATIVA": justificativa,
+                        "STATUS": status
+                    }])
+
+                    # Adicionar na aba AGENDA
+                    try:
+                        # Pega o que já tem na agenda e junta com o novo
+                        df_agenda_atual = conn.read(spreadsheet=url, worksheet="AGENDA", ttl=0)
+                        df_atualizado = pd.concat([df_agenda_atual, nova_linha], ignore_index=True)
+                        
+                        conn.update(spreadsheet=url, worksheet="AGENDA", data=df_atualizado)
+                        
+                        st.success("✅ Gravado com sucesso na aba AGENDA!")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"Erro ao gravar: {e}")
 
 except Exception as e:
-    st.error(f"Erro ao carregar dados: {e}")
+    st.error(f"Erro ao carregar abas: {e}. Verifique se os nomes das abas (BASE, AGENDA...) estão corretos.")
