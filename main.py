@@ -14,8 +14,8 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-# --- FUNÇÕES DE CARREGAMENTO ---
-@st.cache_data(ttl=60)
+# --- CARREGAMENTO DE DADOS ---
+@st.cache_data(ttl=10) # Cache curto para refletir mudanças rápido
 def carregar_dados():
     try:
         df_b = conn.read(spreadsheet=url_planilha, worksheet="BASE")
@@ -45,7 +45,6 @@ menu = st.sidebar.selectbox("Menu", ["Novo Agendamento", "Ver/Editar Minha Agend
 
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
-    # ... (Mantenha sua lógica de agendamento aqui)
     supervisores = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
     sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + supervisores)
     if sup_sel != "Selecione...":
@@ -68,77 +67,67 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     
-    # Filtro
+    # Criamos uma coluna de estado para saber qual ID está sendo editado
+    if "id_para_editar" not in st.session_state:
+        st.session_state.id_para_editar = None
+
     f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
     df_f = df_agenda.copy()
     if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
 
-    # Criar coluna de ação para o botão
-    df_f["AÇÃO"] = "📝 Editar"
+    # Adicionamos a coluna de "BOTÃO" fictícia para o editor
+    df_f["EDITAR"] = False 
 
-    # Exibição com Column Config (O pulo do gato está aqui!)
-    colunas_visiveis = ['AÇÃO', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
+    cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
     
-    evento = st.data_editor(
-        df_f[colunas_visiveis],
+    # O Data Editor permite o clique
+    edicao = st.data_editor(
+        df_f[cols_v],
         column_config={
-            "AÇÃO": st.column_config.ButtonColumn(
-                "Ação",
-                help="Clique para editar ou excluir esta linha",
-                width="small",
-                disabled=False
+            "EDITAR": st.column_config.CheckboxColumn(
+                "📝",
+                help="Marque para editar esta linha",
+                default=False,
             ),
         },
+        disabled=[c for c in cols_v if c != "EDITAR"],
         hide_index=True,
         use_container_width=True,
-        key="editor_agenda"
+        key="tabela_editor"
     )
 
-    # Lógica para detectar qual botão foi clicado
-    if st.session_state.get("editor_agenda") and st.session_state.editor_agenda.get("added_rows") == []:
-        # O Streamlit retorna qual linha foi clicada no data_editor
-        # Infelizmente, o clique no botão em data_editor ainda é limitado. 
-        # Vamos usar a seleção de linha que é mais estável:
-        pass
-
-    # --- ALTERNATIVA MAIS ESTÁVEL: Seleção por clique na linha ---
-    st.info("💡 Clique em qualquer célula da linha para abrir as opções de Edição/Exclusão abaixo.")
+    # Verifica se alguma linha foi marcada no Checkbox
+    linhas_marcadas = edicao[edicao["EDITAR"] == True]
     
-    selecao = st.dataframe(
-        df_f[colunas_visiveis],
-        on_select="rerun",
-        selection_mode="single_row",
-        hide_index=True,
-        use_container_width=True
-    )
-
-    if selecao.selection.rows:
-        index_selecionado = selecao.selection.rows[0]
-        dados_linha = df_f.iloc[index_selecionado]
+    if not linhas_marcadas.empty:
+        # Pegamos o índice da primeira linha marcada
+        idx_original = linhas_marcadas.index[0]
+        dados_linha = df_f.loc[idx_original]
         id_s = dados_linha['ID']
         
-        st.markdown(f"### ⚙️ Gerenciar: {dados_linha['CLIENTE']}")
+        st.markdown(f"---")
+        st.subheader(f"⚙️ Opções para: {dados_linha['CLIENTE']}")
         
-        with st.form("form_edit_ultra"):
-            col_a, col_b = st.columns(2)
+        with st.form("form_edit_final"):
+            c1, c2 = st.columns(2)
             st_list = ["Planejado (X)", "Realizado", "Reagendado"]
             ju_list = list(df_just.iloc[:, 0].dropna().unique())
             
-            with col_a:
-                n_st = st.radio("Alterar Status:", st_list, index=st_list.index(dados_linha['STATUS']) if dados_linha['STATUS'] in st_list else 0)
-            with col_b:
-                n_ju = st.selectbox("Alterar Justificativa:", ju_list, index=ju_list.index(dados_linha['JUSTIFICATIVA']) if dados_linha['JUSTIFICATIVA'] in ju_list else 0)
+            with c1:
+                n_st = st.radio("Status:", st_list, index=st_list.index(dados_linha['STATUS']) if dados_linha['STATUS'] in st_list else 0)
+            with c2:
+                n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(dados_linha['JUSTIFICATIVA']) if dados_linha['JUSTIFICATIVA'] in ju_list else 0)
             
-            btn_save, btn_del = st.columns(2)
-            with btn_save:
-                if st.form_submit_button("💾 SALVAR ALTERAÇÕES", use_container_width=True):
+            b_at, b_ex = st.columns(2)
+            with b_at:
+                if st.form_submit_button("✅ SALVAR ALTERAÇÕES", use_container_width=True):
                     df_agenda.loc[df_agenda['ID'] == id_s, ['STATUS', 'JUSTIFICATIVA']] = [n_st, n_ju]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA']))
                     st.cache_data.clear()
                     st.success("Atualizado!")
                     st.rerun()
-            with btn_del:
-                if st.form_submit_button("🗑️ EXCLUIR REGISTRO", use_container_width=True):
+            with b_ex:
+                if st.form_submit_button("🗑️ EXCLUIR DEFINITIVAMENTE", use_container_width=True):
                     df_novo = df_agenda[df_agenda['ID'] != id_s].drop(columns=['LINHA'])
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo)
                     st.cache_data.clear()
