@@ -24,6 +24,8 @@ def carregar_dados():
         
         df_a.columns = [str(c).strip() for c in df_a.columns]
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
+        
+        # Criar a coluna LINHA baseada no index
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_j, df_a]:
@@ -70,54 +72,52 @@ if menu == "Novo Agendamento":
 
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
-    st.info("💡 **Dica:** Clique em uma linha da tabela para Editar ou Excluir.")
     
-    f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
-    df_f = df_agenda.copy()
-    if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
+    if not df_agenda.empty:
+        f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
+        df_f = df_agenda.copy()
+        if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
 
-    # Exibição com Seleção de Linha (Muito mais estável)
-    cols_v = ['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-    
-    selecao = st.dataframe(
-        df_f[cols_v],
-        on_select="rerun",
-        selection_mode="single_row",
-        hide_index=True,
-        use_container_width=True
-    )
+        # Tabela Simples (Apenas visualização)
+        cols_v = ['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
+        st.dataframe(df_f[cols_v], use_container_width=True, hide_index=True)
 
-    # Se o usuário clicou em uma linha...
-    if selecao.selection.rows:
-        idx = selecao.selection.rows[0]
-        linha_selecionada = df_f.iloc[idx]
-        id_s = linha_selecionada['ID']
-        
-        st.markdown(f"---")
-        st.subheader(f"📝 Editando: {linha_selecionada['CLIENTE']}")
-        
-        with st.form("form_rapido"):
-            c1, c2 = st.columns(2)
-            st_list = ["Planejado (X)", "Realizado", "Reagendado"]
-            ju_list = list(df_just.iloc[:, 0].dropna().unique())
+        st.markdown("---")
+        # Seletor para Editar/Excluir (Funciona em qualquer versão)
+        st.subheader("📝 Gerenciar Registro")
+        # Criamos uma lista de opções amigável
+        opcoes_dict = {f"{row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_f.iterrows()}
+        edit_sel = st.selectbox("Selecione qual visita deseja alterar ou excluir:", ["Escolha um item..."] + list(opcoes_dict.keys()))
+
+        if edit_sel != "Escolha um item...":
+            id_selecionado = opcoes_dict[edit_sel]
+            # Localiza a linha exata no dataframe original
+            dados_linha = df_agenda[df_agenda['ID'] == id_selecionado].iloc[0]
             
-            with c1:
-                n_st = st.radio("Status:", st_list, index=st_list.index(linha_selecionada['STATUS']) if linha_selecionada['STATUS'] in st_list else 0, horizontal=True)
-            with c2:
-                n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(linha_selecionada['JUSTIFICATIVA']) if linha_selecionada['JUSTIFICATIVA'] in ju_list else 0)
-            
-            b_save, b_del = st.columns(2)
-            with b_save:
-                if st.form_submit_button("✅ SALVAR ALTERAÇÕES", use_container_width=True):
-                    df_agenda.loc[df_agenda['ID'] == id_s, ['STATUS', 'JUSTIFICATIVA']] = [n_st, n_ju]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA']))
-                    st.cache_data.clear()
-                    st.success("Salvo!")
-                    st.rerun()
-            with b_del:
-                if st.form_submit_button("🗑️ EXCLUIR VISITA", use_container_width=True):
-                    df_novo = df_agenda[df_agenda['ID'] != id_s].drop(columns=['LINHA'])
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo)
-                    st.cache_data.clear()
-                    st.warning("Excluído!")
-                    st.rerun()
+            with st.form("form_edicao_final"):
+                col1, col2 = st.columns(2)
+                st_list = ["Planejado (X)", "Realizado", "Reagendado"]
+                ju_list = list(df_just.iloc[:, 0].dropna().unique())
+                
+                with col1:
+                    novo_status = st.radio("Status:", st_list, index=st_list.index(dados_linha['STATUS']) if dados_linha['STATUS'] in st_list else 0)
+                with col2:
+                    nova_just = st.selectbox("Justificativa:", ju_list, index=ju_list.index(dados_linha['JUSTIFICATIVA']) if dados_linha['JUSTIFICATIVA'] in ju_list else 0)
+                
+                btn_at, btn_ex = st.columns(2)
+                with btn_at:
+                    if st.form_submit_button("✅ ATUALIZAR", use_container_width=True):
+                        df_agenda.loc[df_agenda['ID'] == id_selecionado, ['STATUS', 'JUSTIFICATIVA']] = [novo_status, nova_just]
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                        st.cache_data.clear()
+                        st.success("Atualizado!")
+                        st.rerun()
+                with btn_ex:
+                    if st.form_submit_button("🗑️ EXCLUIR", use_container_width=True):
+                        df_novo = df_agenda[df_agenda['ID'] != id_selecionado].drop(columns=['LINHA'], errors='ignore')
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo)
+                        st.cache_data.clear()
+                        st.warning("Excluído!")
+                        st.rerun()
+    else:
+        st.info("Agenda vazia.")
