@@ -6,59 +6,46 @@ from datetime import datetime
 st.set_page_config(page_title="Agenda Maratá", page_icon="☕")
 st.title("📋 Agenda de Visitas - Maratá")
 
-# URL principal da planilha
-url = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
+# Links individuais das abas para garantir acesso
+url_base = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit?gid=0#gid=0"
+url_just = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit?gid=737114512#gid=737114512"
+url_agen = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit?gid=1524427885#gid=1524427885"
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def limpar_df(df):
-    """Limpa espaços nos nomes das colunas e remove colunas vazias"""
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
-
 try:
-    # 1. Lendo as Abas usando os nomes exatos que você confirmou
-    # Se houver erro 400 aqui, o problema é o cabeçalho da planilha
-    df_base = limpar_df(conn.read(spreadsheet=url, worksheet="BASE", ttl=0))
-    df_just = limpar_df(conn.read(spreadsheet=url, worksheet="JUSTIFICATIVA DE ATENDIMENTOS", ttl=0))
+    # Lendo as abas usando os links diretos para evitar erro de nome
+    df_base = conn.read(spreadsheet=url_base, ttl=0).dropna(how='all')
+    df_just = conn.read(spreadsheet=url_just, ttl=0).dropna(how='all')
     
+    # Limpando espaços nos nomes das colunas
+    df_base.columns = [str(c).strip() for c in df_base.columns]
+    df_just.columns = [str(c).strip() for c in df_just.columns]
+
     # --- SELEÇÃO DE SUPERVISOR ---
-    # Coluna: Região de vendas
     col_sup = 'Região de vendas'
-    supervisores = sorted([s for s in df_base[col_sup].unique() if s])
+    supervisores = sorted([s for s in df_base[col_sup].unique() if str(s).strip()])
     sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + supervisores)
 
     if sup_sel != "Selecione...":
         # --- FILTRO DE CLIENTE ---
-        # Colunas: Cliente (Código) e Nome 1 (Nome)
         clientes_filtrados = df_base[df_base[col_sup] == sup_sel]
-        
-        # Criando a lista combinada para o vendedor escolher
-        lista_clientes = []
-        for _, row in clientes_filtrados.iterrows():
-            lista_clientes.append(f"{row['Cliente']} - {row['Nome 1']}")
-        
+        lista_clientes = clientes_filtrados.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist()
         cliente_escolhido = st.selectbox("Selecione o Cliente:", ["Selecione..."] + sorted(lista_clientes))
 
         if cliente_escolhido != "Selecione...":
-            # --- JUSTIFICATIVA ---
-            # Pegando a coluna exata da aba de justificativas
-            col_just_obs = 'JUSTIFICATIVA DE ATENDIMENTOS'
-            opcoes_just = df_just[col_just_obs].dropna().unique()
+            # --- JUSTIFICATIVAS ---
+            opcoes_just = df_just['JUSTIFICATIVA DE ATENDIMENTOS'].dropna().unique()
             
             with st.form("form_visita"):
-                st.info(f"Registrando visita para: {cliente_escolhido}")
-                
                 status = st.radio("STATUS:", ("Planejado (X)", "Realizado", "Reagendado"))
                 justificativa = st.selectbox("JUSTIFICATIVA:", list(opcoes_just))
                 data_visita = st.date_input("DATA DA VISITA:", datetime.now())
                 
-                if st.form_submit_button("SALVAR NA ABA AGENDA"):
-                    # Separando Código e Nome
-                    cod_c = cliente_escolhido.split(" - ")[0]
-                    nom_c = cliente_escolhido.split(" - ")[1]
+                if st.form_submit_button("SALVAR NA AGENDA"):
+                    # Extrair código e nome
+                    cod_c, nom_c = cliente_escolhido.split(" - ", 1)
 
-                    # Preparando a linha para salvar
                     nova_linha = pd.DataFrame([{
                         "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
                         "DATA": data_visita.strftime("%d/%m/%Y"),
@@ -69,16 +56,13 @@ try:
                         "STATUS": status
                     }])
 
-                    # 2. Lendo a aba AGENDA para anexar
-                    df_agenda = conn.read(spreadsheet=url, worksheet="AGENDA", ttl=0)
+                    # Tenta ler a aba AGENDA e anexar
+                    df_agenda = conn.read(spreadsheet=url_agen, ttl=0)
                     df_final = pd.concat([df_agenda, nova_linha], ignore_index=True)
                     
-                    # 3. Atualizando a planilha
-                    conn.update(spreadsheet=url, worksheet="AGENDA", data=df_final)
-                    
-                    st.success("✅ Visita salva com sucesso na aba AGENDA!")
+                    conn.update(spreadsheet=url_agen, data=df_final)
+                    st.success("✅ Salvo com sucesso!")
                     st.balloons()
 
 except Exception as e:
-    st.error(f"Erro de Conexão ou Formato: {e}")
-    st.warning("Verifique se a aba AGENDA tem os títulos na primeira linha: ID, DATA, SUPERVISOR, CÓDIGO CLIENTE, CLIENTE, JUSTIFICATIVA, STATUS")
+    st.error(f"Erro detalhado: {e}")
