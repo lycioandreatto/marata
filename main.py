@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import io
 from fpdf import FPDF
+import pytz  # Biblioteca para controle de fuso horário
 
 # 1. Configuração da Página
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
@@ -11,6 +12,9 @@ st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 # 2. Conexão com Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
+
+# Configuração do Fuso Horário de Brasília
+fuso_br = pytz.timezone('America/Sao_Paulo')
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
 def converter_para_excel(df):
@@ -23,11 +27,12 @@ def gerar_pdf(df):
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, f"Agenda Marata - Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align='C')
+    # Usa o fuso de Brasília para a data de geração no PDF
+    data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
+    pdf.cell(0, 10, f"Agenda Marata - Gerado em {data_geracao}", ln=True, align='C')
     pdf.ln(5)
     
     # Ajuste de larguras (Total ~275mm)
-    # LINHA(12), REGISTRO(35), DATA(22), SUPERVISOR(35), COD(25), CLIENTE(70), JUSTIF(46), STATUS(30)
     larguras = [12, 35, 22, 35, 25, 70, 46, 30] 
     
     pdf.set_font("Arial", 'B', 7)
@@ -50,6 +55,11 @@ def carregar_dados():
         df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVA DE ATENDIMENTOS")
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         
+        # Limpeza e garantia de coluna REGISTRO
+        df_a.columns = [str(c).strip() for c in df_a.columns]
+        if 'REGISTRO' not in df_a.columns:
+            df_a['REGISTRO'] = "-"
+
         # Guardamos a linha real do Sheets (Index + 2)
         df_a['LINHA'] = df_a.index + 2
         
@@ -85,15 +95,20 @@ if menu == "Novo Agendamento":
         
         if cliente_sel != "Selecione...":
             with st.form("form_novo"):
-                data_v = st.date_input("Data da Visita:", datetime.now())
+                # Data da visita (input do usuário)
+                data_v = st.date_input("Data da Visita:", datetime.now(fuso_br))
+                
                 if st.form_submit_button("💾 CONFIRMAR"):
                     cod_c, nom_c = cliente_sel.split(" - ", 1)
-                    agora = datetime.now().strftime("%d/%m/%Y %H:%M") # Data e Hora do Registro
-                    novo_id = datetime.now().strftime("%Y%m%d%H%M%S")
+                    
+                    # --- CAPTURA DE HORÁRIO CORRETO (BRASÍLIA) ---
+                    agora_br = datetime.now(fuso_br)
+                    agora_str = agora_br.strftime("%d/%m/%Y %H:%M") 
+                    novo_id = agora_br.strftime("%Y%m%d%H%M%S")
                     
                     nova_linha = pd.DataFrame([{
                         "ID": novo_id, 
-                        "REGISTRO": agora, 
+                        "REGISTRO": agora_str, 
                         "DATA": data_v.strftime("%d/%m/%Y"), 
                         "SUPERVISOR": sup_sel, 
                         "CÓDIGO CLIENTE": cod_c, 
@@ -102,17 +117,15 @@ if menu == "Novo Agendamento":
                         "STATUS": "Planejado (X)"
                     }])
                     
-                    # Remove coluna temporária 'LINHA' antes de salvar
                     df_final = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), nova_linha], ignore_index=True)
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
                     st.cache_data.clear()
-                    st.success(f"✅ Visita agendada com sucesso às {agora}!")
+                    st.success(f"✅ Visita agendada com sucesso às {agora_str}!")
                     st.rerun()
 
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     if not df_agenda.empty:
-        # Colunas auxiliares para ordenação
         df_agenda['DATA_OBJ'] = pd.to_datetime(df_agenda['DATA'], format='%d/%m/%Y', errors='coerce')
         
         col_ordem = st.radio("Ordenar por:", ["Data da Visita (Cronológico)", "Mais Recentes Adicionados"], horizontal=True)
@@ -120,16 +133,13 @@ elif menu == "Ver/Editar Minha Agenda":
         if col_ordem == "Data da Visita (Cronológico)":
             df_agenda = df_agenda.sort_values(by='DATA_OBJ', ascending=True)
         else:
-            # Ordena pelo ID (que é o timestamp do momento da criação)
             df_agenda = df_agenda.sort_values(by='ID', ascending=False)
         
         f_sup = st.selectbox("Filtrar Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
         df_f = df_agenda.copy()
         if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
         
-        # Organização das Colunas
         cols_v = ['LINHA', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CÓDIGO CLIENTE', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-        # Garante que todas as colunas existem
         cols_v = [c for c in cols_v if c in df_f.columns]
         df_export = df_f[cols_v]
 
