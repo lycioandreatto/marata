@@ -22,20 +22,23 @@ def converter_para_excel(df):
 def gerar_pdf(df):
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, f"Agenda Marata - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align='C')
-    pdf.ln(10)
-    # Ajuste de larguras para incluir a nova coluna LINHA
-    larguras = [15, 25, 35, 30, 80, 50, 30] 
-    pdf.set_font("Arial", 'B', 8)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, f"Agenda Marata - Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Ajuste de larguras (Total ~275mm)
+    # LINHA(12), REGISTRO(35), DATA(22), SUPERVISOR(35), COD(25), CLIENTE(70), JUSTIF(46), STATUS(30)
+    larguras = [12, 35, 22, 35, 25, 70, 46, 30] 
+    
+    pdf.set_font("Arial", 'B', 7)
     for i, col in enumerate(df.columns):
-        pdf.cell(larguras[i], 10, str(col), border=1, align='C')
+        pdf.cell(larguras[i], 8, str(col), border=1, align='C')
     pdf.ln()
-    pdf.set_font("Arial", '', 8)
+    
+    pdf.set_font("Arial", '', 7)
     for index, row in df.iterrows():
         for i, item in enumerate(row):
-            texto = str(item)
-            pdf.cell(larguras[i], 10, texto[:60], border=1)
+            pdf.cell(larguras[i], 8, str(item)[:40], border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
@@ -47,7 +50,7 @@ def carregar_dados():
         df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVA DE ATENDIMENTOS")
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         
-        # Guardamos a linha real do Sheets ANTES de ordenar (Index + 2)
+        # Guardamos a linha real do Sheets (Index + 2)
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_j, df_a]:
@@ -85,34 +88,55 @@ if menu == "Novo Agendamento":
                 data_v = st.date_input("Data da Visita:", datetime.now())
                 if st.form_submit_button("💾 CONFIRMAR"):
                     cod_c, nom_c = cliente_sel.split(" - ", 1)
+                    agora = datetime.now().strftime("%d/%m/%Y %H:%M") # Data e Hora do Registro
                     novo_id = datetime.now().strftime("%Y%m%d%H%M%S")
-                    nova_linha = pd.DataFrame([{"ID": novo_id, "DATA": data_v.strftime("%d/%m/%Y"), "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, "CLIENTE": nom_c, "JUSTIFICATIVA": "-", "STATUS": "Planejado (X)"}])
-                    df_final = pd.concat([df_agenda.drop(columns=['LINHA']), nova_linha], ignore_index=True)
+                    
+                    nova_linha = pd.DataFrame([{
+                        "ID": novo_id, 
+                        "REGISTRO": agora, 
+                        "DATA": data_v.strftime("%d/%m/%Y"), 
+                        "SUPERVISOR": sup_sel, 
+                        "CÓDIGO CLIENTE": cod_c, 
+                        "CLIENTE": nom_c, 
+                        "JUSTIFICATIVA": "-", 
+                        "STATUS": "Planejado (X)"
+                    }])
+                    
+                    # Remove coluna temporária 'LINHA' antes de salvar
+                    df_final = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), nova_linha], ignore_index=True)
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
                     st.cache_data.clear()
-                    st.success("✅ Visita agendada!")
+                    st.success(f"✅ Visita agendada com sucesso às {agora}!")
                     st.rerun()
 
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     if not df_agenda.empty:
-        # Ordenação por data sem perder o número da linha que criamos
+        # Colunas auxiliares para ordenação
         df_agenda['DATA_OBJ'] = pd.to_datetime(df_agenda['DATA'], format='%d/%m/%Y', errors='coerce')
-        df_agenda = df_agenda.sort_values(by='DATA_OBJ', ascending=True)
+        
+        col_ordem = st.radio("Ordenar por:", ["Data da Visita (Cronológico)", "Mais Recentes Adicionados"], horizontal=True)
+        
+        if col_ordem == "Data da Visita (Cronológico)":
+            df_agenda = df_agenda.sort_values(by='DATA_OBJ', ascending=True)
+        else:
+            # Ordena pelo ID (que é o timestamp do momento da criação)
+            df_agenda = df_agenda.sort_values(by='ID', ascending=False)
         
         f_sup = st.selectbox("Filtrar Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
         df_f = df_agenda.copy()
         if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
         
-        # Colocamos a LINHA como primeira coluna para facilitar
-        cols_v = ['LINHA'] + [c for c in df_f.columns if c not in ['ID', 'DATA_OBJ', 'LINHA']]
+        # Organização das Colunas
+        cols_v = ['LINHA', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CÓDIGO CLIENTE', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
+        # Garante que todas as colunas existem
+        cols_v = [c for c in cols_v if c in df_f.columns]
         df_export = df_f[cols_v]
 
         c1, c2, _ = st.columns([1, 1, 2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_export), file_name="agenda_marata.xlsx")
         with c2: st.download_button("📄 PDF", data=gerar_pdf(df_export), file_name="agenda_marata.pdf")
 
-        # Exibimos a tabela. hide_index tira os números "falsos" e deixa só a coluna "LINHA" correta
         st.dataframe(df_export, use_container_width=True, hide_index=True)
 
         st.markdown("---")
@@ -131,10 +155,12 @@ elif menu == "Ver/Editar Minha Agenda":
                     n_st = st.radio("Status:", st_list, index=st_list.index(dv['STATUS']) if dv['STATUS'] in st_list else 0, horizontal=True)
                     n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(dv['JUSTIFICATIVA']) if dv['JUSTIFICATIVA'] in ju_list else 0)
                     if st.form_submit_button("✅ ATUALIZAR"):
-                        df_save = df_agenda.drop(columns=['DATA_OBJ', 'LINHA'])
+                        df_save = df_agenda.drop(columns=['DATA_OBJ', 'LINHA'], errors='ignore')
                         df_save.loc[df_save['ID'] == id_s, 'STATUS'] = n_st
                         df_save.loc[df_save['ID'] == id_s, 'JUSTIFICATIVA'] = n_ju
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
                         st.cache_data.clear()
                         st.success("✅ Atualizado!")
                         st.rerun()
+    else:
+        st.info("Agenda vazia.")
