@@ -63,7 +63,7 @@ if menu == "Novo Agendamento":
                     st.rerun()
 
 elif menu == "Ver/Editar Minha Agenda":
-    st.header("🔍 Minha Agenda Organizada")
+    st.header("🔍 Minha Agenda")
     
     if not df_agenda.empty:
         # --- LÓGICA DE ORDENAÇÃO POR DATA ---
