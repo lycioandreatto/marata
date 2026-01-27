@@ -26,18 +26,24 @@ def gerar_pdf(df):
     pdf.cell(0, 10, f"Agenda de Visitas Marata - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align='C')
     pdf.ln(10)
     
-    # Cabeçalho
-    pdf.set_font("Arial", 'B', 10)
-    col_width = 45 
-    for col in df.columns:
-        pdf.cell(col_width, 10, str(col), border=1, align='C')
+    # Larguras customizadas: Cliente e Justificativa ganham mais espaço
+    larguras = [25, 45, 25, 85, 65, 30] 
+    
+    pdf.set_font("Arial", 'B', 9)
+    for i, col in enumerate(df.columns):
+        pdf.cell(larguras[i], 10, str(col), border=1, align='C')
     pdf.ln()
     
-    # Dados
-    pdf.set_font("Arial", '', 9)
+    pdf.set_font("Arial", '', 8)
     for index, row in df.iterrows():
-        for item in row:
-            pdf.cell(col_width, 10, str(item)[:25], border=1)
+        for i, item in enumerate(row):
+            texto = str(item)
+            # Limita caracteres para não transbordar a célula
+            if i == 3: limite = 50 # Nome do cliente
+            elif i == 4: limite = 40 # Justificativa
+            else: limite = 20
+            
+            pdf.cell(larguras[i], 10, texto[:limite], border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
@@ -49,7 +55,6 @@ def carregar_dados():
         df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVA DE ATENDIMENTOS")
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         
-        # Limpeza de nomes de colunas
         df_b.columns = [str(c).strip() for c in df_b.columns]
         df_j.columns = [str(c).strip() for c in df_j.columns]
         df_a.columns = [str(c).strip() for c in df_a.columns]
@@ -71,7 +76,6 @@ if df_base is None:
 st.sidebar.image("https://marata.com.br/wp-content/uploads/2021/05/logo-marata.png", width=120)
 menu = st.sidebar.selectbox("Menu", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
 
-# --- NOVO AGENDAMENTO ---
 if menu == "Novo Agendamento":
     st.header("📋 Novo Agendamento")
     col_sup_nome = 'Região de vendas'
@@ -107,12 +111,10 @@ if menu == "Novo Agendamento":
                     st.success("✅ Agendado!")
                     st.rerun()
 
-# --- VISUALIZAÇÃO E EDIÇÃO ---
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     
     if not df_agenda.empty:
-        # Ordenação Cronológica
         df_agenda['DATA_OBJ'] = pd.to_datetime(df_agenda['DATA'], format='%d/%m/%Y', errors='coerce')
         df_agenda = df_agenda.sort_values(by='DATA_OBJ', ascending=True)
 
@@ -134,7 +136,7 @@ elif menu == "Ver/Editar Minha Agenda":
             try:
                 st.download_button("📄 PDF", data=gerar_pdf(df_export), file_name="agenda_marata.pdf")
             except:
-                st.warning("Erro PDF (caracteres)")
+                st.warning("⚠️ O PDF contém nomes muito longos ou caracteres não aceitos. Use o Excel.")
 
         st.dataframe(df_export, use_container_width=True)
 
