@@ -14,7 +14,9 @@ st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
 fuso_br = pytz.timezone('America/Sao_Paulo')
-NOME_ADMIN = "SEU NOME" # <--- Defina seu nome aqui para ser o Administrador
+
+# Alterado para aceitar Lycio como administrador padrão
+NOME_ADMIN = "LYCIO" 
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
 def converter_para_excel(df):
@@ -123,6 +125,7 @@ if not st.session_state.logado:
 
 # --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
+# Verificação de administrador (compara em maiúsculo para aceitar Lycio/lycio)
 is_admin = (user_atual == NOME_ADMIN.upper())
 label_display = "ADMINISTRADOR" if is_admin else user_atual
 
