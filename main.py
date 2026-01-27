@@ -27,14 +27,17 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
-        # Garante que o ID e códigos não virem números "doidos" (.0)
-        for df in [df_b, df_a]:
+        # PADRONIZAÇÃO: Força todas as colunas de todas as abas para MAIÚSCULAS e remove espaços
+        for df in [df_b, df_j, df_a, df_u]:
             if df is not None:
+                df.columns = [str(c).strip().upper() for c in df.columns]
+                # Limpa os dados: remove .0 de códigos e transforma em texto
                 for col in df.columns:
                     df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True).replace('nan', '')
         
         return df_b, df_j, df_a, df_u
-    except:
+    except Exception as e:
+        st.error(f"Erro ao carregar colunas: {e}")
         return None, None, None, None
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
@@ -48,12 +51,13 @@ if not st.session_state.autenticado:
         s_in = st.text_input("Senha", type="password").strip()
         if st.button("ACESSAR", use_container_width=True):
             if df_usuarios is not None:
+                # Busca usuário ignorando maiúsculas
                 user_match = df_usuarios[df_usuarios['USUARIO'].str.lower() == u_in.lower()]
                 if not user_match.empty and str(user_match.iloc[0]['SENHA']).strip() == s_in:
                     st.session_state.autenticado = True
                     st.session_state.usuario_nome = user_match.iloc[0]['USUARIO']
                     st.rerun()
-                else: st.error("Dados incorretos.")
+                else: st.error("Usuário ou senha incorretos.")
     st.stop()
 
 eh_admin = st.session_state.usuario_nome.lower() == "lycio"
@@ -61,7 +65,7 @@ eh_admin = st.session_state.usuario_nome.lower() == "lycio"
 # --- SIDEBAR ---
 with st.sidebar:
     st.subheader("Painel de Controle")
-    st.write(f"Logado como: **{st.session_state.usuario_nome}**")
+    st.write(f"Logado: **{st.session_state.usuario_nome}**")
     menu = st.selectbox("Navegação", ["Novo Agendamento", "Minha Agenda"])
     if st.button("🚪 Sair"):
         st.session_state.autenticado = False
@@ -72,20 +76,21 @@ if menu == "Novo Agendamento":
     st.header("📋 Registrar Novo Agendamento")
     
     if eh_admin:
-        sups = sorted([s for s in df_base['Região de vendas'].unique() if s != ''])
+        # Usando nomes em MAIÚSCULAS conforme a padronização do carregar_dados
+        sups = sorted([s for s in df_base['REGIÃO DE VENDAS'].unique() if s != ''])
         sup_alvo = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
     else:
         sup_alvo = st.session_state.usuario_nome
 
     if sup_alvo != "Selecione...":
-        clientes_f = df_base[df_base['Região de vendas'] == sup_alvo]
+        clientes_f = df_base[df_base['REGIÃO DE VENDAS'] == sup_alvo]
         
         if not clientes_f.empty:
-            # Puxa o analista da Coluna A (BASE)
+            # Puxa o analista da Coluna A (agora com nome ANALISTA em maiúsculo)
             nome_analista = clientes_f.iloc[0]['ANALISTA']
             
-            # Monta lista para o menu
-            lista_cli = sorted(clientes_f.apply(lambda x: f"{x['cliente']} - {x['Nome 1']}", axis=1).tolist())
+            # Monta lista usando nomes em MAIÚSCULO
+            lista_cli = sorted(clientes_f.apply(lambda x: f"{x['CLIENTE']} - {x['NOME 1']}", axis=1).tolist())
             cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_cli)
             
             if cliente_sel != "Selecione...":
@@ -96,7 +101,6 @@ if menu == "Novo Agendamento":
                         agora = datetime.now(fuso_br)
                         novo_id = agora.strftime("%Y%m%d%H%M%S")
                         
-                        # Segue exatamente a ordem da sua ABA AGENDA
                         nova_linha = pd.DataFrame([{
                             "ID": novo_id,
                             "DATA": data_v.strftime("%d/%m/%Y"),
@@ -112,7 +116,7 @@ if menu == "Novo Agendamento":
                         df_final = pd.concat([df_agenda, nova_linha], ignore_index=True)
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
                         st.cache_data.clear()
-                        st.success(f"Sucesso! Analista: {nome_analista}")
+                        st.success(f"Gravado! Analista responsável: {nome_analista}")
                         st.rerun()
 
 # 2. MINHA AGENDA
@@ -128,7 +132,6 @@ elif menu == "Minha Agenda":
 
     if not df_f.empty:
         df_f["EDITAR"] = False
-        # Ordenação visual para facilitar a leitura
         cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'STATUS', 'JUSTIFICATIVA']
         edicao = st.data_editor(df_f[cols_v], 
                                 column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
@@ -141,23 +144,22 @@ elif menu == "Minha Agenda":
             id_selecionado = df_f.loc[idx, 'ID']
             
             with st.form("form_edit"):
-                st.subheader(f"Atualizar Cliente: {df_f.loc[idx, 'CLIENTE']}")
+                st.subheader(f"Atualizar: {df_f.loc[idx, 'CLIENTE']}")
                 st_list = ["Planejado (X)", "Realizado", "Reagendado", "OUTRO"]
+                # Justificativas (Pega a primeira coluna da aba correspondente)
                 ju_list = list(df_just.iloc[:, 0].dropna().unique())
                 if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
                 n_st = st.selectbox("Novo Status:", st_list, index=st_list.index(df_f.loc[idx, 'STATUS']) if df_f.loc[idx, 'STATUS'] in st_list else 0)
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(df_f.loc[idx, 'JUSTIFICATIVA']) if df_f.loc[idx, 'JUSTIFICATIVA'] in ju_list else 0)
                 
-                obs = st.text_input("Observação (Caso selecione OUTRO):")
+                obs = st.text_input("Se marcou OUTRO, descreva aqui:")
 
                 if st.form_submit_button("CONFIRMAR MUDANÇAS"):
                     v_st = obs if n_st == "OUTRO" and obs else n_st
                     v_ju = obs if n_ju == "OUTRO" and obs else n_ju
                     
-                    # Localiza e atualiza
                     df_agenda.loc[df_agenda['ID'] == id_selecionado, ['STATUS', 'JUSTIFICATIVA']] = [v_st, v_ju]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
                     st.cache_data.clear()
-                    st.success("Agenda atualizada!")
                     st.rerun()
