@@ -68,7 +68,6 @@ df_base, df_just, df_agenda = carregar_dados()
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    # Tamanho definido em 150 conforme solicitado
     try:
         st.image("pngmarata.png", width=150)
     except:
@@ -157,13 +156,26 @@ elif menu == "Ver/Editar Minha Agenda":
             with st.form("form_edit_final"):
                 c1, c2 = st.columns(2)
                 st_list = ["Planejado (X)", "Realizado", "Reagendado"]
+                
+                # Prepara lista de justificativas e garante que 'OUTRO' exista
                 ju_list = list(df_just.iloc[:, 0].dropna().unique())
+                if "OUTRO" not in ju_list: ju_list.append("OUTRO")
+                
                 with c1: n_st = st.radio("Status:", st_list, index=st_list.index(dados['STATUS']) if dados['STATUS'] in st_list else 0)
                 with c2: n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(dados['JUSTIFICATIVA']) if dados['JUSTIFICATIVA'] in ju_list else 0)
+                
+                # --- CAMPO CONDICIONAL PARA 'OUTRO' ---
+                motivo_outro = ""
+                if n_ju == "OUTRO":
+                    motivo_outro = st.text_input("Descreva o motivo (Campo Obrigatório):")
+
                 b_at, b_ex = st.columns(2)
                 with b_at:
                     if st.form_submit_button("✅ SALVAR", use_container_width=True):
-                        df_agenda.loc[df_agenda['ID'] == id_s, ['STATUS', 'JUSTIFICATIVA']] = [n_st, n_ju]
+                        # Se selecionou OUTRO, usa o texto digitado
+                        justificativa_final = motivo_outro if n_ju == "OUTRO" and motivo_outro.strip() != "" else n_ju
+                        
+                        df_agenda.loc[df_agenda['ID'] == id_s, ['STATUS', 'JUSTIFICATIVA']] = [n_st, justificativa_final]
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                         st.cache_data.clear()
                         st.rerun()
