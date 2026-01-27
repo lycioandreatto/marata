@@ -1,40 +1,36 @@
 import streamlit as st
-from geopy.geocoders import Nominatim # Para pegar localização se quiser
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from gsheetsdb import connect
 
-# 1. Configuração da Página
+# Configuração da página
 st.set_page_config(page_title="Agenda Maratá", layout="centered")
 
 st.title("📋 Agenda de Visitas - Maratá")
 
-# 2. Conexão com sua Planilha Google (Substitua pelo seu link)
-sheet_url = "SUA_PLANILHA_GOOGLE_AQUI"
-conn = connect()
+# Criando a conexão usando os Secrets que você já salvou
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-def run_query(query):
-    rows = conn.execute(query, headers=1)
-    return pd.DataFrame(rows)
+# Lendo os dados da planilha
+try:
+    # O parâmetro ttl=0 evita que o app use dados antigos do "cache"
+    df = conn.read(ttl=0)
+    
+    # Se a planilha estiver vazia ou não carregar colunas
+    if df.empty:
+        st.warning("A planilha parece estar vazia.")
+    else:
+        # Interface para o vendedor
+        # AJUSTE AQUI: Use o nome exato da coluna da sua planilha (ex: 'Supervisor')
+        col_vendedor = 'Supervisor' 
+        
+        if col_vendedor in df.columns:
+            vendedores = df[col_vendedor].dropna().unique()
+            vendedor_sel = st.selectbox("Selecione seu nome:", ["Selecione..."] + list(vendedores))
+            
+            if vendedor_sel != "Selecione...":
+                st.write(f"Olá {vendedor_sel}, aqui estão seus clientes.")
+        else:
+            st.error(f"Coluna '{col_vendedor}' não encontrada. Colunas disponíveis: {list(df.columns)}")
 
-# 3. Login Simples
-vendedor = st.selectbox("Selecione seu nome:", ["João Silva", "Maria Souza", "José Carlos"])
-
-if vendedor:
-    st.subheader(f"Clientes de Hoje - {vendedor}")
-    
-    # Simulação de dados (Aqui ele leria do seu Google Sheets)
-    # Na prática, usaríamos df = run_query(f"SELECT * FROM '{sheet_url}' WHERE Supervisor = '{vendedor}'")
-    
-    # 4. Interface de Check-in
-    cliente = st.selectbox("Selecione o Cliente para Visita:", ["Supermercado X", "Atacadista Y", "Mercadinho Z"])
-    
-    status = st.radio("Status da Visita:", ("Planejado (X)", "Realizado", "Reagendado"))
-    
-    justificativa = ""
-    if status == "Reagendado":
-        justificativa = st.text_input("Motivo do Reagendamento:")
-
-    if st.button("Salvar Visita"):
-        # Aqui entra o código para gravar na planilha
-        st.success(f"Visita ao cliente {cliente} salva com sucesso!")
-        st.balloons()
+except Exception as e:
+    st.error(f"Erro na conexão: {e}")
