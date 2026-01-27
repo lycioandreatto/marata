@@ -26,8 +26,8 @@ def gerar_pdf(df):
     pdf.cell(0, 10, f"Agenda de Visitas Marata - {datetime.now().strftime('%d/%m/%Y')}", ln=True, align='C')
     pdf.ln(10)
     
-    # Larguras customizadas: Cliente e Justificativa ganham mais espaço
-    larguras = [25, 45, 25, 85, 65, 30] 
+    # Novas Larguras: DATA(25), SUPERVISOR(40), COD(35), CLIENTE(90), JUSTIF(55), STATUS(30) = 275mm
+    larguras = [25, 40, 35, 90, 55, 30] 
     
     pdf.set_font("Arial", 'B', 9)
     for i, col in enumerate(df.columns):
@@ -38,9 +38,10 @@ def gerar_pdf(df):
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             texto = str(item)
-            # Limita caracteres para não transbordar a célula
-            if i == 3: limite = 50 # Nome do cliente
-            elif i == 4: limite = 40 # Justificativa
+            # Limites de caracteres baseados nas novas larguras
+            if i == 3: limite = 55 # Cliente
+            elif i == 4: limite = 35 # Justificativa
+            elif i == 1: limite = 25 # Supervisor
             else: limite = 20
             
             pdf.cell(larguras[i], 10, texto[:limite], border=1)
@@ -55,21 +56,29 @@ def carregar_dados():
         df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVA DE ATENDIMENTOS")
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         
-        df_b.columns = [str(c).strip() for c in df_b.columns]
-        df_j.columns = [str(c).strip() for c in df_j.columns]
-        df_a.columns = [str(c).strip() for c in df_a.columns]
-        
+        # Limpeza de colunas e TRATAMENTO DO CÓDIGO (remover .0)
+        for df in [df_b, df_j, df_a]:
+            df.columns = [str(c).strip() for c in df.columns]
+            
+            # Procura colunas de código para limpar o .0
+            cols_codigo = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
+            for col in cols_codigo:
+                # Converte para numérico, preenche erro com 0, transforma em int e depois string
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
+                # Remove os '0' que eram erros de conversão se necessário
+                df[col] = df[col].replace('0', '')
+
         if 'ID' in df_a.columns:
             df_a['ID'] = df_a['ID'].astype(str)
             
         return df_b, df_j, df_a
-    except Exception:
+    except Exception as e:
         return None, None, None
 
 df_base, df_just, df_agenda = carregar_dados()
 
 if df_base is None:
-    st.error("🚨 Limite de acessos atingido. Aguarde 30 segundos e atualize a pagina.")
+    st.error("🚨 Limite de acessos atingido. Aguarde 30 segundos.")
     st.stop()
 
 # --- INTERFACE ---
@@ -85,10 +94,10 @@ if menu == "Novo Agendamento":
 
     if sup_sel != "Selecione...":
         clientes_f = df_base[df_base[col_sup_nome] == sup_sel]
+        # Lista formatada sem o .0 no código
         lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
         
-        st.info("💡 Digite o nome ou codigo para pesquisar.")
-        cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
+        cliente_sel = st.selectbox("Selecione o Cliente (Digite para buscar):", ["Selecione..."] + lista_c)
 
         if cliente_sel != "Selecione...":
             opcoes_j = df_just.iloc[:, 0].dropna().unique()
@@ -103,7 +112,15 @@ if menu == "Novo Agendamento":
                 if st.form_submit_button("💾 SALVAR"):
                     cod_c, nom_c = cliente_sel.split(" - ", 1)
                     novo_id = datetime.now().strftime("%Y%m%d%H%M%S")
-                    nova_linha = pd.DataFrame([{"ID": novo_id, "DATA": data_v.strftime("%d/%m/%Y"), "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, "CLIENTE": nom_c, "JUSTIFICATIVA": just_sel, "STATUS": status}])
+                    nova_linha = pd.DataFrame([{
+                        "ID": novo_id, 
+                        "DATA": data_v.strftime("%d/%m/%Y"), 
+                        "SUPERVISOR": sup_sel, 
+                        "CÓDIGO CLIENTE": cod_c, 
+                        "CLIENTE": nom_c, 
+                        "JUSTIFICATIVA": just_sel, 
+                        "STATUS": status
+                    }])
                     
                     df_final = pd.concat([df_agenda, nova_linha], ignore_index=True)
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
@@ -128,22 +145,21 @@ elif menu == "Ver/Editar Minha Agenda":
         cols_v = [c for c in df_f.columns if c not in ['ID', 'DATA_OBJ']]
         df_export = df_f[cols_v]
 
-        # --- BOTÕES DE DOWNLOAD ---
-        c1, c2, c3 = st.columns([1, 1, 2])
+        c1, c2, _ = st.columns([1, 1, 2])
         with c1:
             st.download_button("📥 Excel", data=converter_para_excel(df_export), file_name="agenda_marata.xlsx")
         with c2:
             try:
                 st.download_button("📄 PDF", data=gerar_pdf(df_export), file_name="agenda_marata.pdf")
             except:
-                st.warning("⚠️ O PDF contém nomes muito longos ou caracteres não aceitos. Use o Excel.")
+                st.warning("Erro ao gerar PDF.")
 
         st.dataframe(df_export, use_container_width=True)
 
         st.markdown("---")
         st.subheader("📝 Atualizar Status")
         dict_l = {f"{row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_f.iterrows()}
-        edit_sel = st.selectbox("Selecione a visita para editar:", ["Selecione..."] + list(dict_l.keys()))
+        edit_sel = st.selectbox("Selecione a visita:", ["Selecione..."] + list(dict_l.keys()))
 
         if edit_sel != "Selecione...":
             id_s = dict_l[edit_sel]
@@ -155,10 +171,8 @@ elif menu == "Ver/Editar Minha Agenda":
                     idx_s = st_list.index(dv['STATUS']) if dv['STATUS'] in st_list else 0
                     ju_list = list(df_just.iloc[:, 0].dropna().unique())
                     idx_j = ju_list.index(dv['JUSTIFICATIVA']) if dv['JUSTIFICATIVA'] in ju_list else 0
-
                     n_st = st.radio("Novo Status:", st_list, index=idx_s, horizontal=True)
                     n_ju = st.selectbox("Nova Justificativa:", ju_list, index=idx_j)
-
                     if st.form_submit_button("✅ ATUALIZAR"):
                         df_save = df_agenda.drop(columns=['DATA_OBJ'])
                         df_save.loc[df_save['ID'] == id_s, 'STATUS'] = n_st
