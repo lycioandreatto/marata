@@ -42,7 +42,7 @@ def gerar_pdf(df):
     return pdf.output(dest='S').encode('latin-1')
 
 # --- CARREGAMENTO DE DADOS ---
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def carregar_dados():
     try:
         df_b = conn.read(spreadsheet=url_planilha, worksheet="BASE")
@@ -53,7 +53,7 @@ def carregar_dados():
         if 'REGISTRO' not in df_a.columns:
             df_a['REGISTRO'] = "-"
 
-        # LINHA real do Sheets
+        # LINHA real para referência do Sheets
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_j, df_a]:
@@ -112,26 +112,45 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     if not df_agenda.empty:
-        # Filtro simples
-        f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
-        df_f = df_agenda.copy()
+        # Criamos o DF de visualização para não quebrar a lógica de edição
+        df_vis = df_agenda.copy()
+        
+        # Opções de Filtro e Ordem
+        c_ord1, c_ord2 = st.columns([1, 1])
+        with c_ord1:
+            col_ordem = st.radio("Ordenar por:", ["Data da Visita", "Mais Recentes (Registro)"], horizontal=True)
+        with c_ord2:
+            f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_vis['SUPERVISOR'].unique()))
+
+        # Aplicar Filtro
         if f_sup != "Todos":
-            df_f = df_f[df_f['SUPERVISOR'] == f_sup]
+            df_vis = df_vis[df_vis['SUPERVISOR'] == f_sup]
+
+        # Aplicar Ordenação
+        if col_ordem == "Data da Visita":
+            df_vis['DATA_TEMP'] = pd.to_datetime(df_vis['DATA'], format='%d/%m/%Y', errors='coerce')
+            df_vis = df_vis.sort_values(by='DATA_TEMP', ascending=True)
+        else:
+            df_vis['REG_TEMP'] = pd.to_datetime(df_vis['REGISTRO'], format='%d/%m/%Y %H:%M', errors='coerce')
+            df_vis = df_vis.sort_values(by='REG_TEMP', ascending=False)
         
         # Exibição
         cols_v = ['LINHA', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CÓDIGO CLIENTE', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-        df_exibir = df_f[cols_v]
+        df_exibir = df_vis[cols_v]
 
         c1, c2, _ = st.columns([1, 1, 2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exibir), file_name="agenda_marata.xlsx")
-        with c2: st.download_button("📄 PDF", data=gerar_pdf(df_exibir), file_name="agenda_marata.pdf")
+        with c2: 
+            try: st.download_button("📄 PDF", data=gerar_pdf(df_exibir), file_name="agenda_marata.pdf")
+            except: st.warning("Erro no PDF.")
 
-        # Tabela interativa (usuário clica na coluna para ordenar)
         st.dataframe(df_exibir, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         st.subheader("📝 Editar ou Excluir")
-        dict_l = {f"Linha {row['LINHA']} | {row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_f.iterrows()}
+        
+        # Dicionário de seleção usando o ID original que nunca muda
+        dict_l = {f"Linha {row['LINHA']} | {row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_vis.iterrows()}
         edit_sel = st.selectbox("Selecione a visita:", ["Selecione..."] + list(dict_l.keys()))
         
         if edit_sel != "Selecione...":
