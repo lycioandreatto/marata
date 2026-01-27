@@ -1,10 +1,11 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 from fpdf import FPDF
 import pytz
+import time
 
 # 1. Configuração da Página
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
@@ -93,22 +94,53 @@ if menu == "Novo Agendamento":
     if df_base is not None:
         supervisores = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
         sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + supervisores)
+        
         if sup_sel != "Selecione...":
             clientes_f = df_base[df_base['Região de vendas'] == sup_sel]
             lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
+            
             if cliente_sel != "Selecione...":
+                # Nova funcionalidade: Quantidade de visitas
+                qtd_visitas = st.number_input("Quantas visitas deseja agendar para este cliente?", min_value=1, max_value=4, value=1)
+                
                 with st.form("form_novo"):
-                    data_v = st.date_input("Data da Visita:", datetime.now(fuso_br))
-                    if st.form_submit_button("💾 CONFIRMAR"):
+                    st.markdown(f"**Datas para as {qtd_visitas} visita(s):**")
+                    datas_selecionadas = []
+                    
+                    # Cria campos de data dinamicamente
+                    cols_datas = st.columns(qtd_visitas)
+                    for i in range(qtd_visitas):
+                        with cols_datas[i]:
+                            d = st.date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"data_v_{i}")
+                            datas_selecionadas.append(d)
+                    
+                    if st.form_submit_button("💾 CONFIRMAR TODOS"):
                         cod_c, nom_c = cliente_sel.split(" - ", 1)
-                        agora_str = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
-                        novo_id = datetime.now(fuso_br).strftime("%Y%m%d%H%M%S")
-                        nova_linha = pd.DataFrame([{"ID": novo_id, "REGISTRO": agora_str, "DATA": data_v.strftime("%d/%m/%Y"), "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, "CLIENTE": nom_c, "JUSTIFICATIVA": "-", "STATUS": "Planejado (X)"}])
-                        df_final = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), nova_linha], ignore_index=True)
+                        agora = datetime.now(fuso_br)
+                        agora_str = agora.strftime("%d/%m/%Y %H:%M")
+                        
+                        novas_linhas = []
+                        for i, data_v in enumerate(datas_selecionadas):
+                            # ID único para cada visita baseado no timestamp + índice
+                            novo_id = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
+                            novas_linhas.append({
+                                "ID": novo_id, 
+                                "REGISTRO": agora_str, 
+                                "DATA": data_v.strftime("%d/%m/%Y"), 
+                                "SUPERVISOR": sup_sel, 
+                                "CÓDIGO CLIENTE": cod_c, 
+                                "CLIENTE": nom_c, 
+                                "JUSTIFICATIVA": "-", 
+                                "STATUS": "Planejado (X)"
+                            })
+                        
+                        df_novos = pd.DataFrame(novas_linhas)
+                        df_final = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), df_novos], ignore_index=True)
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
                         st.cache_data.clear()
-                        st.success("✅ Agendado!")
+                        st.success(f"✅ {qtd_visitas} visita(s) agendada(s) com sucesso!")
+                        time.sleep(1)
                         st.rerun()
 
 # --- PÁGINA: VER/EDITAR ---
