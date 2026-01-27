@@ -15,8 +15,9 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-# Alterado para aceitar Lycio como administrador padrão
-NOME_ADMIN = "LYCIO" 
+# Administrador e Analista Especial
+NOME_ADMIN = "LYCIO"
+NOME_ANALISTA = "BARBARA"
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
 def converter_para_excel(df):
@@ -53,7 +54,6 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
-        # Padronização de Colunas
         df_u.columns = [str(c).strip().upper() for c in df_u.columns]
         df_b.columns = [str(c).strip() for c in df_b.columns]
         df_j.columns = [str(c).strip() for c in df_j.columns]
@@ -126,7 +126,15 @@ if not st.session_state.logado:
 # --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
 is_admin = (user_atual == NOME_ADMIN.upper())
-label_display = "ADMINISTRADOR" if is_admin else user_atual
+is_analista = (user_atual == NOME_ANALISTA.upper())
+
+# Define o label conforme solicitado
+if is_admin:
+    label_display = "ADMINISTRADOR"
+elif is_analista:
+    label_display = f"ANALISTA {user_atual}"
+else:
+    label_display = f"SUPERVISOR {user_atual}"
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -141,11 +149,10 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    # SEÇÃO DE LIMPEZA (Aparece para Admin e para Supervisor)
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin:
-            # Lógica do Admin: Escolhe quem limpar
+        # Barbara (Analista) e Lycio (Admin) podem escolher qualquer supervisor para limpar
+        if is_admin or is_analista:
             lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
             if sup_limpar != "Selecione...":
@@ -155,7 +162,6 @@ with st.sidebar:
                     st.cache_data.clear()
                     st.rerun()
         else:
-            # Lógica do Supervisor: Só limpa a dele
             if st.button(f"⚠️ APAGAR TODA MINHA AGENDA"):
                 df_rest = df_agenda[df_agenda['SUPERVISOR'] != user_atual].drop(columns=['LINHA'], errors='ignore')
                 conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
@@ -166,7 +172,8 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        if is_admin:
+        # Ambos Admin e Analista podem selecionar o supervisor para quem vão agendar
+        if is_admin or is_analista:
             sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
@@ -212,13 +219,13 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin:
+        # Analista Barbara e Admin podem ver a agenda de todos
+        if is_admin or is_analista:
             f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
             df_f = df_agenda.copy() if f_sup == "Todos" else df_agenda[df_agenda['SUPERVISOR'] == f_sup]
         else:
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-        # Exportação
         df_exp = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
         c1, c2, _ = st.columns([1,1,2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
@@ -226,7 +233,6 @@ elif menu == "Ver/Editar Minha Agenda":
             try: st.download_button("📄 PDF", data=gerar_pdf(df_exp), file_name="agenda.pdf")
             except: st.error("Erro PDF")
 
-        # Editor
         df_f["EDITAR"] = False
         cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
         edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
