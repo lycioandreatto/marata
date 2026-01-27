@@ -14,7 +14,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-# --- FUNÇÕES DE CARREGAMENTO ---
+# --- CARREGAMENTO DE DADOS ---
 @st.cache_data(ttl=60)
 def carregar_dados():
     try:
@@ -39,13 +39,16 @@ def carregar_dados():
 
 df_base, df_just, df_agenda = carregar_dados()
 
+if df_base is None:
+    st.error("🚨 Erro ao carregar dados.")
+    st.stop()
+
 # --- INTERFACE ---
 st.sidebar.image("https://marata.com.br/wp-content/uploads/2021/05/logo-marata.png", width=120)
 menu = st.sidebar.selectbox("Menu", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
 
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
-    # ... (Mantenha sua lógica de agendamento aqui)
     supervisores = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
     sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + supervisores)
     if sup_sel != "Selecione...":
@@ -67,78 +70,52 @@ if menu == "Novo Agendamento":
 
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
+    st.info("💡 **Dica:** Clique em uma linha da tabela para Editar ou Excluir.")
     
-    # Filtro
     f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
     df_f = df_agenda.copy()
     if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
 
-    # Criar coluna de ação para o botão
-    df_f["AÇÃO"] = "📝 Editar"
-
-    # Exibição com Column Config (O pulo do gato está aqui!)
-    colunas_visiveis = ['AÇÃO', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-    
-    evento = st.data_editor(
-        df_f[colunas_visiveis],
-        column_config={
-            "AÇÃO": st.column_config.ButtonColumn(
-                "Ação",
-                help="Clique para editar ou excluir esta linha",
-                width="small",
-                disabled=False
-            ),
-        },
-        hide_index=True,
-        use_container_width=True,
-        key="editor_agenda"
-    )
-
-    # Lógica para detectar qual botão foi clicado
-    if st.session_state.get("editor_agenda") and st.session_state.editor_agenda.get("added_rows") == []:
-        # O Streamlit retorna qual linha foi clicada no data_editor
-        # Infelizmente, o clique no botão em data_editor ainda é limitado. 
-        # Vamos usar a seleção de linha que é mais estável:
-        pass
-
-    # --- ALTERNATIVA MAIS ESTÁVEL: Seleção por clique na linha ---
-    st.info("💡 Clique em qualquer célula da linha para abrir as opções de Edição/Exclusão abaixo.")
+    # Exibição com Seleção de Linha (Muito mais estável)
+    cols_v = ['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
     
     selecao = st.dataframe(
-        df_f[colunas_visiveis],
+        df_f[cols_v],
         on_select="rerun",
         selection_mode="single_row",
         hide_index=True,
         use_container_width=True
     )
 
+    # Se o usuário clicou em uma linha...
     if selecao.selection.rows:
-        index_selecionado = selecao.selection.rows[0]
-        dados_linha = df_f.iloc[index_selecionado]
-        id_s = dados_linha['ID']
+        idx = selecao.selection.rows[0]
+        linha_selecionada = df_f.iloc[idx]
+        id_s = linha_selecionada['ID']
         
-        st.markdown(f"### ⚙️ Gerenciar: {dados_linha['CLIENTE']}")
+        st.markdown(f"---")
+        st.subheader(f"📝 Editando: {linha_selecionada['CLIENTE']}")
         
-        with st.form("form_edit_ultra"):
-            col_a, col_b = st.columns(2)
+        with st.form("form_rapido"):
+            c1, c2 = st.columns(2)
             st_list = ["Planejado (X)", "Realizado", "Reagendado"]
             ju_list = list(df_just.iloc[:, 0].dropna().unique())
             
-            with col_a:
-                n_st = st.radio("Alterar Status:", st_list, index=st_list.index(dados_linha['STATUS']) if dados_linha['STATUS'] in st_list else 0)
-            with col_b:
-                n_ju = st.selectbox("Alterar Justificativa:", ju_list, index=ju_list.index(dados_linha['JUSTIFICATIVA']) if dados_linha['JUSTIFICATIVA'] in ju_list else 0)
+            with c1:
+                n_st = st.radio("Status:", st_list, index=st_list.index(linha_selecionada['STATUS']) if linha_selecionada['STATUS'] in st_list else 0, horizontal=True)
+            with c2:
+                n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(linha_selecionada['JUSTIFICATIVA']) if linha_selecionada['JUSTIFICATIVA'] in ju_list else 0)
             
-            btn_save, btn_del = st.columns(2)
-            with btn_save:
-                if st.form_submit_button("💾 SALVAR ALTERAÇÕES", use_container_width=True):
+            b_save, b_del = st.columns(2)
+            with b_save:
+                if st.form_submit_button("✅ SALVAR ALTERAÇÕES", use_container_width=True):
                     df_agenda.loc[df_agenda['ID'] == id_s, ['STATUS', 'JUSTIFICATIVA']] = [n_st, n_ju]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA']))
                     st.cache_data.clear()
-                    st.success("Atualizado!")
+                    st.success("Salvo!")
                     st.rerun()
-            with btn_del:
-                if st.form_submit_button("🗑️ EXCLUIR REGISTRO", use_container_width=True):
+            with b_del:
+                if st.form_submit_button("🗑️ EXCLUIR VISITA", use_container_width=True):
                     df_novo = df_agenda[df_agenda['ID'] != id_s].drop(columns=['LINHA'])
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo)
                     st.cache_data.clear()
