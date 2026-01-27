@@ -124,4 +124,60 @@ elif menu == "Ver/Editar Minha Agenda":
     
     if not df_agenda.empty:
         df_agenda['DATA_OBJ'] = pd.to_datetime(df_agenda['DATA'], format='%d/%m/%Y', errors='coerce')
-        df
+        df_agenda = df_agenda.sort_values(by='DATA_OBJ', ascending=True)
+
+        supervisores_a = sorted(df_agenda['SUPERVISOR'].unique())
+        f_sup = st.selectbox("Filtrar Supervisor:", ["Todos"] + supervisores_a)
+        
+        df_f = df_agenda.copy()
+        if f_sup != "Todos":
+            df_f = df_f[df_f['SUPERVISOR'] == f_sup]
+
+        cols_v = [c for c in df_f.columns if c not in ['ID', 'DATA_OBJ']]
+        df_export = df_f[cols_v]
+
+        c1, c2, _ = st.columns([1, 1, 2])
+        with c1:
+            st.download_button("📥 Excel", data=converter_para_excel(df_export), file_name="agenda_marata.xlsx")
+        with c2:
+            try:
+                st.download_button("📄 PDF", data=gerar_pdf(df_export), file_name="agenda_marata.pdf")
+            except:
+                st.warning("Erro ao gerar PDF.")
+
+        st.dataframe(df_export, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("📝 Atualizar Visita (Status e Justificativa)")
+        dict_l = {f"{row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_f.iterrows()}
+        edit_sel = st.selectbox("Selecione a visita realizada:", ["Selecione..."] + list(dict_l.keys()))
+
+        if edit_sel != "Selecione...":
+            id_s = dict_l[edit_sel]
+            match = df_agenda[df_agenda['ID'] == id_s]
+            if not match.empty:
+                dv = match.iloc[0]
+                with st.form("form_edit"):
+                    st.write(f"Atualizando: **{dv['CLIENTE']}**")
+                    st_list = ["Planejado (X)", "Realizado", "Reagendado"]
+                    # Tenta encontrar o índice atual ou assume 0
+                    try: idx_s = st_list.index(dv['STATUS'])
+                    except: idx_s = 0
+                    
+                    ju_list = list(df_just.iloc[:, 0].dropna().unique())
+                    try: idx_j = ju_list.index(dv['JUSTIFICATIVA'])
+                    except: idx_j = 0
+                    
+                    n_st = st.radio("Mudar Status para:", st_list, index=idx_s, horizontal=True)
+                    n_ju = st.selectbox("Selecione a Justificativa:", ju_list, index=idx_j)
+                    
+                    if st.form_submit_button("✅ ATUALIZAR STATUS"):
+                        df_save = df_agenda.drop(columns=['DATA_OBJ'])
+                        df_save.loc[df_save['ID'] == id_s, 'STATUS'] = n_st
+                        df_save.loc[df_save['ID'] == id_s, 'JUSTIFICATIVA'] = n_ju
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
+                        st.cache_data.clear()
+                        st.success("✅ Status atualizado com sucesso!")
+                        st.rerun()
+    else:
+        st.info("Agenda vazia.")
