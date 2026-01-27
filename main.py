@@ -51,8 +51,11 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
-        for df in [df_b, df_j, df_a, df_u]:
-            df.columns = [str(c).strip() for c in df.columns]
+        # Padronização de Colunas
+        df_u.columns = [str(c).strip().upper() for c in df_u.columns]
+        df_b.columns = [str(c).strip() for c in df_b.columns]
+        df_j.columns = [str(c).strip() for c in df_j.columns]
+        df_a.columns = [str(c).strip() for c in df_a.columns]
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         df_a['LINHA'] = df_a.index + 2
@@ -65,7 +68,8 @@ def carregar_dados():
         
         if 'ID' in df_a.columns: df_a['ID'] = df_a['ID'].astype(str)
         return df_b, df_j, df_a, df_u
-    except Exception: return None, None, None, None
+    except Exception: 
+        return None, None, None, pd.DataFrame(columns=["USUARIO", "SENHA"])
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
@@ -80,38 +84,44 @@ if not st.session_state.logado:
 
     with tab_login:
         with st.form("login_form"):
-            u_login = st.text_input("Nome:").strip().upper()
+            u_login = st.text_input("Usuário:").strip().upper()
             p_login = st.text_input("Senha:", type="password")
             if st.form_submit_button("Entrar"):
-                # Validação de nome e senha
-                valid = df_usuarios[(df_usuarios['NOME'].str.upper() == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
-                if not valid.empty:
-                    st.session_state.logado = True
-                    st.session_state.usuario = u_login
-                    st.rerun()
+                if "USUARIO" in df_usuarios.columns and "SENHA" in df_usuarios.columns:
+                    valid = df_usuarios[(df_usuarios['USUARIO'].str.upper() == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
+                    if not valid.empty:
+                        st.session_state.logado = True
+                        st.session_state.usuario = u_login
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou Senha incorretos.")
                 else:
-                    st.error("Nome ou Senha incorretos.")
+                    st.error("Colunas 'USUARIO' ou 'SENHA' não encontradas na aba USUARIOS.")
 
     with tab_cadastro:
         with st.form("cad_form"):
             st.write("Crie sua conta")
-            u_cad = st.text_input("Nome Completo:").strip().upper()
-            p_cad = st.text_input("Crie uma Senha:", type="password")
+            u_cad = st.text_input("Nome de Usuário:").strip().upper()
+            p_cad = st.text_input("Defina uma Senha:", type="password")
             if st.form_submit_button("Finalizar Cadastro"):
                 if u_cad and p_cad:
-                    if u_cad not in df_usuarios['NOME'].str.upper().values:
-                        novo_user = pd.DataFrame([{"NOME": u_cad, "SENHA": p_cad}])
+                    existente = False
+                    if "USUARIO" in df_usuarios.columns:
+                        existente = u_cad in df_usuarios['USUARIO'].str.upper().values
+                    
+                    if not existente:
+                        novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
                         df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
                         conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
-                        st.success("Cadastro realizado! Faça o login.")
+                        st.success("Cadastro realizado! Agora você pode fazer o login.")
                         st.cache_data.clear()
                     else:
-                        st.error("Este nome já está cadastrado.")
+                        st.error("Este usuário já está cadastrado.")
                 else:
                     st.warning("Preencha todos os campos.")
     st.stop()
 
-# --- DEFINIÇÃO DE PERFIL ---
+# --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
 is_admin = (user_atual == NOME_ADMIN.upper())
 label_display = "ADMINISTRADOR" if is_admin else user_atual
@@ -208,7 +218,7 @@ elif menu == "Ver/Editar Minha Agenda":
         # Editor
         df_f["EDITAR"] = False
         cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-        edicao = st.data_editor(df_f[cols_v], key="edit_v11", hide_index=True, use_container_width=True,
+        edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
                                  column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
                                  disabled=[c for c in cols_v if c != "EDITAR"])
 
