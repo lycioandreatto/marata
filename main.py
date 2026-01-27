@@ -28,6 +28,7 @@ def gerar_pdf(df):
     data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
     pdf.cell(0, 10, f"Agenda Marata - Gerado em {data_geracao}", ln=True, align='C')
     pdf.ln(5)
+    # Ajuste de larguras: Registro, Data, Supervisor, Cliente, Justificativa, Status
     larguras = [35, 22, 35, 70, 46, 30] 
     pdf.set_font("Arial", 'B', 8)
     for i, col in enumerate(df.columns):
@@ -47,15 +48,18 @@ def carregar_dados():
         df_b = conn.read(spreadsheet=url_planilha, worksheet="BASE")
         df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVA DE ATENDIMENTOS")
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
+        
         df_a.columns = [str(c).strip() for c in df_a.columns]
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         df_a['LINHA'] = df_a.index + 2
+        
         for df in [df_b, df_j, df_a]:
             df.columns = [str(c).strip() for c in df.columns]
             cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
             for col in cols_cod:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
                 df[col] = df[col].replace('0', '')
+        
         if 'ID' in df_a.columns: df_a['ID'] = df_a['ID'].astype(str)
         return df_b, df_j, df_a
     except Exception: return None, None, None
@@ -64,26 +68,26 @@ df_base, df_just, df_agenda = carregar_dados()
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    # Tamanho reduzido para width=120
+    # Tamanho definido em 150 conforme solicitado
     try:
-        st.image("pngmarata.png", width=120)
+        st.image("pngmarata.png", width=150)
     except:
         try:
-            st.image("pngmarata", width=120)
+            st.image("pngmarata", width=150)
         except:
-            st.warning("Logo não encontrada")
+            st.warning("Logo 'pngmarata' não encontrada.")
     
     st.markdown("### 📋 Painel de Controle")
-    menu = st.selectbox("Menu", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
+    menu = st.selectbox("Menu Principal", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
 
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
-        lista_sup = sorted(df_agenda['SUPERVISOR'].unique())
-        sup_limpar = st.selectbox("Limpar toda agenda de:", ["Selecione..."] + lista_sup)
-        if sup_limpar != "Selecione...":
-            if st.button(f"⚠️ APAGAR TUDO: {sup_limpar}", use_container_width=True):
-                df_restante = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
+        lista_supervisores = sorted(df_agenda['SUPERVISOR'].unique())
+        sup_para_limpar = st.sidebar.selectbox("Limpar toda agenda de:", ["Selecione..."] + lista_supervisores)
+        if sup_para_limpar != "Selecione...":
+            if st.button(f"⚠️ APAGAR TUDO: {sup_para_limpar}", use_container_width=True):
+                df_restante = df_agenda[df_agenda['SUPERVISOR'] != sup_para_limpar].drop(columns=['LINHA'], errors='ignore')
                 conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_restante)
                 st.cache_data.clear()
                 st.rerun()
@@ -140,7 +144,7 @@ elif menu == "Ver/Editar Minha Agenda":
             disabled=[c for c in cols_v if c != "EDITAR"],
             hide_index=True,
             use_container_width=True,
-            key="editor_final_v6"
+            key="editor_final_v7"
         )
 
         linhas_marcadas = edicao[edicao["EDITAR"] == True]
