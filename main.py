@@ -1,19 +1,22 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
+import traceback
 
-st.title("Diagnóstico de Conexão Maratá")
+st.set_page_config(page_title="Debug Maratá")
+st.title("Depurador de Conexão")
 
-# Tenta conectar usando os Secrets
 try:
+    # Tenta conectar
     conn = st.connection("gsheets", type=GSheetsConnection)
     
-    url_base = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit?gid=0#gid=0"
+    # Tenta ler a aba BASE
+    url = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
+    df = conn.read(spreadsheet=url, worksheet="BASE", ttl=0)
     
-    st.write("Tentando ler a aba BASE...")
-    df = conn.read(spreadsheet=url_base, ttl=0)
-    st.success("Aba BASE carregada com sucesso!")
+    st.success("Conectado!")
     st.dataframe(df.head())
 
-except Exception as e:
-    st.error(f"Erro na conexão: {e}")
-    st.info("Se o erro mencionar 'Service Account', verifique se o cabeçalho nos Secrets é [connections.gsheets]")
+except Exception:
+    # Isso aqui vai forçar o erro a aparecer na tela
+    st.error("Erro detectado!")
+    st.text(traceback.format_exc())
