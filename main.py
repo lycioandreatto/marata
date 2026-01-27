@@ -105,20 +105,25 @@ if not st.session_state.logado:
             st.write("Crie sua conta")
             u_cad = st.text_input("Nome de Usuário:").strip().upper()
             p_cad = st.text_input("Defina uma Senha:", type="password")
+            p_cad_conf = st.text_input("Repita a Senha:", type="password")
+            
             if st.form_submit_button("Finalizar Cadastro"):
-                if u_cad and p_cad:
-                    existente = False
-                    if "USUARIO" in df_usuarios.columns:
-                        existente = u_cad in df_usuarios['USUARIO'].str.upper().values
-                    
-                    if not existente:
-                        novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
-                        df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
-                        conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
-                        st.success("Cadastro realizado! Agora você pode fazer o login.")
-                        st.cache_data.clear()
+                if u_cad and p_cad and p_cad_conf:
+                    if p_cad != p_cad_conf:
+                        st.error("As senhas não coincidem. Por favor, verifique.")
                     else:
-                        st.error("Este usuário já está cadastrado.")
+                        existente = False
+                        if "USUARIO" in df_usuarios.columns:
+                            existente = u_cad in df_usuarios['USUARIO'].str.upper().values
+                        
+                        if not existente:
+                            novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
+                            df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
+                            conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
+                            st.success("Cadastro realizado! Agora você pode fazer o login.")
+                            st.cache_data.clear()
+                        else:
+                            st.error("Este usuário já está cadastrado.")
                 else:
                     st.warning("Preencha todos os campos.")
     st.stop()
@@ -151,7 +156,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
-        # Barbara (Analista) e Lycio (Admin) podem escolher qualquer supervisor para limpar
         if is_admin or is_analista:
             lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
@@ -172,7 +176,6 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        # Ambos Admin e Analista podem selecionar o supervisor para quem vão agendar
         if is_admin or is_analista:
             sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
@@ -219,7 +222,6 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
-        # Analista Barbara e Admin podem ver a agenda de todos
         if is_admin or is_analista:
             f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
             df_f = df_agenda.copy() if f_sup == "Todos" else df_agenda[df_agenda['SUPERVISOR'] == f_sup]
