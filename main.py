@@ -28,14 +28,14 @@ def gerar_pdf(df):
     data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
     pdf.cell(0, 10, f"Agenda Marata - Gerado em {data_geracao}", ln=True, align='C')
     pdf.ln(5)
-    # Ajuste de larguras para as colunas da visualização
-    larguras = [35, 22, 35, 70, 46, 30] 
+    # Larguras: Registro, Data, Supervisor, Cliente, Justificativa, Status
+    larguras = [35, 25, 40, 75, 50, 45] 
     pdf.set_font("Arial", 'B', 8)
     for i, col in enumerate(df.columns):
         pdf.cell(larguras[i], 8, str(col), border=1, align='C')
     pdf.ln()
     pdf.set_font("Arial", '', 8)
-    for index, row in df.iterrows():
+    for _, row in df.iterrows():
         for i, item in enumerate(row):
             pdf.cell(larguras[i], 8, str(item)[:40], border=1)
         pdf.ln()
@@ -62,40 +62,47 @@ def carregar_dados():
         
         if 'ID' in df_a.columns: df_a['ID'] = df_a['ID'].astype(str)
         return df_b, df_j, df_a
-    except Exception: return None, None, None
+    except: return None, None, None
 
 df_base, df_just, df_agenda = carregar_dados()
 
-# --- BARRA LATERAL ---
-st.sidebar.image("https://marata.com.br/wp-content/uploads/2021/05/logo-marata.png", width=120)
-menu = st.sidebar.selectbox("Menu", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
+if df_base is None:
+    st.error("🚨 Erro ao carregar dados.")
+    st.stop()
 
-# --- ZONA DE PERIGO (LIMPEZA EM MASSA) ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("🗑️ Limpeza em Massa")
-if df_agenda is not None and not df_agenda.empty:
-    lista_supervisores = sorted(df_agenda['SUPERVISOR'].unique())
-    sup_para_limpar = st.sidebar.selectbox("Limpar toda agenda de:", ["Selecione..."] + lista_supervisores)
-    if sup_para_limpar != "Selecione...":
-        if st.sidebar.button(f"⚠️ APAGAR TUDO: {sup_para_limpar}", use_container_width=True):
-            df_restante = df_agenda[df_agenda['SUPERVISOR'] != sup_para_limpar].drop(columns=['LINHA'], errors='ignore')
-            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_restante)
-            st.cache_data.clear()
-            st.rerun()
+# --- BARRA LATERAL ---
+with st.sidebar:
+    st.image("https://marata.com.br/wp-content/uploads/2021/05/logo-marata.png", width=180)
+    st.markdown("### 📋 Gestão de Vendas")
+    menu = st.selectbox("Menu Principal", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
+    
+    st.markdown("---")
+    st.subheader("🗑️ Limpeza em Massa")
+    if not df_agenda.empty:
+        lista_sup = sorted(df_agenda['SUPERVISOR'].unique())
+        sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sup)
+        if sup_limpar != "Selecione...":
+            if st.button(f"APAGAR TUDO DE: {sup_limpar}", use_container_width=True):
+                df_restante = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_restante)
+                st.cache_data.clear()
+                st.rerun()
 
 # --- NOVO AGENDAMENTO ---
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     supervisores = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
     sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + supervisores)
+    
     if sup_sel != "Selecione...":
         clientes_f = df_base[df_base['Região de vendas'] == sup_sel]
         lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
         cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
+        
         if cliente_sel != "Selecione...":
             with st.form("form_novo"):
                 data_v = st.date_input("Data da Visita:", datetime.now(fuso_br))
-                if st.form_submit_button("💾 CONFIRMAR"):
+                if st.form_submit_button("💾 CONFIRMAR AGENDAMENTO"):
                     cod_c, nom_c = cliente_sel.split(" - ", 1)
                     agora_str = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
                     novo_id = datetime.now(fuso_br).strftime("%Y%m%d%H%M%S")
@@ -103,31 +110,28 @@ if menu == "Novo Agendamento":
                     df_final = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), nova_linha], ignore_index=True)
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
                     st.cache_data.clear()
-                    st.success("✅ Agendado!")
+                    st.success("✅ Visita agendada com sucesso!")
                     st.rerun()
 
-# --- VER/EDITAR/EXCLUIR ---
+# --- VER / EDITAR / EXPORTAR ---
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     
-    if df_agenda is not None and not df_agenda.empty:
+    if not df_agenda.empty:
         f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
         df_f = df_agenda.copy()
         if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
 
-        # --- BOTÕES DE EXPORTAÇÃO ---
-        df_exportar = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
-        c_exp1, c_exp2, _ = st.columns([1, 1, 2])
-        with c_exp1:
-            st.download_button("📥 Excel", data=converter_para_excel(df_exportar), file_name="agenda_marata.xlsx", use_container_width=True)
-        with c_exp2:
-            try:
-                st.download_button("📄 PDF", data=gerar_pdf(df_exportar), file_name="agenda_marata.pdf", use_container_width=True)
-            except:
-                st.error("Erro ao gerar PDF")
+        # Botões de Exportação
+        df_export = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
+        c1, c2, _ = st.columns([1, 1, 2])
+        with c1: st.download_button("📥 Excel", data=converter_para_excel(df_export), file_name="agenda_marata.xlsx", use_container_width=True)
+        with c2: 
+            try: st.download_button("📄 PDF", data=gerar_pdf(df_export), file_name="agenda_marata.pdf", use_container_width=True)
+            except: st.error("Erro PDF")
 
-        # Interface de Edição por Checkbox
-        df_f["EDITAR"] = False 
+        # Tabela com Checkbox para Editar
+        df_f["EDITAR"] = False
         cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
         
         edicao = st.data_editor(
@@ -136,36 +140,34 @@ elif menu == "Ver/Editar Minha Agenda":
             disabled=[c for c in cols_v if c != "EDITAR"],
             hide_index=True,
             use_container_width=True,
-            key="tabela_editor_v4"
+            key="editor_final"
         )
 
-        linhas_marcadas = edicao[edicao["EDITAR"] == True]
-        if not linhas_marcadas.empty:
-            idx_original = linhas_marcadas.index[0]
-            dados_linha = df_f.loc[idx_original]
-            id_s = dados_linha['ID']
+        linhas_edit = edicao[edicao["EDITAR"] == True]
+        if not linhas_edit.empty:
+            idx = linhas_edit.index[0]
+            row = df_f.loc[idx]
+            id_s = row['ID']
             
-            st.markdown(f"---")
-            st.subheader(f"⚙️ Opções para: {dados_linha['CLIENTE']}")
+            st.markdown("---")
+            st.subheader(f"⚙️ Editar: {row['CLIENTE']}")
             
-            with st.form("form_edit_v4"):
-                c1, c2 = st.columns(2)
+            with st.form("form_edit_final"):
+                col_a, col_b = st.columns(2)
                 st_list = ["Planejado (X)", "Realizado", "Reagendado"]
                 ju_list = list(df_just.iloc[:, 0].dropna().unique())
-                with c1:
-                    n_st = st.radio("Status:", st_list, index=st_list.index(dados_linha['STATUS']) if dados_linha['STATUS'] in st_list else 0)
-                with c2:
-                    n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(dados_linha['JUSTIFICATIVA']) if dados_linha['JUSTIFICATIVA'] in ju_list else 0)
+                with col_a: n_st = st.radio("Status:", st_list, index=st_list.index(row['STATUS']) if row['STATUS'] in st_list else 0)
+                with col_b: n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(row['JUSTIFICATIVA']) if row['JUSTIFICATIVA'] in ju_list else 0)
                 
-                b_at, b_ex = st.columns(2)
-                with b_at:
-                    if st.form_submit_button("✅ SALVAR ALTERAÇÕES", use_container_width=True):
+                btn_at, btn_ex = st.columns(2)
+                with btn_at:
+                    if st.form_submit_button("✅ SALVAR", use_container_width=True):
                         df_agenda.loc[df_agenda['ID'] == id_s, ['STATUS', 'JUSTIFICATIVA']] = [n_st, n_ju]
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                         st.cache_data.clear()
                         st.rerun()
-                with b_ex:
-                    if st.form_submit_button("🗑️ EXCLUIR ESTA LINHA", use_container_width=True):
+                with btn_ex:
+                    if st.form_submit_button("🗑️ EXCLUIR", use_container_width=True):
                         df_novo = df_agenda[df_agenda['ID'] != id_s].drop(columns=['LINHA'], errors='ignore')
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo)
                         st.cache_data.clear()
