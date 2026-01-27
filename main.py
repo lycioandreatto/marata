@@ -28,22 +28,17 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
-        # Limpa nomes de colunas
         for df in [df_b, df_j, df_a, df_u]:
             if df is not None:
                 df.columns = [str(c).strip().upper() for c in df.columns]
         
-        # --- CORREÇÃO DOS NÚMEROS DOIDOS (FORMATAÇÃO) ---
-        # Força as colunas de código e nome a serem texto limpo
+        # Limpeza de strings para evitar o erro da imagem 2
         if df_b is not None:
-            for col in ['CLIENTE', 'NOME 1', 'CÓDIGO']:
-                if col in df_b.columns:
-                    # Remove o .0 e converte para texto
-                    df_b[col] = df_b[col].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
+            for col in df_b.columns:
+                df_b[col] = df_b[col].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
         
         return df_b, df_j, df_a, df_u
     except Exception as e:
-        st.error(f"Erro na leitura: {e}")
         return None, None, None, None
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
@@ -77,29 +72,39 @@ with st.sidebar:
 
 # 1. NOVO AGENDAMENTO
 if menu == "Novo Agendamento":
-    st.header("📋 Agendar Visita")
+    st.header(f"📋 Agendar Visita")
     
+    # Se for ADM, ele escolhe o supervisor. Se não, usa o próprio login.
     if eh_admin:
-        sups = sorted([s for s in df_base['REGIÃO DE VENDAS'].unique() if str(s) != 'nan' and str(s) != ''])
-        sup_alvo = st.selectbox("Supervisor:", ["Selecione..."] + sups)
+        sups = sorted([s for s in df_base['REGIÃO DE VENDAS'].unique() if s and s != ''])
+        sup_alvo = st.selectbox("Selecione o Supervisor para agendar:", ["Selecione..."] + sups)
     else:
         sup_alvo = st.session_state.usuario_nome
 
+    # Só prossegue se tiver um supervisor selecionado (ou logado)
     if sup_alvo and sup_alvo != "Selecione...":
         clientes_f = df_base[df_base['REGIÃO DE VENDAS'] == sup_alvo].copy()
         
-        if not clientes_f.empty:
-            # Captura Analista (Coluna A)
-            nome_analista = clientes_f.iloc[0, 0] 
+        if clientes_f.empty:
+            st.warning(f"Atenção: Não encontramos clientes para o supervisor '{sup_alvo}'.")
+        else:
+            # Pega o Analista da Coluna A (Índice 0) garantindo que seja STRING pura
+            nome_analista = str(clientes_f.iloc[0, 0])
             
-            # Formata a lista para o Menu sem números decimais
-            lista_c = sorted(clientes_f.apply(lambda x: f"{x['CLIENTE']} - {x['NOME 1']}", axis=1).tolist())
-            cliente_sel = st.selectbox("Cliente:", ["Selecione..."] + lista_c)
+            # FORMATO DA LISTA: Garante que pegue apenas o VALOR do texto
+            def formatar_linha(row):
+                # .values[0] ou a conversão direta evita o erro "dtype: object" da imagem
+                cod = str(row['CLIENTE'])
+                nome = str(row['NOME 1'])
+                return f"{cod} - {nome}"
+
+            lista_c = sorted([formatar_linha(row) for _, row in clientes_f.iterrows()])
+            cliente_sel = st.selectbox("Escolha o Cliente:", ["Selecione..."] + lista_c)
             
             if cliente_sel != "Selecione...":
                 with st.form("f_novo"):
-                    data_v = st.date_input("Data:", datetime.now(fuso_br))
-                    if st.form_submit_button("💾 SALVAR"):
+                    data_v = st.date_input("Data da Visita:", datetime.now(fuso_br))
+                    if st.form_submit_button("💾 SALVAR AGENDAMENTO"):
                         cod_c, nom_c = cliente_sel.split(" - ", 1)
                         agora = datetime.now(fuso_br)
                         novo_id = agora.strftime("%Y%m%d%H%M%S")
@@ -115,10 +120,11 @@ if menu == "Novo Agendamento":
                             "JUSTIFICATIVA": "-",
                             "STATUS": "Planejado (X)"
                         }])
+                        
                         df_final = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), nova_linha], ignore_index=True)
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
                         st.cache_data.clear()
-                        st.success(f"Agendado! (Analista: {nome_analista})")
+                        st.success(f"Agendado com sucesso para {sup_alvo}!")
                         st.rerun()
 
 # 2. MINHA AGENDA
@@ -129,7 +135,7 @@ elif menu == "Minha Agenda":
     if not eh_admin and not df_f.empty:
         df_f = df_f[df_f['SUPERVISOR'] == st.session_state.usuario_nome]
     elif eh_admin and not df_f.empty:
-        f_sup = st.selectbox("Filtrar Supervisor:", ["Todos"] + sorted(df_f['SUPERVISOR'].unique().tolist()))
+        f_sup = st.selectbox("Filtrar Visão por Supervisor:", ["Todos"] + sorted(df_f['SUPERVISOR'].unique().tolist()))
         if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
 
     if not df_f.empty:
@@ -153,13 +159,13 @@ elif menu == "Minha Agenda":
                 n_st = st.selectbox("Status:", st_list, index=st_list.index(linha['STATUS']) if linha['STATUS'] in st_list else 0)
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(linha['JUSTIFICATIVA']) if linha['JUSTIFICATIVA'] in ju_list else 0)
                 
-                obs_extra = st.text_input("Se selecionou 'OUTRO', digite o motivo aqui:")
+                obs_extra = st.text_input("Se marcou 'OUTRO', descreva aqui:")
 
-                if st.form_submit_button("✅ SALVAR ALTERAÇÃO"):
+                if st.form_submit_button("✅ SALVAR"):
                     val_status = obs_extra if n_st == "OUTRO" and obs_extra else n_st
                     val_just = obs_extra if n_ju == "OUTRO" and obs_extra else n_ju
                     
-                    df_agenda.loc[df_agenda['ID'] == linha['ID'], ['STATUS', 'JUSTIFICATIVA']] = [val_status, val_just]
+                    df_agenda.loc[df_agenda['ID'] == str(linha['ID']), ['STATUS', 'JUSTIFICATIVA']] = [val_status, val_just]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.rerun()
