@@ -125,7 +125,6 @@ if not st.session_state.logado:
 
 # --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
-# Verificação de administrador (compara em maiúsculo para aceitar Lycio/lycio)
 is_admin = (user_atual == NOME_ADMIN.upper())
 label_display = "ADMINISTRADOR" if is_admin else user_atual
 
@@ -142,9 +141,11 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    if is_admin:
-        st.subheader("🗑️ Limpeza em Massa")
-        if df_agenda is not None and not df_agenda.empty:
+    # SEÇÃO DE LIMPEZA (Aparece para Admin e para Supervisor)
+    st.subheader("🗑️ Limpeza em Massa")
+    if df_agenda is not None and not df_agenda.empty:
+        if is_admin:
+            # Lógica do Admin: Escolhe quem limpar
             lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
             if sup_limpar != "Selecione...":
@@ -153,6 +154,13 @@ with st.sidebar:
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
                     st.cache_data.clear()
                     st.rerun()
+        else:
+            # Lógica do Supervisor: Só limpa a dele
+            if st.button(f"⚠️ APAGAR TODA MINHA AGENDA"):
+                df_rest = df_agenda[df_agenda['SUPERVISOR'] != user_atual].drop(columns=['LINHA'], errors='ignore')
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
+                st.cache_data.clear()
+                st.rerun()
 
 # --- PÁGINA: NOVO AGENDAMENTO ---
 if menu == "Novo Agendamento":
