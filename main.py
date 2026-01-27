@@ -8,38 +8,39 @@ st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
 
-# --- FUNÇÃO COM CACHE PARA NÃO ESTOURAR A COTA DO GOOGLE ---
-@st.cache_data(ttl=600) # Guarda os dados por 10 minutos
-def carregar_dados_cache():
+# --- FUNÇÃO DE CARREGAMENTO COM PROTEÇÃO (CACHE) ---
+@st.cache_data(ttl=600) # O app só vai no Google 1 vez a cada 10 minutos
+def carregar_dados():
     try:
-        df_b = conn.read(spreadsheet=url_planilha, worksheet="BASE").dropna(how='all')
-        df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVA DE ATENDIMENTOS").dropna(how='all')
-        df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA").dropna(how='all')
+        # Carregamento em lote para economizar acessos
+        df_b = conn.read(spreadsheet=url_planilha, worksheet="BASE")
+        df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVA DE ATENDIMENTOS")
+        df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         
-        # Limpeza de colunas
-        df_b.columns = [str(c).strip() for c in df_b.columns]
-        df_j.columns = [str(c).strip() for c in df_j.columns]
-        df_a.columns = [str(c).strip() for c in df_a.columns]
+        # Limpeza padrão
+        for df in [df_b, df_j, df_a]:
+            df.columns = [str(c).strip() for c in df.columns]
         
         if 'ID' in df_a.columns:
             df_a['ID'] = df_a['ID'].astype(str)
             
         return df_b, df_j, df_a
-    except Exception as e:
+    except Exception:
         return None, None, None
 
-# Carregamento
-df_base, df_just, df_agenda = carregar_dados_cache()
+# Tenta carregar os dados
+df_base, df_just, df_agenda = carregar_dados()
 
+# Se der erro de cota, mostra aviso amigável e para o código
 if df_base is None:
-    st.error("Limite de acessos do Google atingido. Aguarde 1 minuto e recarregue a página.")
+    st.error("🚨 O Google Sheets pediu uma pausa. Aguarde 30 segundos e atualize a página.")
     st.stop()
 
-# --- INTERFACE ---
+# --- ABA LATERAL ---
 menu = st.sidebar.selectbox("Menu", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
 
 if menu == "Novo Agendamento":
-    st.header("📋 Novo Agendamento de Visita")
+    st.header("📋 Novo Agendamento")
     col_sup = 'Região de vendas'
     
     supervisores = sorted([s for s in df_base[col_sup].unique() if str(s).strip() and str(s) != 'nan'])
@@ -57,24 +58,21 @@ if menu == "Novo Agendamento":
                 justificativa_sel = st.selectbox("JUSTIFICATIVA:", list(opcoes_just))
                 data_visita = st.date_input("DATA DA VISITA:", datetime.now())
                 
-                if st.form_submit_button("💾 SALVAR NA AGENDA"):
+                if st.form_submit_button("💾 SALVAR"):
                     cod_c, nom_c = cliente_escolhido.split(" - ", 1)
                     novo_id = datetime.now().strftime("%Y%m%d%H%M%S")
                     
                     nova_linha = pd.DataFrame([{"ID": novo_id, "DATA": data_visita.strftime("%d/%m/%Y"), "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, "CLIENTE": nom_c, "JUSTIFICATIVA": justificativa_sel, "STATUS": status}])
                     
-                    # Para salvar, pegamos a agenda mais recente sem cache
-                    df_agenda_recente = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
-                    df_final = pd.concat([df_agenda_recente, nova_linha], ignore_index=True)
-                    
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
-                    st.cache_data.clear() # Limpa o cache para mostrar o dado novo
-                    st.success("✅ Agendado!")
+                    # Salva e LIMPA O CACHE para que a mudança apareça na hora
+                    df_agenda_full = pd.concat([df_agenda, nova_linha], ignore_index=True)
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_full)
+                    st.cache_data.clear() 
+                    st.success("✅ Salvo!")
                     st.rerun()
 
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
-    
     if not df_agenda.empty:
         supervisores_agenda = sorted(df_agenda['SUPERVISOR'].unique())
         filtro_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + supervisores_agenda)
@@ -87,32 +85,30 @@ elif menu == "Ver/Editar Minha Agenda":
         st.dataframe(df_filtrado[cols_visiveis], use_container_width=True)
 
         st.markdown("---")
-        st.subheader("📝 Atualizar Status")
-        
+        st.subheader("📝 Atualizar Visita")
         dict_escolha = {f"{row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_filtrado.iterrows()}
-        escolha_label = st.selectbox("Selecione a visita:", ["Selecione..."] + list(dict_escolha.keys()))
+        escolha_label = st.selectbox("Selecione:", ["Selecione..."] + list(dict_escolha.keys()))
 
         if escolha_label != "Selecione...":
             id_sel = dict_escolha[escolha_label]
             match = df_agenda[df_agenda['ID'] == id_sel]
             
             if not match.empty:
-                dados_visita = match.iloc[0]
-                with st.form("form_edicao"):
+                dados_v = match.iloc[0]
+                with st.form("form_edit"):
                     status_list = ["Planejado (X)", "Realizado", "Reagendado"]
-                    idx_status = status_list.index(dados_visita['STATUS']) if dados_visita['STATUS'] in status_list else 0
+                    idx_s = status_list.index(dados_v['STATUS']) if dados_v['STATUS'] in status_list else 0
+                    
                     just_list = list(df_just.iloc[:, 0].dropna().unique())
-                    idx_just = just_list.index(dados_visita['JUSTIFICATIVA']) if dados_visita['JUSTIFICATIVA'] in just_list else 0
+                    idx_j = just_list.index(dados_v['JUSTIFICATIVA']) if dados_v['JUSTIFICATIVA'] in just_list else 0
 
-                    novo_status = st.radio("Novo Status:", status_list, index=idx_status)
-                    nova_just = st.selectbox("Nova Justificativa:", just_list, index=idx_just)
+                    n_status = st.radio("Novo Status:", status_list, index=idx_s)
+                    n_just = st.selectbox("Nova Justificativa:", just_list, index=idx_j)
 
                     if st.form_submit_button("✅ ATUALIZAR"):
-                        df_agenda_recente = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
-                        df_agenda_recente.loc[df_agenda_recente['ID'].astype(str) == id_sel, 'STATUS'] = novo_status
-                        df_agenda_recente.loc[df_agenda_recente['ID'].astype(str) == id_sel, 'JUSTIFICATIVA'] = nova_just
-                        
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_recente)
-                        st.cache_data.clear() # Limpa o cache para a tabela atualizar
+                        df_agenda.loc[df_agenda['ID'] == id_sel, 'STATUS'] = n_status
+                        df_agenda.loc[df_agenda['ID'] == id_sel, 'JUSTIFICATIVA'] = n_just
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                        st.cache_data.clear()
                         st.success("✅ Atualizado!")
                         st.rerun()
