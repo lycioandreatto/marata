@@ -84,7 +84,6 @@ if not df_agenda.empty:
     sup_limpar = st.sidebar.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sup_limpar)
     if sup_limpar != "Selecione...":
         if st.sidebar.button(f"LIMPAR TUDO DE: {sup_limpar}"):
-            # Mantém apenas as linhas que NÃO são do supervisor selecionado
             df_restante = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_restante)
             st.cache_data.clear()
@@ -128,16 +127,6 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     if not df_agenda.empty:
-        df_agenda['DATA_VISITA_OBJ'] = pd.to_datetime(df_agenda['DATA'], format='%d/%m/%Y', errors='coerce')
-        df_agenda['REGISTRO_OBJ'] = pd.to_datetime(df_agenda['REGISTRO'], format='%d/%m/%Y %H:%M', errors='coerce')
-        
-        col_ordem = st.radio("Ordenar por:", ["Data da Visita (Cronológico)", "Mais Recentes Adicionados (Registro)"], horizontal=True)
-        
-        if col_ordem == "Data da Visita (Cronológico)":
-            df_agenda = df_agenda.sort_values(by='DATA_VISITA_OBJ', ascending=True)
-        else:
-            df_agenda = df_agenda.sort_values(by='REGISTRO_OBJ', ascending=False)
-        
         f_sup = st.selectbox("Filtrar Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
         df_f = df_agenda.copy()
         if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
@@ -164,7 +153,6 @@ elif menu == "Ver/Editar Minha Agenda":
             if not match.empty:
                 dv = match.iloc[0]
                 
-                # Interface de Edição
                 with st.form("form_edit"):
                     st_list = ["Planejado (X)", "Realizado", "Reagendado"]
                     ju_list = list(df_just.iloc[:, 0].dropna().unique())
@@ -178,7 +166,7 @@ elif menu == "Ver/Editar Minha Agenda":
                         btn_delete = st.form_submit_button("🗑️ EXCLUIR ESTA VISITA")
 
                     if btn_update:
-                        df_save = df_agenda.drop(columns=['DATA_VISITA_OBJ', 'REGISTRO_OBJ', 'LINHA'], errors='ignore')
+                        df_save = df_agenda.drop(columns=['LINHA'], errors='ignore')
                         df_save.loc[df_save['ID'] == id_s, 'STATUS'] = n_st
                         df_save.loc[df_save['ID'] == id_s, 'JUSTIFICATIVA'] = n_ju
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
@@ -187,8 +175,7 @@ elif menu == "Ver/Editar Minha Agenda":
                         st.rerun()
 
                     if btn_delete:
-                        # Filtra o DataFrame para remover apenas o ID selecionado
-                        df_save = df_agenda[df_agenda['ID'] != id_s].drop(columns=['DATA_VISITA_OBJ', 'REGISTRO_OBJ', 'LINHA'], errors='ignore')
+                        df_save = df_agenda[df_agenda['ID'] != id_s].drop(columns=['LINHA'], errors='ignore')
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
                         st.cache_data.clear()
                         st.warning("🗑️ Visita removida!")
