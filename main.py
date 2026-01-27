@@ -42,7 +42,7 @@ def gerar_pdf(df):
     return pdf.output(dest='S').encode('latin-1')
 
 # --- CARREGAMENTO DE DADOS ---
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=60) # Diminuído o tempo para atualizar mais rápido após deletar
 def carregar_dados():
     try:
         df_b = conn.read(spreadsheet=url_planilha, worksheet="BASE")
@@ -53,8 +53,10 @@ def carregar_dados():
         if 'REGISTRO' not in df_a.columns:
             df_a['REGISTRO'] = "-"
 
+        # Cálculo da linha real do Sheets baseado na ordem original
         df_a['LINHA'] = df_a.index + 2
         
+        # Formatação de colunas de código
         for df in [df_b, df_j, df_a]:
             df.columns = [str(c).strip() for c in df.columns]
             cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
@@ -76,20 +78,18 @@ if df_base is None:
 st.sidebar.image("https://marata.com.br/wp-content/uploads/2021/05/logo-marata.png", width=120)
 menu = st.sidebar.selectbox("Menu", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
 
-# Botão de Excluir Tudo por Supervisor
+# Limpeza Geral por Supervisor
 st.sidebar.markdown("---")
 st.sidebar.subheader("🗑️ Zona de Perigo")
 if not df_agenda.empty:
     lista_sup_limpar = sorted(df_agenda['SUPERVISOR'].unique())
     sup_limpar = st.sidebar.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sup_limpar)
-    if sup_limpar != "Selecione...":
-        if st.sidebar.button(f"LIMPAR TUDO DE: {sup_limpar}"):
-            # Mantém apenas as linhas que NÃO são do supervisor selecionado
-            df_restante = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
-            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_restante)
-            st.cache_data.clear()
-            st.sidebar.success(f"Agenda de {sup_limpar} apagada!")
-            st.rerun()
+    if sup_limpar != "Selecione..." and st.sidebar.button(f"LIMPAR TUDO DE: {sup_limpar}"):
+        df_restante = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
+        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_restante)
+        st.cache_data.clear()
+        st.sidebar.success(f"Agenda de {sup_limpar} apagada!")
+        st.rerun()
 
 # --- NOVO AGENDAMENTO ---
 if menu == "Novo Agendamento":
@@ -128,22 +128,28 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda")
     if not df_agenda.empty:
-        df_agenda['DATA_VISITA_OBJ'] = pd.to_datetime(df_agenda['DATA'], format='%d/%m/%Y', errors='coerce')
-        df_agenda['REGISTRO_OBJ'] = pd.to_datetime(df_agenda['REGISTRO'], format='%d/%m/%Y %H:%M', errors='coerce')
+        # 1. Preparar dados para ordenação sem afetar o DF original
+        df_ord = df_agenda.copy()
+        df_ord['DATA_VISITA_OBJ'] = pd.to_datetime(df_ord['DATA'], format='%d/%m/%Y', errors='coerce')
+        df_ord['REGISTRO_OBJ'] = pd.to_datetime(df_ord['REGISTRO'], format='%d/%m/%Y %H:%M', errors='coerce')
         
+        # 2. Widgets de Controle
         col_ordem = st.radio("Ordenar por:", ["Data da Visita (Cronológico)", "Mais Recentes Adicionados (Registro)"], horizontal=True)
+        f_sup = st.selectbox("Filtrar Supervisor:", ["Todos"] + sorted(df_ord['SUPERVISOR'].unique()))
         
+        # 3. Aplicar Filtro
+        if f_sup != "Todos":
+            df_ord = df_ord[df_ord['SUPERVISOR'] == f_sup]
+        
+        # 4. Aplicar Ordenação
         if col_ordem == "Data da Visita (Cronológico)":
-            df_agenda = df_agenda.sort_values(by='DATA_VISITA_OBJ', ascending=True)
+            df_ord = df_ord.sort_values(by='DATA_VISITA_OBJ', ascending=True)
         else:
-            df_agenda = df_agenda.sort_values(by='REGISTRO_OBJ', ascending=False)
+            df_ord = df_ord.sort_values(by='REGISTRO_OBJ', ascending=False)
         
-        f_sup = st.selectbox("Filtrar Supervisor:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
-        df_f = df_agenda.copy()
-        if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
-        
+        # 5. Seleção de Colunas e Exibição
         cols_v = ['LINHA', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CÓDIGO CLIENTE', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-        df_exibir = df_f[[c for c in cols_v if c in df_f.columns]]
+        df_exibir = df_ord[cols_v].reset_index(drop=True)
 
         c1, c2, _ = st.columns([1, 1, 2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exibir), file_name="agenda_marata.xlsx")
@@ -155,43 +161,35 @@ elif menu == "Ver/Editar Minha Agenda":
 
         st.markdown("---")
         st.subheader("📝 Atualizar ou Excluir Visita")
-        dict_l = {f"Linha {row['LINHA']} | {row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_f.iterrows()}
-        edit_sel = st.selectbox("Selecione a visita:", ["Selecione..."] + list(dict_l.keys()))
+        # Dicionário de seleção baseado no ID único
+        dict_l = {f"Linha {row['LINHA']} | {row['DATA']} - {row['CLIENTE']}": row['ID'] for idx, row in df_ord.iterrows()}
+        edit_sel = st.selectbox("Selecione a visita para alterar:", ["Selecione..."] + list(dict_l.keys()))
         
         if edit_sel != "Selecione...":
             id_s = dict_l[edit_sel]
             match = df_agenda[df_agenda['ID'] == id_s]
             if not match.empty:
                 dv = match.iloc[0]
-                
-                # Interface de Edição
                 with st.form("form_edit"):
                     st_list = ["Planejado (X)", "Realizado", "Reagendado"]
                     ju_list = list(df_just.iloc[:, 0].dropna().unique())
                     n_st = st.radio("Status:", st_list, index=st_list.index(dv['STATUS']) if dv['STATUS'] in st_list else 0, horizontal=True)
                     n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(dv['JUSTIFICATIVA']) if dv['JUSTIFICATIVA'] in ju_list else 0)
                     
-                    col_btn1, col_btn2 = st.columns(2)
-                    with col_btn1:
-                        btn_update = st.form_submit_button("✅ ATUALIZAR DADOS")
-                    with col_btn2:
-                        btn_delete = st.form_submit_button("🗑️ EXCLUIR ESTA VISITA")
-
-                    if btn_update:
-                        df_save = df_agenda.drop(columns=['DATA_VISITA_OBJ', 'REGISTRO_OBJ', 'LINHA'], errors='ignore')
-                        df_save.loc[df_save['ID'] == id_s, 'STATUS'] = n_st
-                        df_save.loc[df_save['ID'] == id_s, 'JUSTIFICATIVA'] = n_ju
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
-                        st.cache_data.clear()
-                        st.success("✅ Atualizado!")
-                        st.rerun()
-
-                    if btn_delete:
-                        # Filtra o DataFrame para remover apenas o ID selecionado
-                        df_save = df_agenda[df_agenda['ID'] != id_s].drop(columns=['DATA_VISITA_OBJ', 'REGISTRO_OBJ', 'LINHA'], errors='ignore')
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
-                        st.cache_data.clear()
-                        st.warning("🗑️ Visita removida!")
-                        st.rerun()
+                    c_b1, c_b2 = st.columns(2)
+                    with c_b1:
+                        if st.form_submit_button("✅ SALVAR ALTERAÇÕES"):
+                            df_save = df_agenda.drop(columns=['LINHA'], errors='ignore')
+                            df_save.loc[df_save['ID'] == id_s, 'STATUS'] = n_st
+                            df_save.loc[df_save['ID'] == id_s, 'JUSTIFICATIVA'] = n_ju
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
+                            st.cache_data.clear()
+                            st.rerun()
+                    with c_b2:
+                        if st.form_submit_button("🗑️ APAGAR ESTA VISITA"):
+                            df_save = df_agenda[df_agenda['ID'] != id_s].drop(columns=['LINHA'], errors='ignore')
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
+                            st.cache_data.clear()
+                            st.rerun()
     else:
         st.info("Agenda vazia.")
