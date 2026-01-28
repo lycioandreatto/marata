@@ -39,12 +39,27 @@ def gerar_pdf(df):
     cols = df.columns.tolist()
     largura_total = 275
     
+    # Ajuste dinâmico de fonte baseado no número de colunas
+    qtd_cols = len(cols)
+    if qtd_cols > 8:
+        tamanho_fonte_cabecalho = 6
+        tamanho_fonte_dados = 5
+        limite_texto = 20
+    elif qtd_cols > 6:
+        tamanho_fonte_cabecalho = 7
+        tamanho_fonte_dados = 6
+        limite_texto = 30
+    else:
+        tamanho_fonte_cabecalho = 8
+        tamanho_fonte_dados = 7
+        limite_texto = 40
+
     largura_cliente = 60  
     largura_supervisor = 30
     largura_agendado = 30
     largura_data = 18
     largura_justificativa = 50
-    largura_registro = 35  # Definindo largura para a nova coluna
+    largura_registro = 35 
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
@@ -67,7 +82,8 @@ def gerar_pdf(df):
     outras_cols_count = len(cols) - len(especiais)
     largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
     
-    pdf.set_font("Arial", 'B', 7)
+    # Cabeçalho
+    pdf.set_font("Arial", 'B', tamanho_fonte_cabecalho)
     for col in cols:
         c_up = str(col).upper()
         if c_up == "CLIENTE": w = largura_cliente
@@ -80,7 +96,8 @@ def gerar_pdf(df):
         pdf.cell(w, 6, str(col), border=1, align='C')
     pdf.ln()
     
-    pdf.set_font("Arial", '', 5.5) 
+    # Dados
+    pdf.set_font("Arial", '', tamanho_fonte_dados) 
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
@@ -90,7 +107,7 @@ def gerar_pdf(df):
             elif col_name == "DATA": w, limit = largura_data, 12
             elif col_name == "JUSTIFICATIVA": w, limit = largura_justificativa, 60
             elif col_name == "REGISTRO": w, limit = largura_registro, 20
-            else: w, limit = largura_padrao, 25
+            else: w, limit = largura_padrao, limite_texto
             
             texto = str(item)[:limit].encode('latin-1', 'replace').decode('latin-1')
             pdf.cell(w, 5, texto, border=1)
