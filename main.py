@@ -732,6 +732,7 @@ elif menu == "📋 Novo Agendamento":
 
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda Completa")
     
@@ -752,25 +753,23 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            df_user["EDITAR"] = False
+            df_user["EXCLUIR"] = False # Mudamos o nome para ficar claro
             
-            # --- MESMA LÓGICA DE CORES DOS AGENDAMENTOS DO DIA ---
+            # --- LÓGICA DE CORES (IDENTICA À TELA DO DIA) ---
             def style_agenda_completa(row):
                 styles = [''] * len(row)
                 if row['STATUS'] == "Realizado":
                     dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
                     try:
-                        # Converte para float tratando possíveis NaNs ou vazios
                         val_float = float(dist_str) if (dist_str != 'nan' and dist_str.strip() != "") else 0
                         if val_float > 500:
                             return ['color: #E67E22; font-weight: bold'] * len(row) # Laranja Alerta
-                    except:
-                        pass
+                    except: pass
                     return ['color: green; font-weight: bold'] * len(row) # Verde OK
                 return styles
 
-            # Definindo colunas visíveis (incluindo DISTANCIA_LOG se existir)
-            cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            # Colunas Visíveis
+            cols_v = ['EXCLUIR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             if 'DISTANCIA_LOG' in df_user.columns:
                 cols_v.append('DISTANCIA_LOG')
 
@@ -779,44 +778,41 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
             edicao_user = st.data_editor(
                 df_styled, 
-                key="edit_full_agenda", 
+                key="edit_full_agenda_del", 
                 hide_index=True, 
                 use_container_width=True,
                 column_config={
-                    "EDITAR": st.column_config.CheckboxColumn("📝"),
+                    "EXCLUIR": st.column_config.CheckboxColumn("🗑️"),
                     "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS")
                 },
-                disabled=[c for c in cols_v if c != "EDITAR"]
+                disabled=[c for c in cols_v if c != "EXCLUIR"]
             )
 
-            marcados = edicao_user[edicao_user["EDITAR"] == True]
+            marcados = edicao_user[edicao_user["EXCLUIR"] == True]
             if not marcados.empty:
-                sel_row = df_user.iloc[marcados.index[0]]
-                st.markdown("---")
-                st.subheader(f"Editar Registro: {sel_row['CLIENTE']}")
+                # Pegamos o ID original para garantir a exclusão correta
+                idx_selecionado = marcados.index[0]
+                sel_row = df_user.iloc[idx_selecionado]
+                id_para_deletar = str(sel_row['ID'])
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    n_st = st.selectbox("Alterar Status:", ["Planejado", "Realizado", "Reagendado"], 
-                                      index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
-                with col2:
-                    ju_list = list(df_just.iloc[:, 0].dropna().unique())
-                    if "OUTRO" not in ju_list: ju_list.append("OUTRO")
-                    n_ju = st.selectbox("Nova Justificativa:", ju_list, 
-                                      index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-
-                if st.button("💾 SALVAR ALTERAÇÃO"):
-                    # Aqui mantemos a distância que já estava gravada ou limpamos se mudar o status
-                    dist_atual = sel_row.get('DISTANCIA_LOG', "") if n_st == "Realizado" else ""
-                    coord_atual = sel_row.get('COORDENADAS', "") if n_st == "Realizado" else ""
-
-                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'DISTANCIA_LOG', 'COORDENADAS']] = [n_st, n_ju, dist_atual, coord_atual]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.cache_data.clear()
-                    st.success("Registro atualizado!")
-                    time.sleep(1)
-                    st.rerun()
+                st.markdown("---")
+                st.warning(f"**Atenção:** Você deseja excluir permanentemente o agendamento de **{sel_row['CLIENTE']}** do dia {sel_row['DATA']}?")
+                
+                col_btn1, col_btn2 = st.columns([1, 4])
+                with col_btn1:
+                    if st.button("❌ EXCLUIR AGORA"):
+                        # Remove a linha da planilha original usando o ID
+                        df_agenda_novo = df_agenda[df_agenda['ID'].astype(str) != id_para_deletar].drop(columns=['LINHA'], errors='ignore')
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_novo)
+                        
+                        st.cache_data.clear()
+                        st.success("Agendamento removido com sucesso!")
+                        time.sleep(1)
+                        st.rerun()
+                with col_btn2:
+                    if st.button("Cancelar"):
+                        st.rerun()
         else:
-            st.info("Você ainda não possui agendamentos nesta lista.")
+            st.info("Sua agenda está vazia.")
     else:
-        st.warning("Agenda vazia.")
+        st.warning("Nenhum dado encontrado na Agenda.")
