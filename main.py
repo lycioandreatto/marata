@@ -41,6 +41,7 @@ st.markdown("""
         /* Cor dos botões e abas */
         .stButton>button {
             border-radius: 5px;
+            color: #FFFFFF
         }
         
         .stTabs [data-baseweb="tab-list"] {
