@@ -463,25 +463,13 @@ if menu == "📅 Agendamentos do Dia":
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
                 if st.button("💾 ATUALIZAR STATUS"):
-    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-    
-    # Pega o GPS que foi guardado no login
-    lat_v = st.session_state.get('lat', '0')
-    lon_v = st.session_state.get('lon', '0')
-    link_gps = f"https://www.google.com/maps?q={lat_v},{lon_v}"
-
-    # Atualiza o DataFrame - Certifique-se que a coluna 'COORDENADAS' existe na aba AGENDA
-    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'REGISTRO']] = [n_st, final_j, f"{lat_v}, {lon_v}"]
-    
-    # Se quiser salvar o link do maps em outra coluna, adicione aqui:
-    # df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'MAPS_LINK'] = link_gps
-
-    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-    
-    st.cache_data.clear()
-    st.success("✅ Atualizado com sucesso!")
-    time.sleep(1)
-    st.rerun()
+                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                    st.cache_data.clear()
+                    st.success("Atualizado com sucesso!")
+                    time.sleep(1)
+                    st.rerun()
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
