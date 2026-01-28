@@ -18,6 +18,7 @@ fuso_br = pytz.timezone('America/Sao_Paulo')
 # Administrador e Analista Especial
 NOME_ADMIN = "LYCIO"
 NOME_ANALISTA = "BARBARA"
+NOME_DIRETORIA = "ALDO"
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
 def converter_para_excel(df):
@@ -132,10 +133,13 @@ if not st.session_state.logado:
 user_atual = st.session_state.usuario
 is_admin = (user_atual == NOME_ADMIN.upper())
 is_analista = (user_atual == NOME_ANALISTA.upper())
+is_diretoria = (user_atual == NOME_DIRETORIA.upper())
 
 # Define o label conforme solicitado
 if is_admin:
     label_display = "ADMINISTRADOR"
+elif is_diretoria:
+    label_display = f"DIRETORIA {user_atual}"
 elif is_analista:
     label_display = f"ANALISTA {user_atual}"
 else:
@@ -156,7 +160,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista:
+        if is_admin or is_analista or is_diretoria:
             lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
             if sup_limpar != "Selecione...":
@@ -176,7 +180,7 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        if is_admin or is_analista:
+        if is_admin or is_analista or is_diretoria:
             sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
@@ -222,7 +226,7 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista:
+        if is_admin or is_analista or is_diretoria:
             f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
             df_f = df_agenda.copy() if f_sup == "Todos" else df_agenda[df_agenda['SUPERVISOR'] == f_sup]
         else:
