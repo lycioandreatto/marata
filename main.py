@@ -386,33 +386,14 @@ if menu == "📅 Agendamentos do Dia":
                 if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
                 col1, col2 = st.columns(2)
-                # Substitua a partir daqui:
-                col1, col2 = st.columns(2)
-                with col1:
-                    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-                    # --- AQUI ESTÁ O NOVO CAMPO ---
-                    nova_data = None
-                    if n_st == "Reagendado":
-                        nova_data = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br)) 
-                    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-                    # --- AQUI ESTÁ O NOVO CAMPO ---
-                    nova_data = None
-                    if n_st == "Reagendado":
-                        nova_data = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br))
-
+                with col1: n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
                 with col2:
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    
-                    # --- LÓGICA DE SALVAMENTO COM A NOVA DATA ---
-                    if n_st == "Reagendado" and nova_data:
-                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data.strftime("%d/%m/%Y")]
-                    else:
-                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-                    
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.success("Atualizado com sucesso!")
@@ -676,45 +657,19 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             ju_list = list(df_just.iloc[:, 0].dropna().unique())
             if "OUTRO" not in ju_list: ju_list.append("OUTRO")
             col1, col2 = st.columns(2)
-with col1: 
-    n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-    # --- NOVA LÓGICA DE DATA COM KEY ÚNICA ---
-    nova_data_e = None
-    if n_st == "Reagendado":
-        nova_data_e = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br), key="data_reag_edit")
+            with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+            with col2:
+                n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
+                mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
 
-with col2:
-    n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-    mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
-
-# --- PARTE DA INTERFACE DE EDIÇÃO ---
-        col1, col2 = st.columns(2)
-        with col1:
-            n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-            nova_data_e = None
-            if n_st == "Reagendado":
-                nova_data_e = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br), key="data_reag_edit")
-
-        with col2:
-            n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-            mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
-
-        # --- BOTÃO DE SALVAR ---
-        if st.button("💾 SALVAR ALTERAÇÃO"):
-            final_j = mot_outro if n_ju == "OUTRO" else n_ju
-            
-            # Lógica de atualização dos dados
-            if n_st == "Reagendado" and nova_data_e:
-                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data_e.strftime("%d/%m/%Y")]
-            else:
-                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-            
-            # Envio para a planilha
-            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-            st.cache_data.clear()
-            st.success("Alteração salva com sucesso!")
-            time.sleep(1)
-            st.rerun()
+            with st.form("save_form"):
+                b1, b2 = st.columns(2)
+                if b1.form_submit_button("💾 SALVAR"):
+                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                    st.cache_data.clear()
+                    st.rerun()
                 if b2.form_submit_button("🗑️ EXCLUIR"):
                     df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
