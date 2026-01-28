@@ -521,7 +521,7 @@ if menu == "📅 Agendamentos do Dia":
                                 partes = str(coord_base).split(",")
                                 dist_m = calcular_distancia(lat_v, lon_v, partes[0].strip(), partes[1].strip())
                                 log_distancia_valor = f"{dist_m:.0f}m"
-                                if n_st == "Realizado" and dist_m > 500:
+                                if n_st == "Realizado" and dist_m > 50:
                                     alerta_distancia = True
                             except: log_distancia_valor = "Erro GPS"
 
