@@ -5,3 +5,4 @@ xlsxwriter
 fpdf
 pytz
 streamlit-cookies-manager
+pip install streamlit-js-eval
