@@ -21,6 +21,16 @@ st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
     <style>
+    table {
+        margin-left: auto;
+        margin-right: auto;
+    }
+    th {
+        text-align: center !important;
+    }
+    td {
+        text-align: center !important;
+    }
     [data-testid="stMetric"] {
         background-color: #f0f2f6;
         padding: 15px;
@@ -493,7 +503,8 @@ elif menu == "📊 Dashboard de Controle":
             except:
                 st.error("Erro ao gerar PDF do detalhamento")
         
-        st.dataframe(df_dash, use_container_width=True, hide_index=True)
+        df_dash_centered = df_dash.style.set_properties(**{'text-align': 'center'})
+        st.dataframe(df_dash_centered, use_container_width=True, hide_index=True)
         
         c1, c2, c3, c4 = st.columns(4)
         total_base = df_dash['CLIENTES NA BASE'].sum()
