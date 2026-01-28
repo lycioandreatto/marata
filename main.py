@@ -39,47 +39,63 @@ def gerar_pdf(df):
     largura_total = 275
     
     # Lógica para aumentar colunas específicas
-    largura_cliente = 70  
-    largura_supervisor = 45
-    largura_agendado = 45
+    largura_cliente = 60  
+    largura_supervisor = 35
+    largura_agendado = 35
+    largura_data = 25       # Aumentado
+    largura_justificativa = 60 # Aumentado
     
     # Identificar quais colunas especiais estão presentes no DF atual
     especiais = []
-    if "CLIENTE" in [str(c).upper() for c in cols]: especiais.append("CLIENTE")
-    if "SUPERVISOR" in [str(c).upper() for c in cols]: especiais.append("SUPERVISOR")
-    if "AGENDADO POR" in [str(c).upper() for c in cols]: especiais.append("AGENDADO POR")
+    col_map = {str(c).upper(): c for c in cols}
+    
+    if "CLIENTE" in col_map: especiais.append("CLIENTE")
+    if "SUPERVISOR" in col_map: especiais.append("SUPERVISOR")
+    if "AGENDADO POR" in col_map: especiais.append("AGENDADO POR")
+    if "DATA" in col_map: especiais.append("DATA")
+    if "JUSTIFICATIVA" in col_map: especiais.append("JUSTIFICATIVA")
     
     # Calcular largura ocupada pelas colunas fixas/expandidas
     ocupado = 0
     if "CLIENTE" in especiais: ocupado += largura_cliente
     if "SUPERVISOR" in especiais: ocupado += largura_supervisor
     if "AGENDADO POR" in especiais: ocupado += largura_agendado
+    if "DATA" in especiais: ocupado += largura_data
+    if "JUSTIFICATIVA" in especiais: ocupado += largura_justificativa
     
     outras_cols_count = len(cols) - len(especiais)
     largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
     
+    # Cabeçalho
     pdf.set_font("Arial", 'B', 8)
     for col in cols:
         c_up = str(col).upper()
         if c_up == "CLIENTE": w = largura_cliente
         elif c_up == "SUPERVISOR": w = largura_supervisor
         elif c_up == "AGENDADO POR": w = largura_agendado
+        elif c_up == "DATA": w = largura_data
+        elif c_up == "JUSTIFICATIVA": w = largura_justificativa
         else: w = largura_padrao
         pdf.cell(w, 8, str(col), border=1, align='C')
     pdf.ln()
     
+    # Linhas
     pdf.set_font("Arial", '', 7) 
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
             if col_name == "CLIENTE": 
-                w, limit = largura_cliente, 60
+                w, limit = largura_cliente, 50
             elif col_name == "SUPERVISOR": 
-                w, limit = largura_supervisor, 40
+                w, limit = largura_supervisor, 30
             elif col_name == "AGENDADO POR": 
-                w, limit = largura_agendado, 40
+                w, limit = largura_agendado, 30
+            elif col_name == "DATA":
+                w, limit = largura_data, 10
+            elif col_name == "JUSTIFICATIVA":
+                w, limit = largura_justificativa, 60
             else: 
-                w, limit = largura_padrao, 35
+                w, limit = largura_padrao, 25
             
             pdf.cell(w, 8, str(item)[:limit], border=1)
         pdf.ln()
