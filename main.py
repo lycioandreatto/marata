@@ -24,60 +24,7 @@ def calcular_distancia(lat1, lon1, lat2, lon2):
     
     distancia = R * c * 1000 # Retorna em Metros
     return distancia
-import pandas as pd
-import streamlit as st
-from streamlit_folium import st_folium
-import folium
-from folium.plugins import HeatMap
 
-# --- SEÇÃO: MAPA DE CALOR (ADICIONE NO SEU MENU DE GESTÃO) ---
-elif menu == "📊 Mapa de Calor de Visitas":
-    st.header("🔥 Mapa de Calor: Concentração de Visitas")
-    
-    # Restrição de acesso
-    if not (is_admin or is_diretoria or is_analista):
-        st.error("Acesso restrito ao nível de gestão.")
-    else:
-        if df_agenda is not None and not df_agenda.empty:
-            # 1. Filtrar apenas visitas REALIZADAS que possuem COORDENADAS
-            df_mapa = df_agenda[
-                (df_agenda['STATUS'] == "Realizado") & 
-                (df_agenda['COORDENADAS'].str.contains(',', na=False))
-            ].copy()
-
-            if not df_mapa.empty:
-                # 2. Processar as coordenadas string para float
-                # Assume formato "lat, lon"
-                df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
-
-                # 3. Criar o Mapa Base (Centralizado na média das coordenadas)
-                centro_lat = df_mapa['lat'].mean()
-                centro_lon = df_mapa['lon'].mean()
-                
-                m = folium.Map(location=[centro_lat, centro_lon], zoom_start=6, tiles="OpenStreetMap")
-
-                # 4. Gerar a camada de Calor
-                heat_data = [[row['lat'], row['lon']] for index, row in df_mapa.iterrows()]
-                HeatMap(heat_data, radius=15, blur=20, min_opacity=0.5).add_to(m)
-
-                # 5. Adicionar Marcadores Individuais (Opcional - para ver o nome do cliente ao clicar)
-                for index, row in df_mapa.iterrows():
-                    folium.CircleMarker(
-                        location=[row['lat'], row['lon']],
-                        radius=2,
-                        color='blue',
-                        fill=True,
-                        popup=f"Cliente: {row['CLIENTE']}<br>Data: {row['DATA']}"
-                    ).add_to(m)
-
-                # 6. Exibir no Streamlit
-                st_folium(m, width=1200, height=600)
-                
-                st.write(f"💡 Mostrando concentração de {len(df_mapa)} visitas realizadas.")
-            else:
-                st.info("Nenhuma coordenada GPS encontrada nos atendimentos realizados.")
-        else:
-            st.warning("A agenda está vazia.")
 # --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
 # O password abaixo é apenas para criptografia local do cookie
 cookies = EncryptedCookieManager(password="marata_secret_key_2026")
@@ -510,7 +457,7 @@ if menu == "📅 Agendamentos do Dia":
                     dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
                     try:
                         dist_val = float(dist_str) if dist_str != 'nan' else 0
-                        if dist_val > 50:
+                        if dist_val > 500:
                             # COR LARANJA para alertas de distância
                             return ['color: #E67E22; font-weight: bold'] * len(row)
                     except:
@@ -594,91 +541,22 @@ if menu == "📅 Agendamentos do Dia":
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
 # --- PÁGINA: DASHBOARD ---
+# --- PÁGINA: DASHBOARD DE CONTROLE ---
 elif menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
     
     if df_base is not None and df_agenda is not None:
-        col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'Analista')
-        col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
-        col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
-
-        st.subheader("Filtros de Visualização")
-        f_c1, f_c2 = st.columns(2)
+        # ( ... Mantém todo o seu código inicial de filtros e tabelas até o Ranking ... )
         
-        df_base_filtrada = df_base.copy()
-        
-        with f_c1:
-            if is_admin or is_diretoria:
-                lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
-                ana_sel_dash = st.selectbox("Escolher Analista:", ["Todos"] + lista_analistas, key="ana_dash")
-                if ana_sel_dash != "Todos":
-                    df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base] == ana_sel_dash]
-            else: 
-                ana_sel_dash = user_atual
-                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base].str.upper() == user_atual]
-
-        with f_c2:
-            lista_sups_dash = sorted([str(s) for s in df_base_filtrada[col_rv_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
-            sup_sel_dash = st.selectbox("Escolher Supervisor:", ["Todos"] + lista_sups_dash, key="sup_dash")
-            if sup_sel_dash != "Todos":
-                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_rv_base] == sup_sel_dash]
-
-        df_reg_agenda = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy().drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
-        df_base_detalhe = df_base_filtrada.copy()
-        df_base_detalhe = pd.merge(df_base_detalhe, df_reg_agenda, left_on='Cliente', right_on='CÓDIGO CLIENTE', how='left')
-        
-        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['REGISTRO'].apply(
-            lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" and str(x) != "-" else 'PENDENTE'
-        )
-        df_base_detalhe['REGISTRO'] = df_base_detalhe['REGISTRO'].fillna("-")
-        
-        df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
-        df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
-        df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
-
-        resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
-        resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
-        
-        df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_rv_base, right_on='SUPERVISOR', how='left').fillna(0)
-        df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
-        df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
-        df_dash['% Conclusão'] = (df_dash['Já Agendados'] / df_dash['Total na Base'] * 100).round(1).astype(str) + '%'
-        df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
-        df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
-        
-        exp_c1, exp_c2, _ = st.columns([1, 1, 2])
-        with exp_c1:
-            st.download_button("📥 Relatório Detalhado (Excel)", data=converter_para_excel(df_relatorio_completo), file_name="detalhamento_agendamentos.xlsx")
-        with exp_c2:
-            try:
-                st.download_button("📄 Relatório Detalhado (PDF)", data=gerar_pdf(df_relatorio_completo, tipo_relatorio="DASH"), file_name="detalhamento_agendamentos.pdf")
-            except:
-                st.error("Erro ao gerar PDF do detalhamento")
-        
-        st.dataframe(df_dash, use_container_width=True, hide_index=True)
-        
-        c1, c2, c3, c4 = st.columns(4)
-        total_base = df_dash['CLIENTES NA BASE'].sum()
-        total_agendados = df_dash['CLIENTES AGENDADOS'].sum()
-        total_pendente = df_dash['FALTANDO'].sum()
-        percent_adesao = (total_agendados / total_base * 100) if total_base > 0 else 0
-        
-        c1.metric("Total Clientes Base", total_base)
-        c2.metric("Total Agendados", total_agendados)
-        c3.metric("Pendente Total", total_pendente)
-        c4.metric("% Adesão Total", f"{percent_adesao:.1f}%")
-
-        # --- NOVA FUNÇÃO: RANKING DE ENGAJAMENTO (ADICIONADA AQUI) ---
+        # --- [TRECHO DO RANKING QUE VOCÊ JÁ POSSUI] ---
         st.markdown("---")
         st.subheader("🏆 Ranking de Engajamento")
         
         df_ranking = df_dash.copy()
-        # Converter string de porcentagem para float para ordenar corretamente
         df_ranking['VALOR_NUM'] = df_ranking['% DE ADESÃO'].str.replace('%', '').astype(float)
         df_ranking = df_ranking.sort_values(by='VALOR_NUM', ascending=False).reset_index(drop=True)
-        df_ranking.index += 1  # Ranking começa em 1
+        df_ranking.index += 1 
         
-        # Adicionar medalhas aos 3 primeiros
         def medalha(pos):
             if pos == 1: return "🥇"
             if pos == 2: return "🥈"
@@ -687,12 +565,61 @@ elif menu == "📊 Dashboard de Controle":
             
         df_ranking['POSIÇÃO'] = [medalha(i) for i in df_ranking.index]
         df_ranking_view = df_ranking[['POSIÇÃO', 'SUPERVISOR', 'CLIENTES AGENDADOS', '% DE ADESÃO']]
-        
         st.table(df_ranking_view)
-        
+
+        # --- NOVA SEÇÃO: MAPA DE CALOR (ABAIXO DE TUDO) ---
+        st.markdown("---")
+        st.subheader("🔥 Mapa de Calor de Visitas Realizadas")
+        st.info("Este mapa reflete os filtros de Analista/Supervisor selecionados acima.")
+
+        # 1. Filtrar a agenda com base no que foi filtrado no dashboard
+        # Usamos os clientes que restaram no df_base_filtrada para garantir que o mapa siga o filtro
+        df_mapa = df_agenda[
+            (df_agenda['STATUS'] == "Realizado") & 
+            (df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])) &
+            (df_agenda['COORDENADAS'].str.contains(',', na=False))
+        ].copy()
+
+        if not df_mapa.empty:
+            try:
+                import folium
+                from folium.plugins import HeatMap
+                from streamlit_folium import st_folium
+
+                # 2. Processar Coordenadas
+                df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
+
+                # 3. Criar Mapa
+                centro_lat = df_mapa['lat'].mean()
+                centro_lon = df_mapa['lon'].mean()
+                m = folium.Map(location=[centro_lat, centro_lon], zoom_start=7, tiles="cartodbpositron")
+
+                # 4. Adicionar Calor
+                heat_data = [[row['lat'], row['lon']] for index, row in df_mapa.iterrows()]
+                HeatMap(heat_data, radius=15, blur=20, min_opacity=0.5).add_to(m)
+
+                # 5. Adicionar Marcadores Rápidos
+                for _, row in df_mapa.iterrows():
+                    folium.CircleMarker(
+                        location=[row['lat'], row['lon']],
+                        radius=2,
+                        color='blue',
+                        fill=True,
+                        popup=f"{row['CLIENTE']} ({row['DATA']})"
+                    ).add_to(m)
+
+                # Exibir Mapa
+                st_folium(m, width="100%", height=500)
+                
+            except ImportError:
+                st.error("Para visualizar o mapa, instale as bibliotecas: pip install streamlit-folium folium")
+            except Exception as e:
+                st.error(f"Erro ao gerar mapa: {e}")
+        else:
+            st.warning("Sem dados de coordenadas para os filtros aplicados.")
+
     else:
         st.error("Dados insuficientes para gerar o Dashboard.")
-
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
@@ -820,8 +747,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             if is_admin or is_diretoria or is_analista:
                 cols = st.columns(4)
-                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 50)])
-                cols[3].metric("📍 Fora do Raio (>50m)", fora_raio, 
+                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
+                cols[3].metric("📍 Fora do Raio (>500m)", fora_raio, 
                               delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
                               delta_color="inverse")
             else:
@@ -846,7 +773,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             def style_agenda_completa(row):
                 styles = [''] * len(row)
                 if row['STATUS'] == "Realizado":
-                    if row['dist_val_calc'] > 50:
+                    if row['dist_val_calc'] > 500:
                         return ['color: #E67E22; font-weight: bold'] * len(row)
                     return ['color: green; font-weight: bold'] * len(row)
                 return styles
