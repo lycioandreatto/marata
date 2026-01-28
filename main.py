@@ -55,16 +55,18 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
+        # Padronização de Colunas
         df_u.columns = [str(c).strip().upper() for c in df_u.columns]
-        df_b.columns = [str(c).strip() for c in df_b.columns]
-        df_j.columns = [str(c).strip() for c in df_j.columns]
-        df_a.columns = [str(c).strip() for c in df_a.columns]
+        df_b.columns = [str(c).strip().upper() for c in df_b.columns] # BASE agora fica toda em MAIÚSCULO
+        df_j.columns = [str(c).strip().upper() for c in df_j.columns]
+        df_a.columns = [str(c).strip().upper() for c in df_a.columns]
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
-            cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
+            # Ajuste para buscar colunas independentemente de como foram escritas na padronização
+            cols_cod = [c for c in df.columns if 'CLIENTE' in c or 'CÓDIGO' in c]
             for col in cols_cod:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
                 df[col] = df[col].replace('0', '')
@@ -134,13 +136,13 @@ user_atual = st.session_state.usuario
 is_admin = (user_atual == NOME_ADMIN.upper())
 is_gerente = (user_atual == NOME_GERENTE.upper())
 is_diretoria = is_admin or is_gerente
-is_analista = (user_atual == NOME_ANALISTA_ESP.upper())
+is_analista_perfil = (user_atual == NOME_ANALISTA_ESP.upper())
 
 if is_admin:
     label_display = "ADMINISTRADOR"
 elif is_gerente:
     label_display = f"DIRETORIA {user_atual}"
-elif is_analista:
+elif is_analista_perfil:
     label_display = f"ANALISTA {user_atual}"
 else:
     label_display = f"SUPERVISOR {user_atual}"
@@ -160,7 +162,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
-        if is_diretoria or is_analista:
+        if is_diretoria or is_analista_perfil:
             lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
             if sup_limpar != "Selecione...":
@@ -180,29 +182,38 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
+        # Busca a coluna ANALISTA (em maiúsculo devido à padronização)
+        tem_coluna_analista = 'ANALISTA' in df_base.columns
+        
         if is_diretoria:
-            # Lycio ou Aldo escolhem o Analista primeiro
-            lista_analistas = sorted([a for a in df_base['Analista'].unique() if str(a) != 'nan'])
-            ana_sel = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas)
-            
-            if ana_sel == "Todos":
-                sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s) != 'nan'])
+            if tem_coluna_analista:
+                lista_analistas = sorted([a for a in df_base['ANALISTA'].unique() if str(a) != 'nan' and str(a).strip() != ''])
+                ana_sel = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas)
+                
+                if ana_sel == "Todos":
+                    sups = sorted([s for s in df_base['REGIÃO DE VENDAS'].unique() if str(s) != 'nan'])
+                else:
+                    sups = sorted([s for s in df_base[df_base['ANALISTA'] == ana_sel]['REGIÃO DE VENDAS'].unique() if str(s) != 'nan'])
             else:
-                sups = sorted([s for s in df_base[df_base['Analista'] == ana_sel]['Região de vendas'].unique() if str(s) != 'nan'])
+                st.warning("A coluna 'ANALISTA' não foi encontrada na planilha BASE.")
+                sups = sorted([s for s in df_base['REGIÃO DE VENDAS'].unique() if str(s) != 'nan'])
             
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
             
-        elif is_analista:
-            # Analista só vê os seus supervisores
-            sups = sorted([s for s in df_base[df_base['Analista'] == user_atual]['Região de vendas'].unique() if str(s) != 'nan'])
+        elif is_analista_perfil:
+            if tem_coluna_analista:
+                sups = sorted([s for s in df_base[df_base['ANALISTA'] == user_atual]['REGIÃO DE VENDAS'].unique() if str(s) != 'nan'])
+            else:
+                sups = []
+                st.error("Coluna 'ANALISTA' não encontrada para filtrar seus supervisores.")
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
             sup_sel = user_atual
             st.info(f"Agendando para: {user_atual}")
 
-        if sup_sel not in ["Selecione...", "nan"]:
-            clientes_f = df_base[df_base['Região de vendas'] == sup_sel]
-            lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
+        if sup_sel not in ["Selecione...", "nan", ""]:
+            clientes_f = df_base[df_base['REGIÃO DE VENDAS'] == sup_sel]
+            lista_c = sorted(clientes_f.apply(lambda x: f"{x['CLIENTE']} - {x['NOME 1']}", axis=1).tolist())
             cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
             
             if cliente_sel != "Selecione...":
@@ -239,79 +250,87 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
+        tem_coluna_analista = 'ANALISTA' in df_base.columns
+        
         if is_diretoria:
-            # Lycio ou Aldo filtram tudo
-            lista_analistas = sorted([a for a in df_base['Analista'].unique() if str(a) != 'nan'])
-            ana_f = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas, key="f_ana")
-            
-            if ana_f == "Todos":
-                lista_sups_f = ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique())
-            else:
-                sups_do_ana = df_base[df_base['Analista'] == ana_f]['Região de vendas'].unique()
-                lista_sups_f = ["Todos"] + sorted([s for s in df_agenda['SUPERVISOR'].unique() if s in sups_do_ana])
-            
-            f_sup = st.selectbox("Ver agenda de:", lista_sups_f)
-            
-            if f_sup == "Todos":
+            if tem_coluna_analista:
+                lista_analistas = sorted([a for a in df_base['ANALISTA'].unique() if str(a) != 'nan' and str(a).strip() != ''])
+                ana_f = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas, key="f_ana")
+                
                 if ana_f == "Todos":
+                    lista_sups_f = ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique())
                     df_f = df_agenda.copy()
                 else:
+                    sups_do_ana = df_base[df_base['ANALISTA'] == ana_f]['REGIÃO DE VENDAS'].unique()
+                    lista_sups_f = ["Todos"] + sorted([s for s in df_agenda['SUPERVISOR'].unique() if s in sups_do_ana])
                     df_f = df_agenda[df_agenda['SUPERVISOR'].isin(sups_do_ana)]
+                
+                f_sup = st.selectbox("Ver agenda de:", lista_sups_f)
+                if f_sup != "Todos":
+                    df_f = df_f[df_f['SUPERVISOR'] == f_sup]
             else:
-                df_f = df_agenda[df_agenda['SUPERVISOR'] == f_sup]
+                f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
+                df_f = df_agenda.copy() if f_sup == "Todos" else df_agenda[df_agenda['SUPERVISOR'] == f_sup]
 
-        elif is_analista:
-            # Bárbara filtra seus supervisores
-            sups_do_ana = df_base[df_base['Analista'] == user_atual]['Região de vendas'].unique()
-            f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted([s for s in df_agenda['SUPERVISOR'].unique() if s in sups_do_ana]))
-            if f_sup == "Todos":
-                df_f = df_agenda[df_agenda['SUPERVISOR'].isin(sups_do_ana)]
+        elif is_analista_perfil:
+            if tem_coluna_analista:
+                sups_do_ana = df_base[df_base['ANALISTA'] == user_atual]['REGIÃO DE VENDAS'].unique()
+                f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted([s for s in df_agenda['SUPERVISOR'].unique() if s in sups_do_ana]))
+                if f_sup == "Todos":
+                    df_f = df_agenda[df_agenda['SUPERVISOR'].isin(sups_do_ana)]
+                else:
+                    df_f = df_agenda[df_agenda['SUPERVISOR'] == f_sup]
             else:
-                df_f = df_agenda[df_agenda['SUPERVISOR'] == f_sup]
+                st.error("Coluna 'ANALISTA' não encontrada na BASE.")
+                df_f = pd.DataFrame()
         else:
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-        df_exp = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
-        c1, c2, _ = st.columns([1,1,2])
-        with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
-        with c2: 
-            try: st.download_button("📄 PDF", data=gerar_pdf(df_exp), file_name="agenda.pdf")
-            except: st.error("Erro PDF")
+        if not df_f.empty:
+            df_exp = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
+            c1, c2, _ = st.columns([1,1,2])
+            with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
+            with c2: 
+                try: st.download_button("📄 PDF", data=gerar_pdf(df_exp), file_name="agenda.pdf")
+                except: st.error("Erro PDF")
 
-        df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-        edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
-                                 column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
-                                 disabled=[c for c in cols_v if c != "EDITAR"])
+            df_f["EDITAR"] = False
+            cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
+            edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
+                                     column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
+                                     disabled=[c for c in cols_v if c != "EDITAR"])
 
-        marcados = edicao[edicao["EDITAR"] == True]
-        if not marcados.empty:
-            sel_row = df_f.loc[marcados.index[0]]
-            st.markdown("---")
-            st.subheader(f"Editar: {sel_row['CLIENTE']}")
-            
-            st_list = ["Planejado (X)", "Realizado", "Reagendado"]
-            ju_list = list(df_just.iloc[:, 0].dropna().unique())
-            if "OUTRO" not in ju_list: ju_list.append("OUTRO")
-            
-            col1, col2 = st.columns(2)
-            with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-            with col2:
-                n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-                mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
+            marcados = edicao[edicao["EDITAR"] == True]
+            if not marcados.empty:
+                sel_row = df_f.loc[marcados.index[0]]
+                st.markdown("---")
+                st.subheader(f"Editar: {sel_row['CLIENTE']}")
+                
+                st_list = ["Planejado (X)", "Realizado", "Reagendado"]
+                # Ajuste para nome da coluna de justificativa em maiúsculo
+                ju_list = list(df_just.iloc[:, 0].dropna().unique())
+                if "OUTRO" not in ju_list: ju_list.append("OUTRO")
+                
+                col1, col2 = st.columns(2)
+                with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                with col2:
+                    n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
+                    mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
 
-            with st.form("save_form"):
-                b1, b2 = st.columns(2)
-                if b1.form_submit_button("💾 SALVAR"):
-                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.cache_data.clear()
-                    st.rerun()
-                if b2.form_submit_button("🗑️ EXCLUIR"):
-                    df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
-                    st.cache_data.clear()
-                    st.rerun()
+                with st.form("save_form"):
+                    b1, b2 = st.columns(2)
+                    if b1.form_submit_button("💾 SALVAR"):
+                        final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                        st.cache_data.clear()
+                        st.rerun()
+                    if b2.form_submit_button("🗑️ EXCLUIR"):
+                        df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
+                        st.cache_data.clear()
+                        st.rerun()
+        else:
+            st.info("Nenhum registro encontrado para este filtro.")
     else:
         st.info("Nenhum registro encontrado.")
