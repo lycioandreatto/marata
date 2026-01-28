@@ -37,17 +37,26 @@ def gerar_pdf(df):
     
     cols = df.columns.tolist()
     largura_total = 275
-    largura_col = largura_total / len(cols)
+    
+    # Lógica para aumentar a coluna CLIENTE
+    largura_cliente = 80  # Largura expandida para o cliente
+    outras_cols_count = len(cols) - 1
+    largura_padrao = (largura_total - largura_cliente) / outras_cols_count
     
     pdf.set_font("Arial", 'B', 8)
     for col in cols:
-        pdf.cell(largura_col, 8, str(col), border=1, align='C')
+        w = largura_cliente if str(col).upper() == "CLIENTE" else largura_padrao
+        pdf.cell(w, 8, str(col), border=1, align='C')
     pdf.ln()
     
     pdf.set_font("Arial", '', 7) 
     for index, row in df.iterrows():
-        for item in row:
-            pdf.cell(largura_col, 8, str(item)[:45], border=1)
+        for i, item in enumerate(row):
+            col_name = cols[i]
+            w = largura_cliente if str(col_name).upper() == "CLIENTE" else largura_padrao
+            # Aumentado o limite de caracteres para o cliente (60) e mantido 45 para os outros
+            limit = 60 if str(col_name).upper() == "CLIENTE" else 45
+            pdf.cell(w, 8, str(item)[:limit], border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
