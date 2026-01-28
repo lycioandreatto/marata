@@ -495,17 +495,21 @@ if menu == "📅 Agendamentos do Dia":
                         
                         if pd.notnull(coord_base) and "," in str(coord_base):
                             try:
-                                lat_alvo, lon_alvo = str(coord_base).split(",")
-                                dist_metros = calcular_distancia(lat_v, lon_v, lat_alvo.strip(), lon_alvo.strip())
+                                # O .strip() remove espaços vazios acidentais
+                                partes = str(coord_base).split(",")
+                                lat_alvo = partes[0].strip()
+                                lon_alvo = partes[1].strip()
                                 
-                                # Define se houve excesso de distância
+                                dist_metros = calcular_distancia(lat_v, lon_v, lat_alvo, lon_alvo)
+                                
                                 if n_st == "Realizado" and dist_metros > 500:
                                     alerta_distancia = True
                                     distancia_info = f" (⚠️ DISTANTE: {dist_metros:.0f}m)"
                                 else:
                                     distancia_info = f" (Distância: {dist_metros:.0f}m)"
-                            except:
-                                distancia_info = " (Erro GPS Base)"
+                            except Exception as e:
+                                # Se ainda der erro, ele grava o que aconteceu para você saber
+                                distancia_info = f" (Erro: Verifique o formato na aba BASE)"
                     
                     # 2. Preparar a justificativa final com o log de distância
                     justificativa_final = f"{final_j}{distancia_info}"
