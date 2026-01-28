@@ -213,9 +213,17 @@ if "logado" not in st.session_state:
         st.session_state.usuario = ""
 
 if not st.session_state.logado:
-    st.title("☕ LOGIN - SISTEMA DE CONTROLE DE AGENDAMENTOS")
-    tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
+    # --- CENTRALIZAR A LOGO ---
+    col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
+    with col_logo2:
+        try:
+            st.image("pngmarata.png", width=200) # Certifique-off que o nome do arquivo está correto
+        except:
+            st.warning("Arquivo de logo não encontrado.")
 
+    st.title("☕ Acesso Gestão Maratá")
+    tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
+    # ... resto do código ...
     with tab_login:
         with st.form("login_form"):
             u_login = st.text_input("Usuário:").strip().upper()
