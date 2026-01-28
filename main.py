@@ -286,7 +286,7 @@ if is_admin:
     user_icon = "👑"
     border_color = "#FFD700"  # Dourado para ADM
 elif is_diretoria:
-    label_display = f"{user_atual} ,DIRETORIA"
+    label_display = f"{user_atual}, DIRETORIA"
     user_icon = "📈"
     border_color = "#1E90FF"
 elif is_analista:
