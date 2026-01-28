@@ -490,8 +490,8 @@ elif menu == "Ver/Editar Minha Agenda":
         cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         df_exp = df_f[cols_exp]
         
-        # Ajuste de colunas para aproximar os botões Excel e PDF
-        c1, c2, _ = st.columns([0.4, 0.4, 4])
+        # Ajuste de colunas para aproximar os botões Excel e PDF e equilibrar o tamanho
+        c1, c2, _ = st.columns([0.15, 0.15, 0.7])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
             try: 
