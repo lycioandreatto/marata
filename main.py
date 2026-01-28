@@ -57,16 +57,17 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
+        # PADRONIZAÇÃO: Forçamos todas as colunas para MAIÚSCULO para evitar KeyError
         df_u.columns = [str(c).strip().upper() for c in df_u.columns]
-        df_b.columns = [str(c).strip() for c in df_b.columns]
-        df_j.columns = [str(c).strip() for c in df_j.columns]
-        df_a.columns = [str(c).strip() for c in df_a.columns]
+        df_b.columns = [str(c).strip().upper() for c in df_b.columns]
+        df_j.columns = [str(c).strip().upper() for c in df_j.columns]
+        df_a.columns = [str(c).strip().upper() for c in df_a.columns]
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
-            cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
+            cols_cod = [c for c in df.columns if 'CLIENTE' in c or 'CÓDIGO' in c]
             for col in cols_cod:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
                 df[col] = df[col].replace('0', '')
@@ -93,7 +94,7 @@ if not st.session_state.logado:
             p_login = st.text_input("Senha:", type="password")
             if st.form_submit_button("Entrar"):
                 if "USUARIO" in df_usuarios.columns and "SENHA" in df_usuarios.columns:
-                    valid = df_usuarios[(df_usuarios['USUARIO'].str.upper() == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
+                    valid = df_usuarios[(df_usuarios['USUARIO'] == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
                     if not valid.empty:
                         st.session_state.logado = True
                         st.session_state.usuario = u_login
@@ -101,7 +102,7 @@ if not st.session_state.logado:
                     else:
                         st.error("Usuário ou Senha incorretos.")
                 else:
-                    st.error("Colunas 'USUARIO' ou 'SENHA' não encontradas na aba USUARIOS.")
+                    st.error("Colunas 'USUARIO' ou 'SENHA' não encontradas.")
 
     with tab_cadastro:
         with st.form("cad_form"):
@@ -113,17 +114,14 @@ if not st.session_state.logado:
             if st.form_submit_button("Finalizar Cadastro"):
                 if u_cad and p_cad and p_cad_conf:
                     if p_cad != p_cad_conf:
-                        st.error("As senhas não coincidem. Por favor, verifique.")
+                        st.error("As senhas não coincidem.")
                     else:
-                        existente = False
-                        if "USUARIO" in df_usuarios.columns:
-                            existente = u_cad in df_usuarios['USUARIO'].str.upper().values
-                        
+                        existente = u_cad in df_usuarios['USUARIO'].values if not df_usuarios.empty else False
                         if not existente:
                             novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
                             df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
                             conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
-                            st.success("Cadastro realizado! Agora você pode fazer o login.")
+                            st.success("Cadastro realizado!")
                             st.cache_data.clear()
                         else:
                             st.error("Este usuário já está cadastrado.")
@@ -133,18 +131,14 @@ if not st.session_state.logado:
 
 # --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
-is_admin = (user_atual == NOME_ADMIN.upper())
-is_analista = (user_atual == NOME_ANALISTA.upper())
-is_diretoria = (user_atual == NOME_DIRETORIA.upper())
+is_admin = (user_atual == NOME_ADMIN)
+is_analista = (user_atual == NOME_ANALISTA)
+is_diretoria = (user_atual == NOME_DIRETORIA)
 
-if is_admin:
-    label_display = "ADMINISTRADOR"
-elif is_diretoria:
-    label_display = f"DIRETORIA {user_atual}"
-elif is_analista:
-    label_display = f"ANALISTA {user_atual}"
-else:
-    label_display = f"SUPERVISOR {user_atual}"
+label_display = f"SUPERVISOR {user_atual}"
+if is_admin: label_display = "ADMINISTRADOR"
+elif is_diretoria: label_display = f"DIRETORIA {user_atual}"
+elif is_analista: label_display = f"ANALISTA {user_atual}"
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -156,69 +150,51 @@ with st.sidebar:
         st.session_state.logado = False
         st.rerun()
 
-    st.markdown("---")
-    st.subheader("🗑️ Limpeza em Massa")
-    if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista or is_diretoria:
-            lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
-            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
-            if sup_limpar != "Selecione...":
-                if st.button(f"⚠️ APAGAR TUDO: {sup_limpar}"):
-                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
-                    st.cache_data.clear()
-                    st.rerun()
-        else:
-            if st.button(f"⚠️ APAGAR TODA MINHA AGENDA"):
-                df_rest = df_agenda[df_agenda['SUPERVISOR'] != user_atual].drop(columns=['LINHA'], errors='ignore')
-                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
-                st.cache_data.clear()
-                st.rerun()
-
 # --- PÁGINA: NOVO AGENDAMENTO ---
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
+        # Nomes das colunas na BASE (agora garantidamente em maiúsculo pelo carregamento)
+        COL_BASE_ANA = "ANALISTA"
+        COL_BASE_RV  = "REGIÃO DE VENDAS"
+        COL_BASE_CLI = "CLIENTE"
+        COL_BASE_NOM = "NOME 1"
+
         if is_admin or is_diretoria:
-            # Seleção de Analista para Lycio e Aldo
-            lista_analistas = sorted([str(a) for a in df_base['Analista'].unique() if str(a).strip() and str(a) != 'nan'])
+            lista_analistas = sorted([str(a) for a in df_base[COL_BASE_ANA].unique() if str(a).strip() and str(a).lower() != 'nan'])
             analista_sel = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas)
             
             if analista_sel == "Todos":
-                sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
+                sups = sorted([s for s in df_base[COL_BASE_RV].unique() if str(s).strip() and str(s).lower() != 'nan'])
             else:
-                sups = sorted([s for s in df_base[df_base['Analista'] == analista_sel]['Região de vendas'].unique() if str(s).strip()])
+                sups = sorted([s for s in df_base[df_base[COL_BASE_ANA] == analista_sel][COL_BASE_RV].unique() if str(s).strip()])
             
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         elif is_analista:
-            sups = sorted([s for s in df_base[df_base['Analista'].str.upper() == user_atual]['Região de vendas'].unique() if str(s).strip()])
+            sups = sorted([s for s in df_base[df_base[COL_BASE_ANA].str.upper() == user_atual][COL_BASE_RV].unique() if str(s).strip()])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
             sup_sel = user_atual
             st.info(f"Agendando para: {user_atual}")
 
         if sup_sel != "Selecione...":
-            clientes_f = df_base[df_base['Região de vendas'] == sup_sel]
+            clientes_f = df_base[df_base[COL_BASE_RV] == sup_sel]
             
             # BUSCA AUTOMÁTICA DA ANALISTA VINCULADA
             analista_vinc = NOME_ANALISTA
-            if 'Analista' in clientes_f.columns:
-                val_analista = clientes_f['Analista'].iloc[0]
-                if str(val_analista).strip() and str(val_analista) != 'nan':
+            if COL_BASE_ANA in clientes_f.columns:
+                val_analista = clientes_f[COL_BASE_ANA].iloc[0]
+                if str(val_analista).strip() and str(val_analista).lower() != 'nan':
                     analista_vinc = str(val_analista).upper()
 
-            lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
+            lista_c = sorted(clientes_f.apply(lambda x: f"{x[COL_BASE_CLI]} - {x[COL_BASE_NOM]}", axis=1).tolist())
             cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
             
             if cliente_sel != "Selecione...":
                 qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
                 with st.form("form_novo_v"):
                     cols_datas = st.columns(qtd_visitas)
-                    datas_sel = []
-                    for i in range(qtd_visitas):
-                        with cols_datas[i]:
-                            d = st.date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"d_{i}")
-                            datas_sel.append(d)
+                    datas_sel = [cols_datas[i].date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"d_{i}") for i in range(qtd_visitas)]
                     
                     if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
                         cod_c, nom_c = cliente_sel.split(" - ", 1)
@@ -242,33 +218,31 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
+        # Colunas na AGENDA (já em maiúsculo)
+        COL_AGE_ANA = "ANALISTA"
+        COL_AGE_SUP = "SUPERVISOR"
+
         if is_admin or is_diretoria:
-            # Seleção de Analista para filtrar agenda já feita (Lycio e Aldo)
-            lista_ana_agenda = sorted([str(a) for a in df_agenda['ANALISTA'].unique() if str(a).strip() and str(a) != 'nan'])
+            lista_ana_agenda = sorted([str(a) for a in df_agenda[COL_AGE_ANA].unique() if str(a).strip() and str(a).lower() != 'nan'])
             ana_filtro = st.selectbox("Filtrar Agenda por Analista:", ["Todos"] + lista_ana_agenda)
             
             df_temp = df_agenda.copy()
             if ana_filtro != "Todos":
-                df_temp = df_temp[df_temp['ANALISTA'] == ana_filtro]
+                df_temp = df_temp[df_temp[COL_AGE_ANA] == ana_filtro]
             
-            lista_sups_f = sorted(df_temp['SUPERVISOR'].unique())
+            lista_sups_f = sorted(df_temp[COL_AGE_SUP].unique())
             f_sup = st.selectbox("Ver agenda de:", ["Todos"] + lista_sups_f)
-            
-            df_f = df_temp.copy() if f_sup == "Todos" else df_temp[df_temp['SUPERVISOR'] == f_sup]
+            df_f = df_temp.copy() if f_sup == "Todos" else df_temp[df_temp[COL_AGE_SUP] == f_sup]
 
         elif is_analista:
-            df_f = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
-            lista_sups_f = sorted(df_f['SUPERVISOR'].unique())
-            f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + lista_sups_f)
-            if f_sup != "Todos":
-                df_f = df_f[df_f['SUPERVISOR'] == f_sup]
+            df_f = df_agenda[df_agenda[COL_AGE_ANA].str.upper() == user_atual].copy()
+            f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + sorted(df_f[COL_AGE_SUP].unique()))
+            if f_sup != "Todos": df_f = df_f[df_f[COL_AGE_SUP] == f_sup]
         else:
-            df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
+            df_f = df_agenda[df_agenda[COL_AGE_SUP] == user_atual].copy()
 
-        # EXPORTAÇÃO (Excel e PDF)
-        if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
+        # EXPORTAÇÃO
         df_exp = df_f[['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
-        
         c1, c2, _ = st.columns([1,1,2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
