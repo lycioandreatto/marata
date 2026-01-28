@@ -24,7 +24,7 @@ NOME_DIRETORIA = "ALDO"
 def converter_para_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Agenda')
+        df.to_excel(writer, index=False, sheet_name='Relatorio')
     return output.getvalue()
 
 def gerar_pdf(df):
@@ -32,19 +32,23 @@ def gerar_pdf(df):
     pdf.add_page()
     pdf.set_font("Arial", 'B', 14)
     data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
-    pdf.cell(0, 10, f"Agenda Marata - Gerado em {data_geracao}", ln=True, align='C')
+    pdf.cell(0, 10, f"Relatorio Marata - Gerado em {data_geracao}", ln=True, align='C')
     pdf.ln(5)
-    larguras = [35, 22, 35, 70, 46, 30, 30] 
+    
+    # Ajuste dinâmico de larguras para o PDF
+    cols = df.columns.tolist()
+    largura_total = 275
+    largura_col = largura_total / len(cols)
+    
     pdf.set_font("Arial", 'B', 8)
-    for i, col in enumerate(df.columns):
-        if i < len(larguras):
-            pdf.cell(larguras[i], 8, str(col), border=1, align='C')
+    for col in cols:
+        pdf.cell(largura_col, 8, str(col), border=1, align='C')
     pdf.ln()
+    
     pdf.set_font("Arial", '', 8)
     for index, row in df.iterrows():
-        for i, item in enumerate(row):
-            if i < len(larguras):
-                pdf.cell(larguras[i], 8, str(item)[:40], border=1)
+        for item in row:
+            pdf.cell(largura_col, 8, str(item)[:40], border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
@@ -203,6 +207,16 @@ if menu == "📊 Dashboard de Controle":
         # Reorganizar colunas
         df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
         df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
+        
+        # --- BOTÕES DE EXPORTAÇÃO NO DASHBOARD ---
+        exp_c1, exp_c2, _ = st.columns([1, 1, 2])
+        with exp_c1:
+            st.download_button("📥 Dashboard Excel", data=converter_para_excel(df_dash), file_name="dashboard_engajamento.xlsx")
+        with exp_c2:
+            try:
+                st.download_button("📄 Dashboard PDF", data=gerar_pdf(df_dash), file_name="dashboard_engajamento.pdf")
+            except:
+                st.error("Erro ao gerar PDF do Dashboard")
         
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
         
