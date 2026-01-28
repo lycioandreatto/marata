@@ -235,7 +235,6 @@ if menu == "📊 Dashboard de Controle":
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
 
-        # --- FILTROS DO DASHBOARD ---
         st.subheader("Filtros de Visualização")
         f_c1, f_c2 = st.columns(2)
         
@@ -247,7 +246,7 @@ if menu == "📊 Dashboard de Controle":
                 ana_sel_dash = st.selectbox("Escolher Analista:", ["Todos"] + lista_analistas, key="ana_dash")
                 if ana_sel_dash != "Todos":
                     df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base] == ana_sel_dash]
-            else: # Analista Logado
+            else:
                 ana_sel_dash = user_atual
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base].str.upper() == user_atual]
 
@@ -257,16 +256,25 @@ if menu == "📊 Dashboard de Controle":
             if sup_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_rv_base] == sup_sel_dash]
 
-        # --- PROCESSAMENTO DOS DADOS FILTRADOS ---
-        codigos_agendados_global = df_agenda['CÓDIGO CLIENTE'].unique()
-        df_base_detalhe = df_base_filtrada.copy()
-        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['Cliente'].apply(
-            lambda x: 'AGENDADO' if str(x) in codigos_agendados_global else 'PENDENTE'
-        )
+        # --- CORREÇÃO DA DATA DE REGISTRO NO DASHBOARD ---
+        # Pegamos os registros da agenda e garantimos que a coluna 'CÓDIGO CLIENTE' e 'Cliente' (da base) casem
+        df_reg = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy()
+        df_reg = df_reg.drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
         
-        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
-        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
+        df_base_detalhe = df_base_filtrada.copy()
+        # Merge para trazer o Registro da Agenda para a Base Filtrada
+        df_base_detalhe = pd.merge(df_base_detalhe, df_reg, left_on='Cliente', right_on='CÓDIGO CLIENTE', how='left')
+        
+        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['CÓDIGO CLIENTE'].apply(
+            lambda x: 'AGENDADO' if pd.notnull(x) else 'PENDENTE'
+        )
+        df_base_detalhe['REGISTRO'] = df_base_detalhe['REGISTRO'].fillna("-")
+        
+        # Criando o DataFrame do Relatório com a coluna REGISTRO presente
+        df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
+        df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
 
+        # Cálculos do Dashboard Superior
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         
