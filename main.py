@@ -686,7 +686,17 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         except:
             df_display = df_display.sort_values(by='REGISTRO', ascending=False)
 
-        edicao = st.data_editor(df_display, key="edit_v12", hide_index=True, use_container_width=True,
+        # --- TRECHO NOVO PARA FONTE VERDE ---
+        def style_rows(row):
+            if row['STATUS'] == "Realizado":
+                return ['color: #28a745; font-weight: bold'] * len(row)
+            return [''] * len(row)
+
+        df_styled = df_display.style.apply(style_rows, axis=1)
+        # ------------------------------------
+
+        # Agora passamos o df_styled no lugar do df_display
+        edicao = st.data_editor(df_styled, key="edit_v12", hide_index=True, use_container_width=True,
                                  column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
                                  disabled=[c for c in cols_v if c != "EDITAR"])
 
