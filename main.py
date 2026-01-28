@@ -737,83 +737,134 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
-# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda Completa")
     
-    # ... (Bloco de Filtro de Perfil e Métricas - Mantidos conforme anterior) ...
+    if df_agenda is not None and not df_agenda.empty:
+        # Filtro de visibilidade por perfil
+        if is_admin or is_diretoria:
+            df_user = df_agenda.copy()
+        elif is_analista:
+            df_user = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
+        else:
+            df_user = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-    if not df_user.empty:
-        # Preparação da tabela
-        df_user["AÇÃO"] = False 
-        
-        # Colunas Visíveis
-        cols_v = ['AÇÃO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR', 'dist_val_calc']
-        if 'DISTANCIA_LOG' in df_user.columns:
-            cols_v.append('DISTANCIA_LOG')
+        if not df_user.empty:
+            # --- CÁLCULO DOS CONTADORES ---
+            def extrair_dist(val):
+                try:
+                    s = str(val).replace('m', '').replace('Erro GPS', '0')
+                    return float(s) if (s != 'nan' and s.strip() != "") else 0
+                except: return 0
+            
+            df_user['dist_val_calc'] = df_user['DISTANCIA_LOG'].apply(extrair_dist)
 
-        df_display = df_user[cols_v].copy()
-        df_styled = df_display.style.apply(style_agenda_completa, axis=1)
+            # --- EXIBIÇÃO DOS CARDS ---
+            total_agendado = len(df_user)
+            total_pendente = len(df_user[df_user['STATUS'] == "Planejado"])
+            total_realizado = len(df_user[df_user['STATUS'] == "Realizado"])
+            
+            if is_admin or is_diretoria or is_analista:
+                cols = st.columns(4)
+                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
+                cols[3].metric("📍 Fora do Raio (>500m)", fora_raio, 
+                              delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
+                              delta_color="inverse")
+            else:
+                cols = st.columns(3)
 
-        edicao_user = st.data_editor(
-            df_styled, 
-            key="edit_full_agenda_v2", 
-            hide_index=True, 
-            use_container_width=True,
-            column_config={
+            cols[0].metric("📅 Total Agendado", total_agendado)
+            cols[1].metric("⏳ Total Pendente", total_pendente)
+            cols[2].metric("✅ Total Realizado", total_realizado)
+            
+            st.markdown("---")
+
+            # Trazer Cidade
+            if df_base is not None and 'CIDADE' not in df_user.columns:
+                col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
+                df_cidades = df_base[['Cliente', col_local_base]].copy()
+                df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
+                df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
+
+            # Alteramos de EXCLUIR para AÇÃO para refletir as duas opções
+            df_user["AÇÃO"] = False
+            
+            def style_agenda_completa(row):
+                styles = [''] * len(row)
+                if row['STATUS'] == "Realizado":
+                    if row['dist_val_calc'] > 500:
+                        return ['color: #E67E22; font-weight: bold'] * len(row)
+                    return ['color: green; font-weight: bold'] * len(row)
+                return styles
+
+            cols_v = ['AÇÃO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR', 'dist_val_calc']
+            if 'DISTANCIA_LOG' in df_user.columns:
+                cols_v.append('DISTANCIA_LOG')
+
+            df_display = df_user[cols_v].copy()
+            df_styled = df_display.style.apply(style_agenda_completa, axis=1)
+
+            # Ajuste de privacidade na visualização da coluna GPS
+            config_col = {
                 "AÇÃO": st.column_config.CheckboxColumn("📌"),
-                "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS"),
-                "dist_val_calc": None 
-            },
-            disabled=[c for c in cols_v if c != "AÇÃO"]
-        )
+                "dist_val_calc": None
+            }
+            if not (is_admin or is_diretoria or is_analista):
+                config_col["DISTANCIA_LOG"] = None
+            else:
+                config_col["DISTANCIA_LOG"] = st.column_config.TextColumn("📍 Dist. GPS")
 
-        marcados = edicao_user[edicao_user["AÇÃO"] == True]
-        if not marcados.empty:
-            idx = marcados.index[0]
-            sel_row = df_user.iloc[idx]
-            
-            st.markdown(f"### Gerenciar Visita: {sel_row['CLIENTE']}")
-            
-            tab_re, tab_ex = st.tabs(["🔄 Reagendar Nova Visita", "❌ Excluir Histórico"])
-            
-            with tab_re:
-                st.info("Isso criará um NOVO agendamento, mantendo o registro atual intacto no histórico.")
-                nova_data = st.date_input("Para quando deseja reagendar?", value=datetime.now())
+            edicao_user = st.data_editor(
+                df_styled, 
+                key="edit_full_agenda_actions", 
+                hide_index=True, 
+                use_container_width=True,
+                column_config=config_col,
+                disabled=[c for c in cols_v if c != "AÇÃO"]
+            )
+
+            # LÓGICA DE GERENCIAMENTO (REAGENDAR OU EXCLUIR)
+            marcados = edicao_user[edicao_user["AÇÃO"] == True]
+            if not marcados.empty:
+                idx = marcados.index[0]
+                sel_row = df_user.iloc[idx]
                 
-                if st.button("✅ CONFIRMAR REAGENDAMENTO"):
-                    # Criar nova linha baseada na antiga
-                    nova_linha = sel_row.copy()
-                    nova_linha['ID'] = str(uuid.uuid4())
-                    nova_linha['DATA'] = nova_data.strftime('%d/%m/%Y')
-                    nova_linha['STATUS'] = "Planejado"
-                    nova_linha['JUSTIFICATIVA'] = ""
-                    nova_linha['DISTANCIA_LOG'] = ""
-                    nova_linha['COORDENADAS'] = ""
-                    nova_linha['AGENDADO POR'] = user_atual
-                    
-                    # Remover colunas temporárias de visualização antes de salvar
-                    colunas_para_ignorar = ['AÇÃO', 'dist_val_calc', 'CIDADE', 'LINHA']
-                    nova_linha_dict = nova_linha.drop(labels=colunas_para_ignorar, errors='ignore').to_frame().T
-                    
-                    # Adicionar à planilha
-                    df_agenda_novo = pd.concat([df_agenda, nova_linha_dict], ignore_index=True)
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_novo.drop(columns=['LINHA'], errors='ignore'))
-                    
-                    st.cache_data.clear()
-                    st.success(f"Nova visita agendada para {nova_data.strftime('%d/%m/%Y')}!")
-                    time.sleep(1)
-                    st.rerun()
+                st.markdown(f"### ⚙️ Gerenciar: {sel_row['CLIENTE']}")
+                t_re, t_ex = st.tabs(["🔄 Reagendar Visita", "🗑️ Excluir Registro"])
+                
+                with t_re:
+                    st.write("Crie uma nova data para este cliente mantendo o histórico atual.")
+                    n_data = st.date_input("Nova Data:", value=datetime.now())
+                    if st.button("Confirmar Novo Agendamento"):
+                        # Criar cópia e limpar dados de execução
+                        nova_v = sel_row.copy()
+                        nova_v['ID'] = str(uuid.uuid4())
+                        nova_v['DATA'] = n_data.strftime('%d/%m/%Y')
+                        nova_v['STATUS'] = "Planejado"
+                        nova_v['JUSTIFICATIVA'] = ""
+                        nova_v['DISTANCIA_LOG'] = ""
+                        nova_v['COORDENADAS'] = ""
+                        nova_v['AGENDADO POR'] = user_atual
+                        
+                        # Limpar colunas que não vão para a planilha
+                        nova_v_dict = nova_v.drop(labels=['AÇÃO', 'dist_val_calc', 'CIDADE', 'LINHA'], errors='ignore').to_frame().T
+                        
+                        df_final = pd.concat([df_agenda, nova_v_dict], ignore_index=True)
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final.drop(columns=['LINHA'], errors='ignore'))
+                        st.cache_data.clear()
+                        st.success("Nova visita agendada com sucesso!")
+                        time.sleep(1)
+                        st.rerun()
 
-            with tab_ex:
-                st.error("Cuidado: Isso apagará este registro permanentemente do banco de dados.")
-                if st.button("🗑️ APAGAR REGISTRO AGORA"):
-                    df_agenda_novo = df_agenda[df_agenda['ID'].astype(str) != str(sel_row['ID'])].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_novo)
-                    st.cache_data.clear()
-                    st.success("Registro excluído!")
-                    time.sleep(1)
-                    st.rerun()
+                with t_ex:
+                    st.error("Isso apagará este registro permanentemente.")
+                    if st.button("Confirmar Exclusão Definitiva"):
+                        df_new = df_agenda[df_agenda['ID'].astype(str) != str(sel_row['ID'])].drop(columns=['LINHA'], errors='ignore')
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_new)
+                        st.cache_data.clear()
+                        st.success("Removido!")
+                        time.sleep(1)
+                        st.rerun()
         else:
             st.info("Nenhum agendamento encontrado.")
     else:
