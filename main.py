@@ -387,7 +387,7 @@ if menu == "📅 Agendamentos do Dia":
                 
                 col1, col2 = st.columns(2)
                 with col1: 
-   col1, col2 = st.columns(2)
+col1, col2 = st.columns(2)
                 with col1: 
                     n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
                     # --- AQUI ESTÁ O NOVO CAMPO ---
