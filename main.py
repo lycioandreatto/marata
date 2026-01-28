@@ -406,6 +406,10 @@ if menu == "📅 Agendamentos do Dia":
                 with col2:
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
+                    
+if "gps_lat" not in st.session_state:
+    st.session_state.gps_lat = None
+    st.session_state.gps_lon = None
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     lat, lon = capturar_coordenadas()
