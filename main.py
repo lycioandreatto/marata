@@ -7,6 +7,13 @@ from fpdf import FPDF
 import pytz
 import time
 import os
+from streamlit_cookies_manager import EncryptedCookieManager
+
+# --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
+# O password abaixo é apenas para criptografia local do cookie
+cookies = EncryptedCookieManager(password="marata_secret_key_2026")
+if not cookies.ready():
+    st.stop()
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
@@ -197,8 +204,13 @@ df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
-    st.session_state.logado = False
-    st.session_state.usuario = ""
+    # Verifica se existe cookie de login salvo
+    if "user_marata" in cookies:
+        st.session_state.logado = True
+        st.session_state.usuario = cookies["user_marata"]
+    else:
+        st.session_state.logado = False
+        st.session_state.usuario = ""
 
 if not st.session_state.logado:
     st.title("☕ Acesso Gestão Maratá")
@@ -208,12 +220,16 @@ if not st.session_state.logado:
         with st.form("login_form"):
             u_login = st.text_input("Usuário:").strip().upper()
             p_login = st.text_input("Senha:", type="password")
+            lembrar = st.checkbox("Manter conectado")
             if st.form_submit_button("Entrar"):
                 if "USUARIO" in df_usuarios.columns and "SENHA" in df_usuarios.columns:
                     valid = df_usuarios[(df_usuarios['USUARIO'].str.upper() == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
                     if not valid.empty:
                         st.session_state.logado = True
                         st.session_state.usuario = u_login
+                        if lembrar:
+                            cookies["user_marata"] = u_login
+                            cookies.save()
                         st.rerun()
                     else:
                         st.error("Usuário ou Senha incorretos.")
@@ -297,7 +313,11 @@ with st.sidebar:
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
     if st.button("Sair"):
+        if "user_marata" in cookies:
+            del cookies["user_marata"]
+            cookies.save()
         st.session_state.logado = False
+        st.session_state.usuario = ""
         st.rerun()
 
     st.markdown("---")
@@ -329,22 +349,18 @@ if menu == "📅 Agendamentos do Dia":
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
     
     if df_agenda is not None and not df_agenda.empty:
-        # Filtro inicial pelo dia de hoje
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
         
-        # Filtros de Perfil
         if is_admin or is_diretoria:
-            pass # Vê tudo do dia
+            pass 
         elif is_analista:
             df_dia = df_dia[df_dia['ANALISTA'].str.upper() == user_atual]
         else:
             df_dia = df_dia[df_dia['SUPERVISOR'] == user_atual]
 
-        # Metric Card Customizado
         st.columns([1, 3])[0].metric("Visitas Hoje", len(df_dia))
         
         if not df_dia.empty:
-            # Cruzamento com a base para pegar a cidade
             if df_base is not None:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
