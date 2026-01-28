@@ -59,7 +59,8 @@ def gerar_pdf(df):
     largura_agendado = 30
     largura_data = 18
     largura_justificativa = 50
-    largura_registro = 35 
+    largura_registro = 25 # DIMINUÍDO (Era 35)
+    largura_cidade = 40   # AUMENTADO (Para compensar e dar mais espaço ao nome da cidade)
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
@@ -70,6 +71,7 @@ def gerar_pdf(df):
     if "DATA" in col_map: especiais.append("DATA")
     if "JUSTIFICATIVA" in col_map: especiais.append("JUSTIFICATIVA")
     if "REGISTRO" in col_map: especiais.append("REGISTRO")
+    if "CIDADE" in col_map: especiais.append("CIDADE")
     
     ocupado = 0
     if "CLIENTE" in especiais: ocupado += largura_cliente
@@ -78,6 +80,7 @@ def gerar_pdf(df):
     if "DATA" in especiais: ocupado += largura_data
     if "JUSTIFICATIVA" in especiais: ocupado += largura_justificativa
     if "REGISTRO" in especiais: ocupado += largura_registro
+    if "CIDADE" in especiais: ocupado += largura_cidade
     
     outras_cols_count = len(cols) - len(especiais)
     largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
@@ -92,6 +95,7 @@ def gerar_pdf(df):
         elif c_up == "DATA": w = largura_data
         elif c_up == "JUSTIFICATIVA": w = largura_justificativa
         elif c_up == "REGISTRO": w = largura_registro
+        elif c_up == "CIDADE": w = largura_cidade
         else: w = largura_padrao
         pdf.cell(w, 6, str(col), border=1, align='C')
     pdf.ln()
@@ -107,6 +111,7 @@ def gerar_pdf(df):
             elif col_name == "DATA": w, limit = largura_data, 12
             elif col_name == "JUSTIFICATIVA": w, limit = largura_justificativa, 60
             elif col_name == "REGISTRO": w, limit = largura_registro, 20
+            elif col_name == "CIDADE": w, limit = largura_cidade, 35
             else: w, limit = largura_padrao, limite_texto
             
             texto = str(item)[:limit].encode('latin-1', 'replace').decode('latin-1')
