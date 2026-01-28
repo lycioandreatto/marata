@@ -21,27 +21,45 @@ st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
     <style>
+    /* Ajuste específico para os cards de métricas ficarem iguais */
     [data-testid="stMetric"] {
         background-color: #f0f2f6;
         padding: 15px;
         border-radius: 10px;
         border: 1px solid #d3d3d3;
         box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-        /* Força uma altura mínima para que o delta não empurre o card para baixo */
-        min-height: 130px; 
+        
+        /* Garante altura igual e centralização */
+        min-height: 120px;
         display: flex;
         flex-direction: column;
         justify-content: center;
     }
+    
     [data-testid="stMetric"] label, 
     [data-testid="stMetric"] div {
         color: black !important;
     }
-    
-    /* Garante que o container do delta não quebre o layout */
-    [data-testid="stMetricDelta"] {
-        position: absolute;
-        bottom: 10px;
+
+    /* Estilização do Card de Usuário Logado - Mantendo original */
+    .user-card {
+        background-color: #1e1e1e;
+        padding: 12px 20px;
+        border-radius: 12px;
+        box-shadow: 3px 3px 10px rgba(0,0,0,0.3);
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .user-card-text {
+        color: white;
+        font-weight: bold;
+        font-size: 1.1em;
+        letter-spacing: 0.5px;
+    }
+    .user-card-icon {
+        font-size: 1.5em;
     }
     </style>
     """, unsafe_allow_html=True)
