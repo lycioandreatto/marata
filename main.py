@@ -291,11 +291,11 @@ elif is_diretoria:
     user_icon = "📈"
     border_color = "#1E90FF"
 elif is_analista:
-    label_display = f"ANALISTA {user_atual}"
+    label_display = f"{user_atual} | ANALISTA"
     user_icon = "🔬"
     border_color = "#9370DB"
 else:
-    label_display = f"SUPERVISOR {user_atual}"
+    label_display = f"{user_atual} | SUPERVISOR"
     user_icon = "👤"
     border_color = "#ff4b4b"
 
