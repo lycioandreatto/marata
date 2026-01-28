@@ -7,7 +7,6 @@ from fpdf import FPDF
 import pytz
 import time
 import os
-from streamlit_js_eval import streamlit_js_eval
 from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
@@ -188,8 +187,6 @@ def carregar_dados():
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
-        if 'LATITUDE' not in df_a.columns: df_a['LATITUDE'] = "" 
-        if 'LONGITUDE' not in df_a.columns: df_a['LONGITUDE'] = ""
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
@@ -364,9 +361,8 @@ if menu == "📅 Agendamentos do Dia":
     if df_agenda is not None and not df_agenda.empty:
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
         
-        # Filtro por perfil
         if is_admin or is_diretoria:
-            pass
+            pass 
         elif is_analista:
             df_dia = df_dia[df_dia['ANALISTA'].str.upper() == user_atual]
         else:
@@ -375,115 +371,49 @@ if menu == "📅 Agendamentos do Dia":
         st.columns([1, 3])[0].metric("Visitas Hoje", len(df_dia))
         
         if not df_dia.empty:
-            # Junta cidade da BASE
             if df_base is not None:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
-                df_dia = pd.merge(
-                    df_dia,
-                    df_cidades,
-                    left_on='CÓDIGO CLIENTE',
-                    right_on='Cliente',
-                    how='left'
-                ).drop(columns=['Cliente_y'], errors='ignore')
+                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            # Editor
             df_dia["EDITAR"] = False
-            cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE',
-                      'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            
             df_display = df_dia[cols_v].copy()
             
-            edicao_dia = st.data_editor(
-                df_display,
-                key="edit_dia",
-                hide_index=True,
-                use_container_width=True,
-                column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
-                disabled=[c for c in cols_v if c != "EDITAR"]
-            )
+            edicao_dia = st.data_editor(df_display, key="edit_dia", hide_index=True, use_container_width=True,
+                                     column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
+                                     disabled=[c for c in cols_v if c != "EDITAR"])
 
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 sel_row = df_dia.iloc[marcados.index[0]]
                 st.markdown("---")
                 st.subheader(f"Atualizar Atendimento: {sel_row['CLIENTE']}")
-
                 st_list = ["Planejado", "Realizado", "Reagendado"]
                 ju_list = list(df_just.iloc[:, 0].dropna().unique())
-                if "OUTRO" not in ju_list:
-                    ju_list.append("OUTRO")
+                if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
                 col1, col2 = st.columns(2)
-                with col1:
-                    n_st = st.radio(
-                        "Status Atual:",
-                        st_list,
-                        index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0
-                    )
+                with col1: n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
                 with col2:
-                    n_ju = st.selectbox(
-                        "Justificativa/Observação:",
-                        ju_list,
-                        index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0
-                    )
+                    n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
-              if st.button("💾 ATUALIZAR STATUS"):
-                    # 1. Captura localização com componente de espera
-                    with st.spinner("Obtendo localização GPS..."):
-                        location = streamlit_js_eval(
-                            js_expressions="""
-                                new Promise((resolve) => {
-                                    navigator.geolocation.getCurrentPosition(
-                                        (pos) => {
-                                            resolve({
-                                                latitude: pos.coords.latitude,
-                                                longitude: pos.coords.longitude
-                                            });
-                                        },
-                                        (err) => {
-                                            resolve(null);
-                                        },
-                                        { 
-                                            enableHighAccuracy: true, 
-                                            timeout: 5000, 
-                                            maximumAge: 0 
-                                        }
-                                    );
-                                });
-                            """,
-                            target_id="get_location",
-                            want_output=True
-                        )
-
-                    if location is None:
-                        st.error("❌ Erro de Localização: Ative o GPS e dê permissão ao navegador.")
-                        st.stop()
-
-                    latitude = location.get("latitude")
-                    longitude = location.get("longitude")
-
-                    # Continuação do seu código (Justificativa e Update)
+                if st.button("💾 ATUALIZAR STATUS"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    
-                    # 3. Atualiza no DataFrame
-                    df_agenda.loc[
-                        df_agenda['ID'] == sel_row['ID'],
-                        ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']
-                    ] = [n_st, final_j, latitude, longitude]
-
-                    # 4. Salva no Google Sheets
-                    conn.update(
-                        spreadsheet=url_planilha,
-                        worksheet="AGENDA",
-                        data=df_agenda.drop(columns=['LINHA'], errors='ignore')
-                    )
-
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
-                    st.success(f"✅ Atualizado! Localização: {latitude}, {longitude}")
-                    time.sleep(1.5)
+                    st.success("Atualizado com sucesso!")
+                    time.sleep(1)
                     st.rerun()
+        else:
+            st.info(f"Não há agendamentos para hoje ({hoje_str}).")
+    else:
+        st.warning("Nenhum dado de agenda disponível.")
+
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
@@ -526,16 +456,6 @@ elif menu == "📊 Dashboard de Controle":
         df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
         df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
-        # 🔥 ADICIONAR LINK DE LOCALIZAÇÃO (GOOGLE MAPS)
-        df_relatorio_completo['LOCALIZAÇÃO'] = df_relatorio_completo.apply(
-            lambda x: f"https://www.google.com/maps?q={x['LATITUDE']},{x['LONGITUDE']}"
-            if 'LATITUDE' in df_base_detalhe.columns
-               and 'LONGITUDE' in df_base_detalhe.columns
-               and x.get('LATITUDE') not in [None, "", "-"]
-               and x.get('LONGITUDE') not in [None, "", "-"]
-            else "-",
-            axis=1
-        )
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
