@@ -188,6 +188,8 @@ def carregar_dados():
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
+        if 'LATITUDE' not in df_a.columns: df_a['LATITUDE'] = "" 
+        if 'LONGITUDE' not in df_a.columns: df_a['LONGITUDE'] = ""
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
@@ -403,13 +405,38 @@ if menu == "📅 Agendamentos do Dia":
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
                 if st.button("💾 ATUALIZAR STATUS"):
-                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.cache_data.clear()
-                    st.success("Atualizado com sucesso!")
-                    time.sleep(1)
-                    st.rerun()
+    # 1. Capturar localização via navegador
+    location = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)", 
+                                 key="get_location", 
+                                 want_output=True)
+
+    if location is None:
+        st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
+        st.stop()
+
+    latitude = location.get("latitude", None)
+    longitude = location.get("longitude", None)
+
+    # 2. Montar justificativa final
+    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+
+    # 3. Atualizar no dataframe
+    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 
+                  ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [
+                      n_st, final_j, latitude, longitude
+                  ]
+
+    # 4. Salvar no Google Sheets
+    conn.update(
+        spreadsheet=url_planilha,
+        worksheet="AGENDA",
+        data=df_agenda.drop(columns=['LINHA'], errors='ignore')
+    )
+
+    st.cache_data.clear()
+    st.success("Atualizado com sucesso!")
+    time.sleep(1)
+    st.rerun()
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
@@ -457,6 +484,16 @@ elif menu == "📊 Dashboard de Controle":
         df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
         df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
+        # 🔥 ADICIONAR LINK DE LOCALIZAÇÃO (GOOGLE MAPS)
+        df_relatorio_completo['LOCALIZAÇÃO'] = df_relatorio_completo.apply(
+            lambda x: f"https://www.google.com/maps?q={x['LATITUDE']},{x['LONGITUDE']}"
+            if 'LATITUDE' in df_base_detalhe.columns
+               and 'LONGITUDE' in df_base_detalhe.columns
+               and x.get('LATITUDE') not in [None, "", "-"]
+               and x.get('LONGITUDE') not in [None, "", "-"]
+            else "-",
+            axis=1
+        )
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
