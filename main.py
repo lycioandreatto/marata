@@ -464,12 +464,16 @@ if menu == "📅 Agendamentos do Dia":
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    lat_v = st.session_state.get('lat', '0')
+                    lon_v = st.session_state.get('lon', '0')
+                    link_gps = f"https://www.google.com/maps?q={lat_v},{lon_v}"
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'REGISTRO']] = [n_st, final_j, f"{lat_v}, {lon_v}"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
-                    st.success("Atualizado com sucesso!")
+                    st.success("✅ Atualizado com sucesso!")
                     time.sleep(1)
                     st.rerun()
+        
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
