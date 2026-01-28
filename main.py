@@ -11,6 +11,52 @@ import os
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 
+# --- CUSTOMIZAÇÃO DE CORES (CSS) ---
+st.markdown("""
+    <style>
+        /* Fundo da área principal */
+        .stApp {
+            background-color: #002B1B;
+            color: white;
+        }
+        
+        /* Fundo do Menu Lateral (Sidebar) */
+        [data-testid="stSidebar"] {
+            background-color: #001F3F;
+        }
+
+        /* Ajuste de cor de textos da Sidebar para branco */
+        [data-testid="stSidebar"] .stMarkdown, 
+        [data-testid="stSidebar"] p, 
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] h3 {
+            color: white !important;
+        }
+
+        /* Ajuste de cor de títulos na área principal */
+        h1, h2, h3, h4, h5, h6, p, span {
+            color: white !important;
+        }
+
+        /* Cor dos botões e abas para melhor contraste */
+        .stButton>button {
+            border-radius: 5px;
+        }
+        
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            height: 50px;
+            white-space: pre-wrap;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px 4px 0px 0px;
+            color: white;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- CONEXÃO E CONFIGURAÇÕES ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
@@ -267,7 +313,7 @@ with st.sidebar:
                 st.rerun()
 
 # --- TÍTULO CENTRAL NO TOPO (AJUSTADO PARA CIMA) ---
-st.markdown("<h4 style='text-align: center; color: #5D2E1F; margin-top: -50px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: #FFFFFF; margin-top: -50px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
 # --- PÁGINA: DASHBOARD ---
