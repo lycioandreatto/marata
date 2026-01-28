@@ -190,6 +190,7 @@ if menu == "📊 Dashboard de Controle":
     
     if df_base is not None and df_agenda is not None:
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
+        col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
         
         # Lógica para o Relatório Detalhado (Excel/PDF)
         codigos_agendados_global = df_agenda['CÓDIGO CLIENTE'].unique()
@@ -197,8 +198,10 @@ if menu == "📊 Dashboard de Controle":
         df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['Cliente'].apply(
             lambda x: 'AGENDADO' if str(x) in codigos_agendados_global else 'PENDENTE'
         )
-        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', 'STATUS AGENDAMENTO']]
-        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'STATUS']
+        
+        # Inclusão da coluna Local (Cidade) no relatório detalhado
+        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
+        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
 
         # Resumo para a tela do Streamlit (Tabela compacta)
         resumo_base = df_base.groupby(col_rv_base).size().reset_index(name='Total na Base')
