@@ -386,9 +386,14 @@ if menu == "📅 Agendamentos do Dia":
                 if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
                 col1, col2 = st.columns(2)
-                with col1: 
-        col1, col2 = st.columns(2)
-                with col1: 
+                # Substitua a partir daqui:
+                col1, col2 = st.columns(2)
+                with col1:
+                    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                    # --- AQUI ESTÁ O NOVO CAMPO ---
+                    nova_data = None
+                    if n_st == "Reagendado":
+                        nova_data = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br)) 
                     n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
                     # --- AQUI ESTÁ O NOVO CAMPO ---
                     nova_data = None
