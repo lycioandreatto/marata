@@ -19,22 +19,8 @@ if not cookies.ready():
 st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
-# --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
     <style>
-    /* 1. SOBE A TELA GERAL */
-    .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 0rem !important;
-        margin-top: -30px;
-    }
-
-    /* 2. ESCONDE O MENU SUPERIOR */
-    header {
-        visibility: hidden;
-    }
-
-    /* 3. ESTILIZAÇÃO DOS CARDS (O que você já tinha) */
     [data-testid="stMetric"] {
         background-color: #f0f2f6;
         padding: 15px;
@@ -47,6 +33,7 @@ st.markdown("""
         color: black !important;
     }
     
+    /* Estilização do Card de Usuário Logado */
     .user-card {
         background-color: #1e1e1e;
         padding: 12px 20px;
@@ -356,7 +343,7 @@ with st.sidebar:
                 st.rerun()
 
 # --- TÍTULO CENTRAL NO TOPO ---
-st.markdown("<h4 style='text-align: center; color: black; margin-top: -10px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
