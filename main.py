@@ -187,6 +187,8 @@ def carregar_dados():
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
+        if 'DATA REAGENDAMENTO' not in df_a.columns:
+          df_a['DATA REAGENDAMENTO'] = "-"
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
