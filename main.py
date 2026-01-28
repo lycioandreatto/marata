@@ -394,14 +394,30 @@ if menu == "📅 Agendamentos do Dia":
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
-                if st.button("💾 ATUALIZAR STATUS"):
-                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.cache_data.clear()
-                    st.success("Atualizado com sucesso!")
-                    time.sleep(1)
-                    st.rerun()
+                # --- DENTRO DO BLOCO DE ATUALIZAÇÃO DO STATUS ---
+if st.button("💾 ATUALIZAR STATUS"):
+    # Tenta obter a localização do navegador
+    loc = get_geolocation()
+    
+    geo_info = "-"
+    if loc:
+        lat = loc['coords']['latitude']
+        lon = loc['coords']['longitude']
+        geo_info = f"https://www.google.com/maps?q={lat},{lon}"
+    else:
+        st.warning("⚠️ Localização não capturada. Verifique se o GPS está ativo e o navegador tem permissão.")
+
+    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+    
+    # Atualiza o DataFrame com a nova coluna de geolocalização
+    # Importante: Sua planilha no Google Sheets precisa ter a coluna 'LOCALIZACAO'
+    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'LOCALIZACAO']] = [n_st, final_j, geo_info]
+    
+    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+    st.cache_data.clear()
+    st.success(f"Atualizado com sucesso! Localização registrada.")
+    time.sleep(1)
+    st.rerun()
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
