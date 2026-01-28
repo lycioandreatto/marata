@@ -407,38 +407,38 @@ if menu == "📅 Agendamentos do Dia":
     if st.button("💾 ATUALIZAR STATUS"):
 
     # Captura a localização via navegador
-    location = streamlit_js_eval(
-        js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
-        key="get_location",
-        want_output=True
+        location = streamlit_js_eval(
+            js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
+            key="get_location",
+            want_output=True
     )
 
-    if location is None:
-        st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
-        st.stop()
+        if location is None:
+            st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
+            st.stop()
 
-    latitude = location.get("latitude", None)
-    longitude = location.get("longitude", None)
+        latitude = location.get("latitude", None)
+        longitude = location.get("longitude", None)
 
     # Monta justificativa final
-    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+        final_j = mot_outro if n_ju == "OUTRO" else n_ju
 
     # Atualiza no DataFrame
-    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [
-        n_st, final_j, latitude, longitude
-    ]
+        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [
+            n_st, final_j, latitude, longitude
+        ]
 
     # Salva no Google Sheets
-    conn.update(
-        spreadsheet=url_planilha,
-        worksheet="AGENDA",
-        data=df_agenda.drop(columns=['LINHA'], errors='ignore')
-    )
+        conn.update(
+            spreadsheet=url_planilha,
+            worksheet="AGENDA",
+            data=df_agenda.drop(columns=['LINHA'], errors='ignore')
+        )
 
-    st.cache_data.clear()
-    st.success("Atualizado com sucesso!")
-    time.sleep(1)
-    st.rerun()
+        st.cache_data.clear()
+        st.success("Atualizado com sucesso!")
+        time.sleep(1)
+        st.rerun()
 
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
