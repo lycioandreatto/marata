@@ -372,6 +372,12 @@ if menu == "📅 Agendamentos do Dia":
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
                 df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
+        if 'DATA REAGENDADA' in df_f.columns:
+            df_f['Reagendado para:'] = df_f['DATA REAGENDADA'].apply(
+                lambda x: x if pd.notna(x) and str(x).strip() != "" else ""
+            )
+        else:
+            df_f['Reagendado para:'] = ""
 
             df_dia["EDITAR"] = False
             cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
@@ -636,7 +642,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_f = pd.merge(df_f, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
             df_f.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
         
-        cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+        cols_exp = ['REGISTRO', 'DATA', 'DATA REAGENDADA','ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         df_exp = df_f[cols_exp]
         
         c1, c2, _ = st.columns([0.15, 0.15, 0.7])
@@ -647,7 +653,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             except: st.error("Erro ao gerar PDF")
 
         df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+        cols_v = ['EDITAR', 'REGISTRO', 'DATA','DATA REAGENDADA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         
         df_display = df_f[cols_v].copy()
         try:
