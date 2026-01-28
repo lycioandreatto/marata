@@ -218,7 +218,7 @@ if not st.session_state.logado:
         """
         <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
             <img src="https://raw.githubusercontent.com/lycioandreatto/marata/main/pngmarata" width="60">
-            <h1 style="color: #000C75; margin: 0;">SISTEMA DE CONTROLE DE AGENDAMENTOS</h1>
+            <h1 style="color: #000C75; margin: 0;">SISTEMA DE CONTROLE DE AGENDAMIENTOS</h1>
         </div>
         """,
         unsafe_allow_html=True
