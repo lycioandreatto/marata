@@ -364,8 +364,9 @@ if menu == "📅 Agendamentos do Dia":
     if df_agenda is not None and not df_agenda.empty:
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
         
+        # Filtro por perfil
         if is_admin or is_diretoria:
-            pass 
+            pass
         elif is_analista:
             df_dia = df_dia[df_dia['ANALISTA'].str.upper() == user_atual]
         else:
@@ -374,141 +375,99 @@ if menu == "📅 Agendamentos do Dia":
         st.columns([1, 3])[0].metric("Visitas Hoje", len(df_dia))
         
         if not df_dia.empty:
+            # Junta cidade da BASE
             if df_base is not None:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
-                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
+                df_dia = pd.merge(
+                    df_dia,
+                    df_cidades,
+                    left_on='CÓDIGO CLIENTE',
+                    right_on='Cliente',
+                    how='left'
+                ).drop(columns=['Cliente_y'], errors='ignore')
                 df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
+            # Editor
             df_dia["EDITAR"] = False
-            cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-            
+            cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE',
+                      'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             df_display = df_dia[cols_v].copy()
             
-            edicao_dia = st.data_editor(df_display, key="edit_dia", hide_index=True, use_container_width=True,
-                                     column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
-                                     disabled=[c for c in cols_v if c != "EDITAR"])
+            edicao_dia = st.data_editor(
+                df_display,
+                key="edit_dia",
+                hide_index=True,
+                use_container_width=True,
+                column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
+                disabled=[c for c in cols_v if c != "EDITAR"]
+            )
 
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 sel_row = df_dia.iloc[marcados.index[0]]
                 st.markdown("---")
                 st.subheader(f"Atualizar Atendimento: {sel_row['CLIENTE']}")
+
                 st_list = ["Planejado", "Realizado", "Reagendado"]
                 ju_list = list(df_just.iloc[:, 0].dropna().unique())
-                if "OUTRO" not in ju_list: ju_list.append("OUTRO")
+                if "OUTRO" not in ju_list:
+                    ju_list.append("OUTRO")
                 
                 col1, col2 = st.columns(2)
-                with col1: n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                with col1:
+                    n_st = st.radio(
+                        "Status Atual:",
+                        st_list,
+                        index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0
+                    )
                 with col2:
-                    n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
+                    n_ju = st.selectbox(
+                        "Justificativa/Observação:",
+                        ju_list,
+                        index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0
+                    )
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
-    if st.button("💾 ATUALIZAR STATUS"):
+                if st.button("💾 ATUALIZAR STATUS"):
+                    # 1. Captura localização via navegador
+                    location = streamlit_js_eval(
+                        js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
+                        key="get_location",
+                        want_output=True
+                    )
 
-    # Captura a localização via navegador
-        location = streamlit_js_eval(
-            js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
-            key="get_location",
-            want_output=True
-    )
+                    if location is None:
+                        st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
+                        st.stop()
 
-        if location is None:
-            st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
-            st.stop()
+                    latitude = location.get("latitude", None)
+                    longitude = location.get("longitude", None)
 
-        latitude = location.get("latitude", None)
-        longitude = location.get("longitude", None)
+                    # 2. Monta justificativa final
+                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
 
-    # Monta justificativa final
-        final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                    # 3. Atualiza no DataFrame (incluindo LATITUDE/LONGITUDE)
+                    df_agenda.loc[
+                        df_agenda['ID'] == sel_row['ID'],
+                        ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']
+                    ] = [n_st, final_j, latitude, longitude]
 
-    # Atualiza no DataFrame
-        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [
-            n_st, final_j, latitude, longitude
-        ]
+                    # 4. Salva no Google Sheets
+                    conn.update(
+                        spreadsheet=url_planilha,
+                        worksheet="AGENDA",
+                        data=df_agenda.drop(columns=['LINHA'], errors='ignore')
+                    )
 
-    # Salva no Google Sheets
-        conn.update(
-            spreadsheet=url_planilha,
-            worksheet="AGENDA",
-            data=df_agenda.drop(columns=['LINHA'], errors='ignore')
-        )
-
-        st.cache_data.clear()
-        st.success("Atualizado com sucesso!")
-        time.sleep(1)
-        st.rerun()
-if not df_dia.empty:
-    if df_base is not None:
-        col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
-        df_cidades = df_base[['Cliente', col_local_base]].copy()
-        df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
-        df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
-
-    df_dia["EDITAR"] = False
-    cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-    df_display = df_dia[cols_v].copy()
-
-    edicao_dia = st.data_editor(df_display, key="edit_dia", hide_index=True, use_container_width=True,
-                                 column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
-                                 disabled=[c for c in cols_v if c != "EDITAR"])
-
-    marcados = edicao_dia[edicao_dia["EDITAR"] == True]
-    if not marcados.empty:
-        sel_row = df_dia.iloc[marcados.index[0]]
-        st.markdown("---")
-        st.subheader(f"Atualizar Atendimento: {sel_row['CLIENTE']}")
-        st_list = ["Planejado", "Realizado", "Reagendado"]
-        ju_list = list(df_just.iloc[:, 0].dropna().unique())
-        if "OUTRO" not in ju_list: ju_list.append("OUTRO")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-        with col2:
-            n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-            mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
-
-        if st.button("💾 ATUALIZAR STATUS"):
-
-            # Captura a localização via navegador
-            location = streamlit_js_eval(
-                js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
-                key="get_location",
-                want_output=True
-            )
-
-            if location is None:
-                st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
-                st.stop()
-
-            latitude = location.get("latitude", None)
-            longitude = location.get("longitude", None)
-
-            final_j = mot_outro if n_ju == "OUTRO" else n_ju
-
-            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [
-                n_st, final_j, latitude, longitude
-            ]
-
-            conn.update(
-                spreadsheet=url_planilha,
-                worksheet="AGENDA",
-                data=df_agenda.drop(columns=['LINHA'], errors='ignore')
-            )
-
-            st.cache_data.clear()
-            st.success("Atualizado com sucesso!")
-            time.sleep(1)
-            st.rerun()
-if df_agenda is not None and not df_agenda.empty: 
-    df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy() 
-    if not df_dia.empty:
+                    st.cache_data.clear()
+                    st.success("Atualizado com sucesso!")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
-    st.info(f"Não há agendamentos para hoje ({hoje_str}).")
-else: 
-    st.warning("Nenhum dado de agenda disponível.")
+        st.warning("Nenhum dado de agenda disponível.")
 
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
