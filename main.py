@@ -10,6 +10,19 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
+def calcular_distancia(lat1, lon1, lat2, lon2):
+    # Raio da Terra em KM
+    R = 6371.0
+    
+    dlat = np.radians(float(lat2) - float(lat1))
+    dlon = np.radians(float(lon2) - float(lon1))
+    
+    a = np.sin(dlat / 2)**2 + np.cos(np.radians(float(lat1))) * np.cos(np.radians(float(lat2))) * np.sin(dlon / 2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    
+    distancia = R * c * 1000 # Retorna em Metros
+    return distancia
+
 # --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
 # O password abaixo é apenas para criptografia local do cookie
 cookies = EncryptedCookieManager(password="marata_secret_key_2026")
@@ -184,6 +197,8 @@ def carregar_dados():
         
         df_u.columns = [str(c).strip().upper() for c in df_u.columns]
         df_b.columns = [str(c).strip() for c in df_b.columns]
+        if 'COORDENADAS' not in df_b.columns:
+            df_b['COORDENADAS'] = "0, 0"
         df_j.columns = [str(c).strip() for c in df_j.columns]
         df_a.columns = [str(c).strip() for c in df_a.columns]
             
@@ -464,16 +479,52 @@ if menu == "📅 Agendamentos do Dia":
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    lat_v = st.session_state.get('lat', '0')
-                    lon_v = st.session_state.get('lon', '0')
-                    link_gps = f"https://www.google.com/maps?q={lat_v},{lon_v}"
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS']] = [n_st, final_j, f"{lat_v}, {lon_v}"]
+                    lat_v = st.session_state.get('lat', 0)
+                    lon_v = st.session_state.get('lon', 0)
+                    
+                    # 1. Buscar a coordenada alvo na aba BASE
+                    cod_cliente_atual = str(sel_row['CÓDIGO CLIENTE'])
+                    # Filtra a base para achar a coordenada do cliente específico
+                    cliente_info = df_base[df_base['Cliente'].astype(str) == cod_cliente_atual]
+                    
+                    distancia_info = ""
+                    alerta_distancia = False
+                    
+                    if not cliente_info.empty:
+                        coord_base = cliente_info['COORDENADAS'].values[0]
+                        
+                        if pd.notnull(coord_base) and "," in str(coord_base):
+                            try:
+                                lat_alvo, lon_alvo = str(coord_base).split(",")
+                                dist_metros = calcular_distancia(lat_v, lon_v, lat_alvo.strip(), lon_alvo.strip())
+                                
+                                # Define se houve excesso de distância
+                                if n_st == "Realizado" and dist_metros > 500:
+                                    alerta_distancia = True
+                                    distancia_info = f" (⚠️ DISTANTE: {dist_metros:.0f}m)"
+                                else:
+                                    distancia_info = f" (Distância: {dist_metros:.0f}m)"
+                            except:
+                                distancia_info = " (Erro GPS Base)"
+                    
+                    # 2. Preparar a justificativa final com o log de distância
+                    justificativa_final = f"{final_j}{distancia_info}"
+                    
+                    # 3. Salvar os dados
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS']] = [n_st, justificativa_final, f"{lat_v}, {lon_v}"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                    
                     st.cache_data.clear()
-                    st.success("✅ Atualizado com sucesso!")
-                    time.sleep(1)
+                    
+                    # 4. Feedback visual para o usuário
+                    if alerta_distancia:
+                        st.warning(f"Atenção: Visita registrada, mas você estava a {dist_metros:.0f} metros do local cadastrado.")
+                        time.sleep(3) # Tempo maior para ele ler o aviso
+                    else:
+                        st.success("✅ Atualizado com sucesso!")
+                        time.sleep(1)
+                        
                     st.rerun()
-        
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
