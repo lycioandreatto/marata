@@ -276,7 +276,7 @@ if not st.session_state.logado:
                     st.warning("Preencha todos os campos.")
     st.stop()
     if "lat" not in st.session_state:
-    with st.container():
+        with st.container():
         st.info("📍 Para prosseguir, autorize o acesso à sua localização no navegador.")
         lat, lon = capturar_coordenadas()
         
