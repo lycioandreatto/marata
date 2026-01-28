@@ -277,8 +277,8 @@ if not st.session_state.logado:
     st.stop()
     if "lat" not in st.session_state:
         with st.container():
-        st.info("📍 Para prosseguir, autorize o acesso à sua localização no navegador.")
-        lat, lon = capturar_coordenadas()
+    st.info("📍 Para prosseguir, autorize o acesso à sua localização no navegador.")
+    lat, lon = capturar_coordenadas()
         
         if lat and lon:
             st.session_state.lat = lat
