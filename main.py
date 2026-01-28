@@ -189,6 +189,14 @@ if menu == "Novo Agendamento":
 
         if sup_sel != "Selecione...":
             clientes_f = df_base[df_base['Região de vendas'] == sup_sel]
+            
+            # BUSCA AUTOMÁTICA DA ANALISTA VINCULADA AO SUPERVISOR NA ABA BASE
+            analista_vinc = NOME_ANALISTA # Default Barbara
+            if 'Analista' in clientes_f.columns:
+                val_analista = clientes_f['Analista'].iloc[0]
+                if str(val_analista).strip() and str(val_analista) != 'nan':
+                    analista_vinc = str(val_analista).upper()
+
             lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
             
@@ -210,9 +218,15 @@ if menu == "Novo Agendamento":
                         for i, dt in enumerate(datas_sel):
                             nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
                             novas_linhas.append({
-                                "ID": nid, "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), "DATA": dt.strftime("%d/%m/%Y"),
-                                "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, "CLIENTE": nom_c,
-                                "JUSTIFICATIVA": "-", "STATUS": "Planejado (X)"
+                                "ID": nid, 
+                                "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
+                                "DATA": dt.strftime("%d/%m/%Y"),
+                                "ANALISTA": analista_vinc, # GRAVA A ANALISTA VINCULADA
+                                "SUPERVISOR": sup_sel, 
+                                "CÓDIGO CLIENTE": cod_c, 
+                                "CLIENTE": nom_c,
+                                "JUSTIFICATIVA": "-", 
+                                "STATUS": "Planejado (X)"
                             })
                         
                         df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
@@ -232,15 +246,13 @@ elif menu == "Ver/Editar Minha Agenda":
         else:
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-        df_exp = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
-        c1, c2, _ = st.columns([1,1,2])
-        with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
-        with c2: 
-            try: st.download_button("📄 PDF", data=gerar_pdf(df_exp), file_name="agenda.pdf")
-            except: st.error("Erro PDF")
-
+        # Configuração das colunas visíveis
+        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
+        
+        # Garante que a coluna ANALISTA exista no DF para não dar erro
+        if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
+        
         df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
         edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
                                  column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
                                  disabled=[c for c in cols_v if c != "EDITAR"])
