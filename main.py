@@ -495,12 +495,16 @@ if menu == "📅 Agendamentos do Dia":
                         
                         if pd.notnull(coord_base) and "," in str(coord_base):
                             try:
-                                # O .strip() remove espaços vazios acidentais
+                                # O segredo está aqui: split e depois strip em cada parte
                                 partes = str(coord_base).split(",")
-                                lat_alvo = partes[0].strip()
-                                lon_alvo = partes[1].strip()
+                                lat_alvo = partes[0].strip() # Remove espaços do início/fim
+                                lon_alvo = partes[1].strip() # Remove espaços do início/fim
                                 
-                                dist_metros = calcular_distancia(lat_v, lon_v, lat_alvo, lon_alvo)
+                                # Converte para float para garantir que são números
+                                lat_f = float(lat_alvo)
+                                lon_f = float(lon_alvo)
+                                
+                                dist_metros = calcular_distancia(lat_v, lon_v, lat_f, lon_f)
                                 
                                 if n_st == "Realizado" and dist_metros > 500:
                                     alerta_distancia = True
@@ -508,8 +512,8 @@ if menu == "📅 Agendamentos do Dia":
                                 else:
                                     distancia_info = f" (Distância: {dist_metros:.0f}m)"
                             except Exception as e:
-                                # Se ainda der erro, ele grava o que aconteceu para você saber
-                                distancia_info = f" (Erro: Verifique o formato na aba BASE)"
+                                # Grava o erro exato para diagnóstico se falhar
+                                distancia_info = f" (Erro de conversão: {str(e)})"
                     
                     # 2. Preparar a justificativa final com o log de distância
                     justificativa_final = f"{final_j}{distancia_info}"
