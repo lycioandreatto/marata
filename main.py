@@ -736,6 +736,7 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda Completa")
     
@@ -758,34 +759,27 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             df_user['dist_val_calc'] = df_user['DISTANCIA_LOG'].apply(extrair_dist)
 
-            # --- EXIBIÇÃO DOS CARDS COM PRIVACIDADE AJUSTADA ---
+            # --- EXIBIÇÃO DOS CARDS ---
             total_agendado = len(df_user)
             total_pendente = len(df_user[df_user['STATUS'] == "Planejado"])
             total_realizado = len(df_user[df_user['STATUS'] == "Realizado"])
             
-            # Define o número de colunas conforme o perfil
             if is_admin or is_diretoria or is_analista:
                 cols = st.columns(4)
-            else:
-                cols = st.columns(3)
-
-            # Cards visíveis para TODOS
-            cols[0].metric("📅 Total Agendado", total_agendado)
-            cols[1].metric("⏳ Total Pendente", total_pendente)
-            cols[2].metric("✅ Total Realizado", total_realizado)
-
-            # Card visível APENAS para GESTÃO (Lycio, Aldo, Analistas)
-            if is_admin or is_diretoria or is_analista:
                 fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
                 cols[3].metric("📍 Fora do Raio (>500m)", fora_raio, 
                               delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
                               delta_color="inverse")
+            else:
+                cols = st.columns(3)
+
+            cols[0].metric("📅 Total Agendado", total_agendado)
+            cols[1].metric("⏳ Total Pendente", total_pendente)
+            cols[2].metric("✅ Total Realizado", total_realizado)
             
             st.markdown("---")
 
-            # ... (Restante do código de processamento de cidade e data_editor permanece igual)
-
-            # Trazer a Cidade da base se não existir
+            # Lógica de Cidade (Simplificada para o exemplo)
             if df_base is not None and 'CIDADE' not in df_user.columns:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
@@ -803,7 +797,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     return ['color: green; font-weight: bold'] * len(row)
                 return styles
 
-            # Colunas Visíveis (dist_val_calc deve estar aqui para o style funcionar)
+            # Definindo colunas (dist_val_calc e DISTANCIA_LOG precisam estar aqui para o estilo)
             cols_v = ['EXCLUIR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR', 'dist_val_calc']
             if 'DISTANCIA_LOG' in df_user.columns:
                 cols_v.append('DISTANCIA_LOG')
@@ -811,32 +805,38 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_display = df_user[cols_v].copy()
             df_styled = df_display.style.apply(style_agenda_completa, axis=1)
 
+            # --- AJUSTE DE PRIVACIDADE NA TABELA ---
+            # Se NÃO for gestão, ocultamos a DISTANCIA_LOG também
+            config_colunas = {
+                "EXCLUIR": st.column_config.CheckboxColumn("🗑️"),
+                "dist_val_calc": None # Sempre oculto
+            }
+            
+            if not (is_admin or is_diretoria or is_analista):
+                config_colunas["DISTANCIA_LOG"] = None # Oculta para Supervisor
+            else:
+                config_colunas["DISTANCIA_LOG"] = st.column_config.TextColumn("📍 Dist. GPS") # Mostra para Gestão
+
             edicao_user = st.data_editor(
                 df_styled, 
                 key="edit_full_agenda_del", 
                 hide_index=True, 
                 use_container_width=True,
-                column_config={
-                    "EXCLUIR": st.column_config.CheckboxColumn("🗑️"),
-                    "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS"),
-                    "dist_val_calc": None # Oculta a coluna técnica de cálculo
-                },
+                column_config=config_colunas,
                 disabled=[c for c in cols_v if c != "EXCLUIR"]
             )
 
-            # Lógica de Exclusão
+            # Lógica de Exclusão (Mantida)
             marcados = edicao_user[edicao_user["EXCLUIR"] == True]
             if not marcados.empty:
-                idx_selecionado = marcados.index[0]
-                id_real = df_user.iloc[idx_selecionado]['ID']
-                cliente_sel = df_user.iloc[idx_selecionado]['CLIENTE']
-                
-                st.warning(f"Confirma a exclusão de **{cliente_sel}**?")
+                idx = marcados.index[0]
+                id_real = df_user.iloc[idx]['ID']
+                st.warning(f"Confirma exclusão de **{df_user.iloc[idx]['CLIENTE']}**?")
                 if st.button("❌ CONFIRMAR EXCLUSÃO"):
                     df_agenda_novo = df_agenda[df_agenda['ID'].astype(str) != str(id_real)].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_novo)
                     st.cache_data.clear()
-                    st.success("Registro removido!")
+                    st.success("Removido!")
                     time.sleep(1)
                     st.rerun()
         else:
