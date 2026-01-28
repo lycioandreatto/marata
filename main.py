@@ -735,6 +735,7 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda Completa")
     
@@ -757,21 +758,32 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             df_user['dist_val_calc'] = df_user['DISTANCIA_LOG'].apply(extrair_dist)
 
-            # --- EXIBIÇÃO DOS CARDS (EXCLUSIVO GESTÃO) ---
+            # --- EXIBIÇÃO DOS CARDS COM PRIVACIDADE AJUSTADA ---
+            total_agendado = len(df_user)
+            total_pendente = len(df_user[df_user['STATUS'] == "Planejado"])
+            total_realizado = len(df_user[df_user['STATUS'] == "Realizado"])
+            
+            # Define o número de colunas conforme o perfil
             if is_admin or is_diretoria or is_analista:
-                total_agendado = len(df_user)
-                total_pendente = len(df_user[df_user['STATUS'] == "Planejado"])
-                total_realizado = len(df_user[df_user['STATUS'] == "Realizado"])
-                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
+                cols = st.columns(4)
+            else:
+                cols = st.columns(3)
 
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("📅 Total Agendado", total_agendado)
-                c2.metric("⏳ Total Pendente", total_pendente)
-                c3.metric("✅ Total Realizado", total_realizado)
-                c4.metric("📍 Fora do Raio (>500m)", fora_raio, 
-                          delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
-                          delta_color="inverse")
-                st.markdown("---")
+            # Cards visíveis para TODOS
+            cols[0].metric("📅 Total Agendado", total_agendado)
+            cols[1].metric("⏳ Total Pendente", total_pendente)
+            cols[2].metric("✅ Total Realizado", total_realizado)
+
+            # Card visível APENAS para GESTÃO (Lycio, Aldo, Analistas)
+            if is_admin or is_diretoria or is_analista:
+                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
+                cols[3].metric("📍 Fora do Raio (>500m)", fora_raio, 
+                              delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
+                              delta_color="inverse")
+            
+            st.markdown("---")
+
+            # ... (Restante do código de processamento de cidade e data_editor permanece igual)
 
             # Trazer a Cidade da base se não existir
             if df_base is not None and 'CIDADE' not in df_user.columns:
