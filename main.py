@@ -7,6 +7,7 @@ from fpdf import FPDF
 import pytz
 import time
 import os
+from streamlit_js_eval import get_geolocation
 from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
