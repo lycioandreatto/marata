@@ -4,3 +4,4 @@ pandas
 xlsxwriter
 fpdf
 pytz
+streamlit-cookies-manager
