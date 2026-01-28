@@ -687,20 +687,32 @@ with col2:
     n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
     mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
 
-if st.button("💾 SALVAR ALTERAÇÃO"):
-    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-    
-    # --- LOGICA DE SALVAMENTO ALTERADA ---
-    if n_st == "Reagendado" and nova_data_e:
-            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data_e.strftime("%d/%m/%Y")]
-        else:
-            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-            
+# --- PARTE DA INTERFACE DE EDIÇÃO ---
+        col1, col2 = st.columns(2)
+        with col1:
+            n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+            nova_data_e = None
+            if n_st == "Reagendado":
+                nova_data_e = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br), key="data_reag_edit")
+
+        with col2:
+            n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
+            mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
+
+        # --- BOTÃO DE SALVAR ---
         if st.button("💾 SALVAR ALTERAÇÃO"):
             final_j = mot_outro if n_ju == "OUTRO" else n_ju
+            
+            # Lógica de atualização dos dados
+            if n_st == "Reagendado" and nova_data_e:
+                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data_e.strftime("%d/%m/%Y")]
+            else:
+                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+            
+            # Envio para a planilha
             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
             st.cache_data.clear()
-            st.success("Alteração salva!")
+            st.success("Alteração salva com sucesso!")
             time.sleep(1)
             st.rerun()
                 if b2.form_submit_button("🗑️ EXCLUIR"):
