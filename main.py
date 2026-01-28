@@ -11,6 +11,19 @@ import os
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 
+# --- ESTILIZAÇÃO DOS CARDS ---
+st.markdown("""
+    <style>
+    [data-testid="stMetric"] {
+        background-color: #f0f2f6;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #d3d3d3;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- CONEXÃO E CONFIGURAÇÕES ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
