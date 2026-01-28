@@ -31,21 +31,23 @@ def gerar_pdf(df):
     # 'L' define a orientação como Landscape (Paisagem)
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
-    pdf.set_font("Arial", 'B', 14)
+    
+    # Título do Relatório
+    pdf.set_font("Arial", 'B', 12)
     data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
-    pdf.cell(0, 10, f"Relatorio Marata - Gerado em {data_geracao}", ln=True, align='C')
-    pdf.ln(5)
+    pdf.cell(0, 8, f"Relatorio Marata - Gerado em {data_geracao}", ln=True, align='C')
+    pdf.ln(3)
     
     cols = df.columns.tolist()
     # A4 Paisagem tem aproximadamente 277mm de área útil
     largura_total = 275
     
-    # AJUSTE DE LARGURAS PARA NÃO ESPREMER AS COLUNAS
-    largura_cliente = 65  
-    largura_supervisor = 35
-    largura_agendado = 35
-    largura_data = 22
-    largura_justificativa = 55
+    # AJUSTE DE LARGURAS PARA FORÇAR COUBER EM UMA PÁGINA
+    largura_cliente = 60  
+    largura_supervisor = 30
+    largura_agendado = 30
+    largura_data = 18
+    largura_justificativa = 50
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
@@ -66,8 +68,8 @@ def gerar_pdf(df):
     outras_cols_count = len(cols) - len(especiais)
     largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
     
-    # Cabeçalho
-    pdf.set_font("Arial", 'B', 8)
+    # Cabeçalho - Fonte 7 para economizar espaço
+    pdf.set_font("Arial", 'B', 7)
     for col in cols:
         c_up = str(col).upper()
         if c_up == "CLIENTE": w = largura_cliente
@@ -76,11 +78,11 @@ def gerar_pdf(df):
         elif c_up == "DATA": w = largura_data
         elif c_up == "JUSTIFICATIVA": w = largura_justificativa
         else: w = largura_padrao
-        pdf.cell(w, 8, str(col), border=1, align='C')
+        pdf.cell(w, 6, str(col), border=1, align='C')
     pdf.ln()
     
-    # Linhas
-    pdf.set_font("Arial", '', 7) 
+    # Linhas - Fonte 5.5 e altura de linha 5mm para forçar o conteúdo
+    pdf.set_font("Arial", '', 5.5) 
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
@@ -92,7 +94,7 @@ def gerar_pdf(df):
             else: w, limit = largura_padrao, 25
             
             texto = str(item)[:limit].encode('latin-1', 'replace').decode('latin-1')
-            pdf.cell(w, 8, texto, border=1)
+            pdf.cell(w, 5, texto, border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
