@@ -227,7 +227,6 @@ else:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    # Tentativa de carregar exatamente como você descreveu
     try:
         st.image("pngmarata", width=150)
     except:
@@ -266,6 +265,10 @@ with st.sidebar:
                 conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
                 st.cache_data.clear()
                 st.rerun()
+
+# --- TÍTULO CENTRAL NO TOPO ---
+st.markdown("<h1 style='text-align: center; color: #5D2E1F;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h1>", unsafe_allow_html=True)
+st.markdown("---")
 
 # --- PÁGINA: DASHBOARD ---
 if menu == "📊 Dashboard de Controle":
