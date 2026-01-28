@@ -299,15 +299,7 @@ else:
     border_color = "#ff4b4b"
 
 # --- BARRA LATERAL ---
-with st.sidebar:
-    try:
-        st.image("pngmarata", width=150)
-    except:
-        try:
-            st.image("pngmarata.png", width=150)
-        except:
-            st.warning("Logo 'pngmarata' não encontrada.")
-            
+with st.sidebar:            
     # CARD DO USUÁRIO NO MENU LATERAL
     st.markdown(f"""
         <div class="user-card" style="border-left: 5px solid {border_color};">
