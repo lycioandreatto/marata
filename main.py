@@ -179,7 +179,6 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        # Identificar o nome real da coluna Analista na aba BASE (ignora maiúsculas/minúsculas)
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), None)
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
 
@@ -209,7 +208,21 @@ if menu == "Novo Agendamento":
             st.info(f"Agendando para: {user_atual}")
 
         if sup_sel != "Selecione...":
+            # Filtrar clientes do supervisor na base
             clientes_f = df_base[df_base[col_rv_base] == sup_sel]
+            
+            # --- LÓGICA DE CONTADORES E FILTRO DE EXIBIÇÃO ---
+            # Pegar códigos de clientes que já estão na Agenda para este supervisor
+            codigos_agendados = df_agenda[df_agenda['SUPERVISOR'] == sup_sel]['CÓDIGO CLIENTE'].unique()
+            
+            # Filtrar a base para mostrar apenas quem NÃO está agendado
+            clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
+            
+            # Mostrar métricas (Contadores)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total na Base", len(clientes_f))
+            m2.metric("Já Agendados", len(codigos_agendados))
+            m3.metric("Faltando", len(clientes_pendentes))
             
             # BUSCA AUTOMÁTICA DA ANALISTA VINCULADA
             analista_vinc = NOME_ANALISTA
@@ -218,36 +231,41 @@ if menu == "Novo Agendamento":
                 if str(val_analista).strip() and str(val_analista).lower() != 'nan':
                     analista_vinc = str(val_analista).upper()
 
-            lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
-            cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
+            # Lista apenas os clientes que FALTAM agendar
+            lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             
-            if cliente_sel != "Selecione...":
-                qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
-                with st.form("form_novo_v"):
-                    cols_datas = st.columns(qtd_visitas)
-                    datas_sel = []
-                    for i in range(qtd_visitas):
-                        with cols_datas[i]:
-                            d = st.date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"d_{i}")
-                            datas_sel.append(d)
-                    
-                    if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
-                        cod_c, nom_c = cliente_sel.split(" - ", 1)
-                        agora = datetime.now(fuso_br)
-                        novas_linhas = []
-                        for i, dt in enumerate(datas_sel):
-                            nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
-                            novas_linhas.append({
-                                "ID": nid, "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), "DATA": dt.strftime("%d/%m/%Y"),
-                                "ANALISTA": analista_vinc, "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, 
-                                "CLIENTE": nom_c, "JUSTIFICATIVA": "-", "STATUS": "Planejado (X)"
-                            })
-                        df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-                        st.cache_data.clear()
-                        st.success(f"✅ {qtd_visitas} visita(s) salva(s)!")
-                        time.sleep(1)
-                        st.rerun()
+            if not lista_c:
+                st.success("✅ Todos os clientes desta base já foram agendados!")
+            else:
+                cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
+                
+                if cliente_sel != "Selecione...":
+                    qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
+                    with st.form("form_novo_v"):
+                        cols_datas = st.columns(qtd_visitas)
+                        datas_sel = []
+                        for i in range(qtd_visitas):
+                            with cols_datas[i]:
+                                d = st.date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"d_{i}")
+                                datas_sel.append(d)
+                        
+                        if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
+                            cod_c, nom_c = cliente_sel.split(" - ", 1)
+                            agora = datetime.now(fuso_br)
+                            novas_linhas = []
+                            for i, dt in enumerate(datas_sel):
+                                nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
+                                novas_linhas.append({
+                                    "ID": nid, "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), "DATA": dt.strftime("%d/%m/%Y"),
+                                    "ANALISTA": analista_vinc, "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, 
+                                    "CLIENTE": nom_c, "JUSTIFICATIVA": "-", "STATUS": "Planejado (X)"
+                                })
+                            df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
+                            st.cache_data.clear()
+                            st.success(f"✅ {qtd_visitas} visita(s) salva(s)!")
+                            time.sleep(1)
+                            st.rerun()
 
 # --- PÁGINA: VER/EDITAR ---
 elif menu == "Ver/Editar Minha Agenda":
@@ -272,7 +290,6 @@ elif menu == "Ver/Editar Minha Agenda":
         else:
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-        # EXPORTAÇÃO (Excel e PDF)
         if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
         df_exp = df_f[['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
         
