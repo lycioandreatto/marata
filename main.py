@@ -28,29 +28,30 @@ def converter_para_excel(df):
     return output.getvalue()
 
 def gerar_pdf(df):
+    # 'L' define a orientação como Landscape (Paisagem)
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
     
+    # Título do Relatório
     pdf.set_font("Arial", 'B', 12)
     data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
     pdf.cell(0, 8, f"Relatorio Marata - Gerado em {data_geracao}", ln=True, align='C')
     pdf.ln(3)
     
     cols = df.columns.tolist()
+    # A4 Paisagem tem aproximadamente 277mm de área útil
     largura_total = 275
     
-    # Ajuste de larguras incluindo REGISTRO
-    largura_registro = 25
-    largura_cliente = 55  
+    # AJUSTE DE LARGURAS PARA FORÇAR COUBER EM UMA PÁGINA
+    largura_cliente = 60  
     largura_supervisor = 30
     largura_agendado = 30
     largura_data = 18
-    largura_justificativa = 45
+    largura_justificativa = 50
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
     
-    if "REGISTRO" in col_map: especiais.append("REGISTRO")
     if "CLIENTE" in col_map: especiais.append("CLIENTE")
     if "SUPERVISOR" in col_map: especiais.append("SUPERVISOR")
     if "AGENDADO POR" in col_map: especiais.append("AGENDADO POR")
@@ -58,7 +59,6 @@ def gerar_pdf(df):
     if "JUSTIFICATIVA" in col_map: especiais.append("JUSTIFICATIVA")
     
     ocupado = 0
-    if "REGISTRO" in especiais: ocupado += largura_registro
     if "CLIENTE" in especiais: ocupado += largura_cliente
     if "SUPERVISOR" in especiais: ocupado += largura_supervisor
     if "AGENDADO POR" in especiais: ocupado += largura_agendado
@@ -68,11 +68,11 @@ def gerar_pdf(df):
     outras_cols_count = len(cols) - len(especiais)
     largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
     
+    # Cabeçalho - Fonte 7 para economizar espaço
     pdf.set_font("Arial", 'B', 7)
     for col in cols:
         c_up = str(col).upper()
-        if c_up == "REGISTRO": w = largura_registro
-        elif c_up == "CLIENTE": w = largura_cliente
+        if c_up == "CLIENTE": w = largura_cliente
         elif c_up == "SUPERVISOR": w = largura_supervisor
         elif c_up == "AGENDADO POR": w = largura_agendado
         elif c_up == "DATA": w = largura_data
@@ -81,12 +81,12 @@ def gerar_pdf(df):
         pdf.cell(w, 6, str(col), border=1, align='C')
     pdf.ln()
     
+    # Linhas - Fonte 5.5 e altura de linha 5mm para forçar o conteúdo
     pdf.set_font("Arial", '', 5.5) 
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
-            if col_name == "REGISTRO": w, limit = largura_registro, 20
-            elif col_name == "CLIENTE": w, limit = largura_cliente, 50
+            if col_name == "CLIENTE": w, limit = largura_cliente, 50
             elif col_name == "SUPERVISOR": w, limit = largura_supervisor, 30
             elif col_name == "AGENDADO POR": w, limit = largura_agendado, 30
             elif col_name == "DATA": w, limit = largura_data, 12
@@ -237,47 +237,20 @@ if menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
     
     if df_base is not None and df_agenda is not None:
-        col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'Analista')
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
-
-        # --- FILTROS DO DASHBOARD ---
-        st.subheader("Filtros de Visualização")
-        f_c1, f_c2 = st.columns(2)
         
-        df_base_filtrada = df_base.copy()
-        
-        with f_c1:
-            if is_admin or is_diretoria:
-                lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
-                ana_sel_dash = st.selectbox("Escolher Analista:", ["Todos"] + lista_analistas, key="ana_dash")
-                if ana_sel_dash != "Todos":
-                    df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base] == ana_sel_dash]
-            else: # Analista Logado
-                ana_sel_dash = user_atual
-                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base].str.upper() == user_atual]
-
-        with f_c2:
-            lista_sups_dash = sorted([str(s) for s in df_base_filtrada[col_rv_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
-            sup_sel_dash = st.selectbox("Escolher Supervisor:", ["Todos"] + lista_sups_dash, key="sup_dash")
-            if sup_sel_dash != "Todos":
-                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_rv_base] == sup_sel_dash]
-
-        # --- PROCESSAMENTO DOS DADOS FILTRADOS ---
         codigos_agendados_global = df_agenda['CÓDIGO CLIENTE'].unique()
-        df_base_detalhe = df_base_filtrada.copy()
+        df_base_detalhe = df_base.copy()
         df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['Cliente'].apply(
             lambda x: 'AGENDADO' if str(x) in codigos_agendados_global else 'PENDENTE'
         )
         
         df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
-        # --- ORDENAÇÃO ALFABÉTICA PELO STATUS (AGENDADO antes de PENDENTE) ---
-        df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
 
-        resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
-        resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
-        
+        resumo_base = df_base.groupby(col_rv_base).size().reset_index(name='Total na Base')
+        resumo_agenda = df_agenda.groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_rv_base, right_on='SUPERVISOR', how='left').fillna(0)
         df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
         df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
@@ -297,9 +270,9 @@ if menu == "📊 Dashboard de Controle":
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Clientes Base (Filtro)", df_dash['CLIENTES NA BASE'].sum())
-        c2.metric("Total Agendados (Filtro)", df_dash['CLIENTES AGENDADOS'].sum())
-        c3.metric("Pendente Total (Filtro)", df_dash['FALTANDO'].sum())
+        c1.metric("Total Clientes Base", df_dash['CLIENTES NA BASE'].sum())
+        c2.metric("Total Agendados", df_dash['CLIENTES AGENDADOS'].sum())
+        c3.metric("Pendente Total", df_dash['FALTANDO'].sum())
     else:
         st.error("Dados insuficientes para gerar o Dashboard.")
 
