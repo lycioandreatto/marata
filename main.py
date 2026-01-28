@@ -14,13 +14,13 @@ st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 # --- CUSTOMIZAÇÃO DE CORES (CSS) ---
 st.markdown("""
     <style>
-        /* Fundo da área principal - MUDADO PARA BRANCO */
+        /* Fundo da área principal - AZUL MAIS CLARO QUE O DA SIDEBAR */
         .stApp {
-            background-color: #FFFFFF;
+            background-color: #E6F2FF;
             color: #000000;
         }
         
-        /* Fundo do Menu Lateral (Sidebar) - MANTIDO AZUL */
+        /* Fundo do Menu Lateral (Sidebar) - MANTIDO AZUL ESCURO */
         [data-testid="stSidebar"] {
             background-color: #001F3F;
         }
@@ -33,7 +33,7 @@ st.markdown("""
             color: white !important;
         }
 
-        /* Ajuste de cor de títulos na área principal para preto (contraste com fundo branco) */
+        /* Ajuste de cor de títulos na área principal para preto */
         h1, h2, h3, h4, h5, h6, p, span {
             color: #000000 !important;
         }
