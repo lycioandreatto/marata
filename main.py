@@ -10,7 +10,6 @@ import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
-# O password abaixo é apenas para criptografia local do cookie
 cookies = EncryptedCookieManager(password="marata_secret_key_2026")
 if not cookies.ready():
     st.stop()
@@ -33,7 +32,6 @@ st.markdown("""
         color: black !important;
     }
     
-    /* Estilização do Card de Usuário Logado */
     .user-card {
         background-color: #1e1e1e;
         padding: 12px 20px;
@@ -62,7 +60,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-# Administrador e Analista Especial
 NOME_ADMIN = "LYCIO"
 NOME_ANALISTA = "BARBARA"
 NOME_DIRETORIA = "ALDO"
@@ -204,7 +201,6 @@ df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
-    # Verifica se existe cookie de login salvo
     if "user_marata" in cookies:
         st.session_state.logado = True
         st.session_state.usuario = cookies["user_marata"]
@@ -270,11 +266,10 @@ is_admin = (user_atual == NOME_ADMIN.upper())
 is_analista = (user_atual == NOME_ANALISTA.upper())
 is_diretoria = (user_atual == NOME_DIRETORIA.upper())
 
-# Definindo ícone e label com base no perfil
 if is_admin:
     label_display = "ADMINISTRADOR"
     user_icon = "👑"
-    border_color = "#FFD700"  # Dourado para ADM
+    border_color = "#FFD700" 
 elif is_diretoria:
     label_display = f"DIRETORIA {user_atual}"
     user_icon = "📈"
@@ -298,7 +293,6 @@ with st.sidebar:
         except:
             st.warning("Logo 'pngmarata' não encontrada.")
             
-    # CARD DO USUÁRIO NO MENU LATERAL
     st.markdown(f"""
         <div class="user-card" style="border-left: 5px solid {border_color};">
             <div class="user-card-icon">{user_icon}</div>
@@ -339,7 +333,6 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
 
-# --- TÍTULO CENTRAL NO TOPO ---
 st.markdown("<h4 style='text-align: center; color: white; margin-top: -50px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
@@ -386,14 +379,28 @@ if menu == "📅 Agendamentos do Dia":
                 if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
                 col1, col2 = st.columns(2)
-                with col1: n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                with col1: 
+                    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                    
+                    # --- CAMPO REAGENDAMENTO ADICIONADO ---
+                    if n_st == "Reagendado":
+                        nova_data_reag = st.date_input("Nova data para visita:", datetime.now(fuso_br))
+                        motivo_reag = st.text_input("Motivo do Reagendamento:")
+                
                 with col2:
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    
+                    # Se for reagendado, atualiza o status, a justificativa e cria a lógica de alteração
+                    if n_st == "Reagendado":
+                        texto_reag = f"REAGENDADO PARA {nova_data_reag.strftime('%d/%m/%Y')} - MOTIVO: {motivo_reag}"
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, texto_reag]
+                    else:
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                        
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.success("Atualizado com sucesso!")
@@ -479,17 +486,14 @@ elif menu == "📊 Dashboard de Controle":
         c3.metric("Pendente Total (Filtro)", total_pendente)
         c4.metric("% Adesão Total", f"{percent_adesao:.1f}%")
 
-        # --- NOVA FUNÇÃO: RANKING DE ENGAJAMENTO (ADICIONADA AQUI) ---
         st.markdown("---")
         st.subheader("🏆 Ranking de Engajamento")
         
         df_ranking = df_dash.copy()
-        # Converter string de porcentagem para float para ordenar corretamente
         df_ranking['VALOR_NUM'] = df_ranking['% DE ADESÃO'].str.replace('%', '').astype(float)
         df_ranking = df_ranking.sort_values(by='VALOR_NUM', ascending=False).reset_index(drop=True)
-        df_ranking.index += 1  # Ranking começa em 1
+        df_ranking.index += 1 
         
-        # Adicionar medalhas aos 3 primeiros
         def medalha(pos):
             if pos == 1: return "🥇"
             if pos == 2: return "🥈"
@@ -656,24 +660,31 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             st_list = ["Planejado", "Realizado", "Reagendado"]
             ju_list = list(df_just.iloc[:, 0].dropna().unique())
             if "OUTRO" not in ju_list: ju_list.append("OUTRO")
+            
             col1, col2 = st.columns(2)
-            with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+            with col1: 
+                n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                
+                # --- CAMPO REAGENDAMENTO ADICIONADO ---
+                if n_st == "Reagendado":
+                    nova_data_reag_ed = st.date_input("Nova data para visita (Edição):", datetime.now(fuso_br))
+                    motivo_reag_ed = st.text_input("Motivo do Reagendamento (Edição):")
+                    
             with col2:
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-                mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
+                mot_outro = st.text_input("Especifique Motivo:") if n_ju == "OUTRO" else ""
 
-            with st.form("save_form"):
-                b1, b2 = st.columns(2)
-                if b1.form_submit_button("💾 SALVAR"):
-                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+            if st.button("💾 SALVAR ALTERAÇÃO"):
+                final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                
+                if n_st == "Reagendado":
+                    texto_reag = f"REAGENDADO PARA {nova_data_reag_ed.strftime('%d/%m/%Y')} - MOTIVO: {motivo_reag_ed}"
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, texto_reag]
+                else:
                     df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.cache_data.clear()
-                    st.rerun()
-                if b2.form_submit_button("🗑️ EXCLUIR"):
-                    df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
-                    st.cache_data.clear()
-                    st.rerun()
-    else:
-        st.info("Nenhum registro encontrado.")
+                
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                st.cache_data.clear()
+                st.success("Alterado com sucesso!")
+                time.sleep(1)
+                st.rerun()
