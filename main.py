@@ -669,7 +669,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         df_exp = df_f[cols_exp]
         
-        c1, c2, _ = st.columns([0.04, 0.04, 0.44])
+        c1, c2, _ = st.columns([0.02, 0.02, 0.24])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
             try: 
