@@ -692,17 +692,17 @@ if st.button("💾 SALVAR ALTERAÇÃO"):
     
     # --- LOGICA DE SALVAMENTO ALTERADA ---
     if n_st == "Reagendado" and nova_data_e:
-        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data_e.strftime("%d/%m/%Y")]
-    else:
-        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-            with st.form("save_form"):
-                b1, b2 = st.columns(2)
-                if b1.form_submit_button("💾 SALVAR"):
-                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.cache_data.clear()
-                    st.rerun()
+            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data_e.strftime("%d/%m/%Y")]
+        else:
+            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+            
+        if st.button("💾 SALVAR ALTERAÇÃO"):
+            final_j = mot_outro if n_ju == "OUTRO" else n_ju
+            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+            st.cache_data.clear()
+            st.success("Alteração salva!")
+            time.sleep(1)
+            st.rerun()
                 if b2.form_submit_button("🗑️ EXCLUIR"):
                     df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
