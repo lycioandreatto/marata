@@ -52,7 +52,7 @@ st.markdown("""
             white-space: pre-wrap;
             background-color: rgba(0, 0, 0, 0.05);
             border-radius: 4px 4px 0px 0px;
-            color: #000000;
+            color: #FFFFFF;
         }
     </style>
 """, unsafe_allow_html=True)
