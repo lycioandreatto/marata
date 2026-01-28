@@ -15,9 +15,10 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
-# Administrador e Analista Especial
+# Níveis de Acesso
 NOME_ADMIN = "LYCIO"
 NOME_ANALISTA = "BARBARA"
+NOME_DIRETORIA = "ALDO"
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
 def converter_para_excel(df):
@@ -54,6 +55,7 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
+        # Padronização de Colunas
         df_u.columns = [str(c).strip().upper() for c in df_u.columns]
         df_b.columns = [str(c).strip() for c in df_b.columns]
         df_j.columns = [str(c).strip() for c in df_j.columns]
@@ -63,14 +65,14 @@ def carregar_dados():
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
-            cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
+            cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c or 'CLIENTE' in c]
             for col in cols_cod:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
                 df[col] = df[col].replace('0', '')
         
         if 'ID' in df_a.columns: df_a['ID'] = df_a['ID'].astype(str)
         return df_b, df_j, df_a, df_u
-    except Exception: 
+    except Exception as e:
         return None, None, None, pd.DataFrame(columns=["USUARIO", "SENHA"])
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
@@ -89,7 +91,7 @@ if not st.session_state.logado:
             u_login = st.text_input("Usuário:").strip().upper()
             p_login = st.text_input("Senha:", type="password")
             if st.form_submit_button("Entrar"):
-                if "USUARIO" in df_usuarios.columns and "SENHA" in df_usuarios.columns:
+                if "USUARIO" in df_usuarios.columns:
                     valid = df_usuarios[(df_usuarios['USUARIO'].str.upper() == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
                     if not valid.empty:
                         st.session_state.logado = True
@@ -98,44 +100,36 @@ if not st.session_state.logado:
                     else:
                         st.error("Usuário ou Senha incorretos.")
                 else:
-                    st.error("Colunas 'USUARIO' ou 'SENHA' não encontradas na aba USUARIOS.")
+                    st.error("Erro ao carregar base de usuários.")
 
     with tab_cadastro:
         with st.form("cad_form"):
-            st.write("Crie sua conta")
             u_cad = st.text_input("Nome de Usuário:").strip().upper()
             p_cad = st.text_input("Defina uma Senha:", type="password")
             p_cad_conf = st.text_input("Repita a Senha:", type="password")
-            
             if st.form_submit_button("Finalizar Cadastro"):
-                if u_cad and p_cad and p_cad_conf:
-                    if p_cad != p_cad_conf:
-                        st.error("As senhas não coincidem. Por favor, verifique.")
-                    else:
-                        existente = False
-                        if "USUARIO" in df_usuarios.columns:
-                            existente = u_cad in df_usuarios['USUARIO'].str.upper().values
-                        
-                        if not existente:
-                            novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
-                            df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
-                            conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
-                            st.success("Cadastro realizado! Agora você pode fazer o login.")
-                            st.cache_data.clear()
-                        else:
-                            st.error("Este usuário já está cadastrado.")
+                if u_cad and p_cad == p_cad_conf:
+                    novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
+                    df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
+                    conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
+                    st.success("Cadastro realizado!")
+                    st.cache_data.clear()
                 else:
-                    st.warning("Preencha todos os campos.")
+                    st.error("Verifique os campos.")
     st.stop()
 
 # --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
 is_admin = (user_atual == NOME_ADMIN.upper())
+is_diretoria = (user_atual == NOME_DIRETORIA.upper())
 is_analista = (user_atual == NOME_ANALISTA.upper())
+# Quem tem poder de ver tudo
+tem_acesso_total = is_admin or is_diretoria or is_analista
 
-# Define o label conforme solicitado
 if is_admin:
     label_display = "ADMINISTRADOR"
+elif is_diretoria:
+    label_display = f"DIRETORIA {user_atual}"
 elif is_analista:
     label_display = f"ANALISTA {user_atual}"
 else:
@@ -143,9 +137,6 @@ else:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    try: st.image("pngmarata.png", width=150)
-    except: st.warning("Logo não encontrada.")
-    
     st.markdown(f"👤 **{label_display}**")
     menu = st.selectbox("Menu Principal", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
     
@@ -154,17 +145,16 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista:
+        if tem_acesso_total:
+            st.subheader("🗑️ Limpeza em Massa")
             lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
-            if sup_limpar != "Selecione...":
-                if st.button(f"⚠️ APAGAR TUDO: {sup_limpar}"):
-                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
-                    st.cache_data.clear()
-                    st.rerun()
+            if sup_limpar != "Selecione..." and st.button(f"⚠️ APAGAR TUDO: {sup_limpar}"):
+                df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
+                st.cache_data.clear()
+                st.rerun()
         else:
             if st.button(f"⚠️ APAGAR TODA MINHA AGENDA"):
                 df_rest = df_agenda[df_agenda['SUPERVISOR'] != user_atual].drop(columns=['LINHA'], errors='ignore')
@@ -176,7 +166,7 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        if is_admin or is_analista:
+        if tem_acesso_total:
             sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
@@ -190,7 +180,6 @@ if menu == "Novo Agendamento":
             
             if cliente_sel != "Selecione...":
                 qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
-                
                 with st.form("form_novo_v"):
                     cols_datas = st.columns(qtd_visitas)
                     datas_sel = []
@@ -210,11 +199,10 @@ if menu == "Novo Agendamento":
                                 "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, "CLIENTE": nom_c,
                                 "JUSTIFICATIVA": "-", "STATUS": "Planejado (X)"
                             })
-                        
                         df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
                         st.cache_data.clear()
-                        st.success(f"✅ {qtd_visitas} visita(s) salva(s)!")
+                        st.success("✅ Salvo com sucesso!")
                         time.sleep(1)
                         st.rerun()
 
@@ -222,53 +210,55 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista:
+        if tem_acesso_total:
             f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
             df_f = df_agenda.copy() if f_sup == "Todos" else df_agenda[df_agenda['SUPERVISOR'] == f_sup]
         else:
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-        df_exp = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
-        c1, c2, _ = st.columns([1,1,2])
-        with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
-        with c2: 
-            try: st.download_button("📄 PDF", data=gerar_pdf(df_exp), file_name="agenda.pdf")
-            except: st.error("Erro PDF")
+        if not df_f.empty:
+            df_exp = df_f[['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
+            c1, c2, _ = st.columns([1,1,2])
+            with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
+            with c2: 
+                try: st.download_button("📄 PDF", data=gerar_pdf(df_exp), file_name="agenda.pdf")
+                except: st.error("Erro ao gerar PDF.")
 
-        df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
-        edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
-                                 column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
-                                 disabled=[c for c in cols_v if c != "EDITAR"])
+            df_f["EDITAR"] = False
+            cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
+            edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
+                                     column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
+                                     disabled=[c for c in cols_v if c != "EDITAR"])
 
-        marcados = edicao[edicao["EDITAR"] == True]
-        if not marcados.empty:
-            sel_row = df_f.loc[marcados.index[0]]
-            st.markdown("---")
-            st.subheader(f"Editar: {sel_row['CLIENTE']}")
-            
-            st_list = ["Planejado (X)", "Realizado", "Reagendado"]
-            ju_list = list(df_just.iloc[:, 0].dropna().unique())
-            if "OUTRO" not in ju_list: ju_list.append("OUTRO")
-            
-            col1, col2 = st.columns(2)
-            with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-            with col2:
-                n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-                mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
+            marcados = edicao[edicao["EDITAR"] == True]
+            if not marcados.empty:
+                sel_row = df_f.loc[marcados.index[0]]
+                st.markdown("---")
+                st.subheader(f"Editar: {sel_row['CLIENTE']}")
+                st_list = ["Planejado (X)", "Realizado", "Reagendado"]
+                ju_list = list(df_just.iloc[:, 0].dropna().unique())
+                if "OUTRO" not in ju_list: ju_list.append("OUTRO")
+                
+                col1, col2 = st.columns(2)
+                with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                with col2:
+                    n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
+                    mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
 
-            with st.form("save_form"):
-                b1, b2 = st.columns(2)
-                if b1.form_submit_button("💾 SALVAR"):
-                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.cache_data.clear()
-                    st.rerun()
-                if b2.form_submit_button("🗑️ EXCLUIR"):
-                    df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
-                    st.cache_data.clear()
-                    st.rerun()
+                with st.form("save_form"):
+                    b1, b2 = st.columns(2)
+                    if b1.form_submit_button("💾 SALVAR"):
+                        final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                        st.cache_data.clear()
+                        st.rerun()
+                    if b2.form_submit_button("🗑️ EXCLUIR"):
+                        df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
+                        st.cache_data.clear()
+                        st.rerun()
+        else:
+            st.info("Nenhuma agenda encontrada.")
     else:
         st.info("Nenhum registro encontrado.")
