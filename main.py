@@ -417,6 +417,7 @@ st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>S
 st.markdown("---")
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
+# --- PÁGINA: AGENDAMENTOS DO DIA ---
 if menu == "📅 Agendamentos do Dia":
     st.header("📅 Agendamentos do Dia")
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
@@ -446,32 +447,51 @@ if menu == "📅 Agendamentos do Dia":
                 df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
             df_dia["EDITAR"] = False
-            # 1. Colunas padrão
-            cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             
-            # 2. Se o usuário for ADM/Analista/Diretoria, mostramos a coluna de distância separada
+            # --- CORREÇÃO DO ALERTA VISUAL ---
+            def style_status(row):
+                styles = [''] * len(row)
+                if row['STATUS'] == "Realizado":
+                    # Se houver distância salva e for maior que 500m
+                    dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
+                    try:
+                        dist_val = float(dist_str) if dist_str != 'nan' else 0
+                        if dist_val > 500:
+                            # COR LARANJA para alertas de distância
+                            return ['color: #E67E22; font-weight: bold'] * len(row)
+                    except:
+                        pass
+                    # COR VERDE para realizado normal
+                    return ['color: green; font-weight: bold'] * len(row)
+                return styles
+
+            # Definindo colunas visíveis
+            cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             if is_admin or is_diretoria or is_analista:
                 if 'DISTANCIA_LOG' in df_dia.columns:
                     cols_v.append('DISTANCIA_LOG')
             
             df_display = df_dia[cols_v].copy()
-            
-            # --- ADICIONE ISTO AQUI ---
-            def style_realizado(row):
-                if row['STATUS'] == "Realizado":
-                    return ['color: green; font-weight: bold'] * len(row)
-                return [''] * len(row)
-            
-            df_styled = df_display.style.apply(style_realizado, axis=1)
-            # --------------------------
+            df_styled = df_display.style.apply(style_status, axis=1)
 
-            edicao_dia = st.data_editor(df_styled, key="edit_dia", hide_index=True, use_container_width=True,
-                                     column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
-                                     disabled=[c for c in cols_v if c != "EDITAR"])
+            edicao_dia = st.data_editor(
+                df_styled, 
+                key="edit_dia", 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={
+                    "EDITAR": st.column_config.CheckboxColumn("📝"),
+                    "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS")
+                },
+                disabled=[c for c in cols_v if c != "EDITAR"]
+            )
 
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
-                sel_row = df_dia.iloc[marcados.index[0]]
+                # Recupera o índice original para pegar os dados corretos
+                idx_selecionado = marcados.index[0]
+                sel_row = df_dia.iloc[idx_selecionado]
+                
                 st.markdown("---")
                 st.subheader(f"Atualizar Atendimento: {sel_row['CLIENTE']}")
                 st_list = ["Planejado", "Realizado", "Reagendado"]
@@ -479,7 +499,8 @@ if menu == "📅 Agendamentos do Dia":
                 if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
                 col1, col2 = st.columns(2)
-                with col1: n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                with col1: 
+                    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
                 with col2:
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
@@ -489,10 +510,8 @@ if menu == "📅 Agendamentos do Dia":
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
                     
-                    cod_cliente_atual = str(sel_row['CÓDIGO CLIENTE'])
-                    cliente_info = df_base[df_base['Cliente'].astype(str) == cod_cliente_atual]
-                    
-                    log_distancia_valor = "" # Variável para a nova coluna
+                    cliente_info = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
+                    log_distancia_valor = ""
                     alerta_distancia = False
                     
                     if not cliente_info.empty:
@@ -500,41 +519,26 @@ if menu == "📅 Agendamentos do Dia":
                         if pd.notnull(coord_base) and "," in str(coord_base):
                             try:
                                 partes = str(coord_base).split(",")
-                                lat_f = float(partes[0].strip())
-                                lon_f = float(partes[1].strip())
-                                
-                                dist_metros = calcular_distancia(lat_v, lon_v, lat_f, lon_f)
-                                
-                                # Define o valor que vai para a coluna separada
-                                log_distancia_valor = f"{dist_metros:.0f}m"
-                                
-                                if n_st == "Realizado" and dist_metros > 500:
+                                dist_m = calcular_distancia(lat_v, lon_v, partes[0].strip(), partes[1].strip())
+                                log_distancia_valor = f"{dist_m:.0f}m"
+                                if n_st == "Realizado" and dist_m > 500:
                                     alerta_distancia = True
-                            except:
-                                log_distancia_valor = "Erro GPS"
+                            except: log_distancia_valor = "Erro GPS"
 
-                    # 3. SALVAMENTO: Note que agora passamos 4 colunas e 4 valores
-                    # A justificativa agora volta a ser apenas o texto selecionado
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 
-                                 ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
-                    
+                    # Gravação na Planilha
+                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     
                     st.cache_data.clear()
-                    
                     if alerta_distancia:
-                        st.warning(f"⚠️ Visita registrada! Divergência de {log_distancia_valor} detectada.")
+                        st.warning(f"⚠️ Visita registrada com distância excedida ({log_distancia_valor})!")
                         time.sleep(2)
                     else:
-                        st.success("✅ Atualizado com sucesso!")
+                        st.success("✅ Atualizado!")
                         time.sleep(1)
-                        
                     st.rerun()
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
-    else:
-        st.warning("Nenhum dado de agenda disponível.")
-
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
