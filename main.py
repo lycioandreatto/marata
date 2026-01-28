@@ -637,7 +637,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             except: st.error("Erro ao gerar PDF")
 
         df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+        cols_v = ['EDITAR', 'REGISTRO', 'DATA','REAGENDADO PARA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         
         df_display = df_f[cols_v].copy()
         try:
