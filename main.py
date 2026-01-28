@@ -44,6 +44,7 @@ def gerar_pdf(df):
     largura_agendado = 30
     largura_data = 18
     largura_justificativa = 50
+    largura_registro = 35  # Definindo largura para a nova coluna
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
@@ -53,6 +54,7 @@ def gerar_pdf(df):
     if "AGENDADO POR" in col_map: especiais.append("AGENDADO POR")
     if "DATA" in col_map: especiais.append("DATA")
     if "JUSTIFICATIVA" in col_map: especiais.append("JUSTIFICATIVA")
+    if "REGISTRO" in col_map: especiais.append("REGISTRO")
     
     ocupado = 0
     if "CLIENTE" in especiais: ocupado += largura_cliente
@@ -60,6 +62,7 @@ def gerar_pdf(df):
     if "AGENDADO POR" in especiais: ocupado += largura_agendado
     if "DATA" in especiais: ocupado += largura_data
     if "JUSTIFICATIVA" in especiais: ocupado += largura_justificativa
+    if "REGISTRO" in especiais: ocupado += largura_registro
     
     outras_cols_count = len(cols) - len(especiais)
     largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
@@ -72,6 +75,7 @@ def gerar_pdf(df):
         elif c_up == "AGENDADO POR": w = largura_agendado
         elif c_up == "DATA": w = largura_data
         elif c_up == "JUSTIFICATIVA": w = largura_justificativa
+        elif c_up == "REGISTRO": w = largura_registro
         else: w = largura_padrao
         pdf.cell(w, 6, str(col), border=1, align='C')
     pdf.ln()
@@ -85,6 +89,7 @@ def gerar_pdf(df):
             elif col_name == "AGENDADO POR": w, limit = largura_agendado, 30
             elif col_name == "DATA": w, limit = largura_data, 12
             elif col_name == "JUSTIFICATIVA": w, limit = largura_justificativa, 60
+            elif col_name == "REGISTRO": w, limit = largura_registro, 20
             else: w, limit = largura_padrao, 25
             
             texto = str(item)[:limit].encode('latin-1', 'replace').decode('latin-1')
@@ -235,6 +240,7 @@ if menu == "📊 Dashboard de Controle":
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
 
+        # --- FILTROS DO DASHBOARD ---
         st.subheader("Filtros de Visualização")
         f_c1, f_c2 = st.columns(2)
         
@@ -246,7 +252,7 @@ if menu == "📊 Dashboard de Controle":
                 ana_sel_dash = st.selectbox("Escolher Analista:", ["Todos"] + lista_analistas, key="ana_dash")
                 if ana_sel_dash != "Todos":
                     df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base] == ana_sel_dash]
-            else:
+            else: # Analista Logado
                 ana_sel_dash = user_atual
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base].str.upper() == user_atual]
 
@@ -256,25 +262,19 @@ if menu == "📊 Dashboard de Controle":
             if sup_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_rv_base] == sup_sel_dash]
 
-        # --- CORREÇÃO DA DATA DE REGISTRO NO DASHBOARD ---
-        # Pegamos os registros da agenda e garantimos que a coluna 'CÓDIGO CLIENTE' e 'Cliente' (da base) casem
-        df_reg = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy()
-        df_reg = df_reg.drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
-        
+        # --- PROCESSAMENTO DOS DADOS FILTRADOS (TRAZENDO REGISTRO) ---
+        df_reg_agenda = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy().drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
         df_base_detalhe = df_base_filtrada.copy()
-        # Merge para trazer o Registro da Agenda para a Base Filtrada
-        df_base_detalhe = pd.merge(df_base_detalhe, df_reg, left_on='Cliente', right_on='CÓDIGO CLIENTE', how='left')
+        df_base_detalhe = pd.merge(df_base_detalhe, df_reg_agenda, left_on='Cliente', right_on='CÓDIGO CLIENTE', how='left')
         
-        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['CÓDIGO CLIENTE'].apply(
-            lambda x: 'AGENDADO' if pd.notnull(x) else 'PENDENTE'
+        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['REGISTRO'].apply(
+            lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" and str(x) != "-" else 'PENDENTE'
         )
         df_base_detalhe['REGISTRO'] = df_base_detalhe['REGISTRO'].fillna("-")
         
-        # Criando o DataFrame do Relatório com a coluna REGISTRO presente
         df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
 
-        # Cálculos do Dashboard Superior
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         
