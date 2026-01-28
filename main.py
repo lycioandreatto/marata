@@ -467,7 +467,7 @@ if menu == "📅 Agendamentos do Dia":
                     lat_v = st.session_state.get('lat', '0')
                     lon_v = st.session_state.get('lon', '0')
                     link_gps = f"https://www.google.com/maps?q={lat_v},{lon_v}"
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'REGISTRO']] = [n_st, final_j, f"{lat_v}, {lon_v}"]
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS']] = [n_st, final_j, f"{lat_v}, {lon_v}"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.success("✅ Atualizado com sucesso!")
