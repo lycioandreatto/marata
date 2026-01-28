@@ -20,7 +20,7 @@ st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
-     /* Estilização para o editor de dados */
+
        .stDataFrame td {
         vertical-align: middle;
     }
