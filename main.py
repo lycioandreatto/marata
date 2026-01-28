@@ -322,7 +322,7 @@ with st.sidebar:
         st.session_state.usuario = ""
         st.rerun()
         
-for _ in range(10):
+     for _ in range(10):
         st.sidebar.write("")
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
