@@ -55,25 +55,29 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
-        # Padronização de Colunas
-        df_u.columns = [str(c).strip().upper() for c in df_u.columns]
-        df_b.columns = [str(c).strip().upper() for c in df_b.columns] # BASE agora fica toda em MAIÚSCULO
-        df_j.columns = [str(c).strip().upper() for c in df_j.columns]
-        df_a.columns = [str(c).strip().upper() for c in df_a.columns]
+        # Padronização de Colunas (Strip para remover espaços invisíveis)
+        if df_u is not None: df_u.columns = [str(c).strip().upper() for c in df_u.columns]
+        if df_b is not None: df_b.columns = [str(c).strip().upper() for c in df_b.columns]
+        if df_j is not None: df_j.columns = [str(c).strip().upper() for c in df_j.columns]
+        if df_a is not None: df_a.columns = [str(c).strip().upper() for c in df_a.columns]
             
-        if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
-        df_a['LINHA'] = df_a.index + 2
+        if df_a is not None:
+            if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
+            df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
-            # Ajuste para buscar colunas independentemente de como foram escritas na padronização
-            cols_cod = [c for c in df.columns if 'CLIENTE' in c or 'CÓDIGO' in c]
-            for col in cols_cod:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
-                df[col] = df[col].replace('0', '')
+            if df is not None:
+                cols_cod = [c for c in df.columns if 'CLIENTE' in c or 'CÓDIGO' in c]
+                for col in cols_cod:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
+                    df[col] = df[col].replace('0', '')
         
-        if 'ID' in df_a.columns: df_a['ID'] = df_a['ID'].astype(str)
+        if df_a is not None and 'ID' in df_a.columns: 
+            df_a['ID'] = df_a['ID'].astype(str)
+            
         return df_b, df_j, df_a, df_u
-    except Exception: 
+    except Exception as e:
+        st.error(f"Erro ao carregar dados: {e}")
         return None, None, None, pd.DataFrame(columns=["USUARIO", "SENHA"])
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
@@ -91,17 +95,28 @@ if not st.session_state.logado:
         with st.form("login_form"):
             u_login = st.text_input("Usuário:").strip().upper()
             p_login = st.text_input("Senha:", type="password")
-            if st.form_submit_button("Entrar"):
-                if "USUARIO" in df_usuarios.columns and "SENHA" in df_usuarios.columns:
-                    valid = df_usuarios[(df_usuarios['USUARIO'].str.upper() == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
-                    if not valid.empty:
-                        st.session_state.logado = True
-                        st.session_state.usuario = u_login
-                        st.rerun()
+            btn_login = st.form_submit_button("Entrar")
+            
+            if btn_login:
+                if df_usuarios is not None and "USUARIO" in df_usuarios.columns:
+                    # Comparação ignorando maiúsculas/minúsculas e espaços
+                    user_match = df_usuarios[df_usuarios['USUARIO'].str.strip().upper() == u_login]
+                    
+                    if not user_match.empty:
+                        # Verifica a senha (convertendo para string para evitar erro de tipo)
+                        senha_correta = str(user_match.iloc[0]['SENHA']).strip()
+                        if str(p_login).strip() == senha_correta:
+                            st.session_state.logado = True
+                            st.session_state.usuario = u_login
+                            st.success("Login realizado! Redirecionando...")
+                            time.sleep(0.5)
+                            st.rerun()
+                        else:
+                            st.error("Senha incorreta.")
                     else:
-                        st.error("Usuário ou Senha incorretos.")
+                        st.error("Usuário não cadastrado.")
                 else:
-                    st.error("Colunas 'USUARIO' ou 'SENHA' não encontradas na aba USUARIOS.")
+                    st.error("Erro na base de usuários. Verifique a planilha.")
 
     with tab_cadastro:
         with st.form("cad_form"):
@@ -113,20 +128,17 @@ if not st.session_state.logado:
             if st.form_submit_button("Finalizar Cadastro"):
                 if u_cad and p_cad and p_cad_conf:
                     if p_cad != p_cad_conf:
-                        st.error("As senhas não coincidem. Por favor, verifique.")
+                        st.error("As senhas não coincidem.")
                     else:
-                        existente = False
-                        if "USUARIO" in df_usuarios.columns:
-                            existente = u_cad in df_usuarios['USUARIO'].str.upper().values
-                        
+                        existente = u_cad in df_usuarios['USUARIO'].values if df_usuarios is not None else False
                         if not existente:
                             novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
                             df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
                             conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
-                            st.success("Cadastro realizado! Agora você pode fazer o login.")
+                            st.success("Cadastro realizado!")
                             st.cache_data.clear()
                         else:
-                            st.error("Este usuário já está cadastrado.")
+                            st.error("Este usuário já existe.")
                 else:
                     st.warning("Preencha todos os campos.")
     st.stop()
@@ -182,7 +194,6 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        # Busca a coluna ANALISTA (em maiúsculo devido à padronização)
         tem_coluna_analista = 'ANALISTA' in df_base.columns
         
         if is_diretoria:
@@ -307,7 +318,6 @@ elif menu == "Ver/Editar Minha Agenda":
                 st.subheader(f"Editar: {sel_row['CLIENTE']}")
                 
                 st_list = ["Planejado (X)", "Realizado", "Reagendado"]
-                # Ajuste para nome da coluna de justificativa em maiúsculo
                 ju_list = list(df_just.iloc[:, 0].dropna().unique())
                 if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
