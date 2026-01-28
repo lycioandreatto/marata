@@ -24,8 +24,35 @@ NOME_DIRETORIA = "ALDO"
 def converter_para_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Agenda')
+        df.to_excel(writer, index=False, sheet_name='Relatorio_Geral')
     return output.getvalue()
+
+def gerar_pdf_dashboard(df):
+    pdf = FPDF(orientation='L', unit='mm', format='A4')
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
+    pdf.cell(0, 10, f"Relatorio Geral de Engajamento - {data_geracao}", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Larguras adaptadas para o relatório de extração (5 colunas principais)
+    larguras = [40, 30, 100, 40, 60] 
+    pdf.set_font("Arial", 'B', 8)
+    cols = ["SUPERVISOR", "CODIGO", "CLIENTE", "CIDADE", "STATUS AGENDA"]
+    
+    for i, col in enumerate(cols):
+        pdf.cell(larguras[i], 8, col, border=1, align='C')
+    pdf.ln()
+    
+    pdf.set_font("Arial", '', 7)
+    for _, row in df.iterrows():
+        pdf.cell(larguras[0], 7, str(row['SUPERVISOR'])[:25], border=1)
+        pdf.cell(larguras[1], 7, str(row['CÓDIGO']), border=1)
+        pdf.cell(larguras[2], 7, str(row['NOME'])[:60], border=1)
+        pdf.cell(larguras[3], 7, str(row['CIDADE'])[:25], border=1)
+        pdf.cell(larguras[4], 7, str(row['STATUS AGENDA']), border=1)
+        pdf.ln()
+    return pdf.output(dest='S').encode('latin-1')
 
 def gerar_pdf(df):
     pdf = FPDF(orientation='L', unit='mm', format='A4')
@@ -181,26 +208,22 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
 
-# --- PÁGINA: DASHBOARD (NOVA) ---
+# --- PÁGINA: DASHBOARD ---
 if menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
     
     if df_base is not None and df_agenda is not None:
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         
-        # Agrupar total por supervisor na Base
+        # Lógica do Dashboard que você já tem
         resumo_base = df_base.groupby(col_rv_base).size().reset_index(name='Total na Base')
-        
-        # Agrupar agendados únicos por supervisor na Agenda
         resumo_agenda = df_agenda.groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         
-        # Unir dados
         df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_rv_base, right_on='SUPERVISOR', how='left').fillna(0)
         df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
         df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
         df_dash['% Conclusão'] = (df_dash['Já Agendados'] / df_dash['Total na Base'] * 100).round(1).astype(str) + '%'
         
-        # Reorganizar colunas
         df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
         df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
         
@@ -211,6 +234,31 @@ if menu == "📊 Dashboard de Controle":
         c1.metric("Total Clientes Base", df_dash['CLIENTES NA BASE'].sum())
         c2.metric("Total Agendados", df_dash['CLIENTES AGENDADOS'].sum())
         c3.metric("Pendente Total", df_dash['FALTANDO'].sum())
+
+        # --- NOVA SEÇÃO DE EXTRAÇÃO SEM POLUIR ---
+        st.markdown("---")
+        st.subheader("📥 Extração de Relatório Detalhado")
+        st.caption("O relatório exportado contém a lista de todos os clientes da base e o status de agendamento de cada um.")
+        
+        # Preparar dados para a extração
+        agendados_set = set(df_agenda['CÓDIGO CLIENTE'].unique())
+        df_extracao = df_base[[col_rv_base, 'Cliente', 'Nome 1', 'Cidade']].copy()
+        df_extracao.columns = ['SUPERVISOR', 'CÓDIGO', 'NOME', 'CIDADE']
+        df_extracao['STATUS AGENDA'] = df_extracao['CÓDIGO'].apply(lambda x: "✅ Já Agendado" if x in agendados_set else "❌ Pendente")
+        df_extracao = df_extracao.sort_values(by=['SUPERVISOR', 'STATUS AGENDA'])
+
+        e1, e2, _ = st.columns([1, 1, 2])
+        with e1:
+            st.download_button("📄 Emitir Relatório PDF", 
+                               data=gerar_pdf_dashboard(df_extracao), 
+                               file_name=f"Engajamento_Geral_{datetime.now().strftime('%d_%m_%H%M')}.pdf",
+                               use_container_width=True)
+        with e2:
+            st.download_button("📥 Emitir Relatório Excel", 
+                               data=converter_para_excel(df_extracao), 
+                               file_name=f"Engajamento_Geral_{datetime.now().strftime('%d_%m_%H%M')}.xlsx",
+                               use_container_width=True)
+
     else:
         st.error("Dados insuficientes para gerar o Dashboard.")
 
