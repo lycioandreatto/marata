@@ -321,18 +321,7 @@ with st.sidebar:
         st.session_state.logado = False
         st.session_state.usuario = ""
         st.rerun()
-    # --- FUNÇÃO DO POP-UP DE CONFIRMAÇÃO ---
-    @st.dialog("⚠️ CONFIRMAR EXCLUSÃO")
-    def confirmar_limpeza(supervisor_alvo):
-        st.warning(f"Você tem certeza que deseja apagar TODA a agenda de **{supervisor_alvo}**? Esta ação não pode ser desfeita.")
-        if st.button("SIM, APAGAR TUDO", type="primary", use_container_width=True):
-            # Lógica de remoção
-            df_rest = df_agenda[df_agenda['SUPERVISOR'] != supervisor_alvo].drop(columns=['LINHA'], errors='ignore')
-            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
-            st.cache_data.clear()
-            st.success(f"Agenda de {supervisor_alvo} removida com sucesso!")
-            time.sleep(1)
-            st.rerun()
+
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
@@ -350,14 +339,16 @@ with st.sidebar:
             sup_limpar = "Selecione..."
 
         # Lógica do Botão de Deletar
-        # Lógica do Botão (Chamando o NOVO Pop-up)
         if is_admin or is_analista or is_diretoria:
             if sup_limpar != "Selecione...":
-                if st.button(f"🗑️ APAGAR TUDO: {sup_limpar}", use_container_width=True):
-                    confirmar_limpeza(sup_limpar)
-        else:
-            if st.button(f"⚠️ APAGAR TODA MINHA AGENDA", use_container_width=True):
-                confirmar_limpeza(user_atual)
+                if st.button(f"⚠️ APAGAR TUDO: {sup_limpar}"):
+                    # Remove apenas o supervisor selecionado da planilha toda
+                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
+                    st.cache_data.clear()
+                    st.success(f"Agenda de {sup_limpar} removida!")
+                    time.sleep(1)
+                    st.rerun()
         else:
             if st.button(f"⚠️ APAGAR TODA MINHA AGENDA"):
                 df_rest = df_agenda[df_agenda['SUPERVISOR'] != user_atual].drop(columns=['LINHA'], errors='ignore')
