@@ -217,7 +217,7 @@ if not st.session_state.logado:
     st.markdown(
         """
         <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
-            <img src="https://github.com/lycioandreatto/marata/blob/main/pngmarata" width="60">
+            <img src="https://raw.githubusercontent.com/lycioandreatto/marata/main/pngmarata" width="60">
             <h1 style="color: #ff4b4b; margin: 0;">Acesso Gestão Maratá</h1>
         </div>
         """,
