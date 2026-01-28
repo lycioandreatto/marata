@@ -387,24 +387,27 @@ if menu == "📅 Agendamentos do Dia":
                 
                 col1, col2 = st.columns(2)
                 with col1: 
-    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-    # --- NOVA LÓGICA DE DATA AQUI ---
-    nova_data = None
-    if n_st == "Reagendado":
-        nova_data = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br))
+   col1, col2 = st.columns(2)
+                with col1: 
+                    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                    # --- AQUI ESTÁ O NOVO CAMPO ---
+                    nova_data = None
+                    if n_st == "Reagendado":
+                        nova_data = st.date_input("Escolha a Nova Data:", datetime.now(fuso_br))
 
-with col2:
-    n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-    mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
+                with col2:
+                    n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
+                    mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
-if st.button("💾 ATUALIZAR STATUS"):
-    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-    
-    # --- LOGICA DE SALVAMENTO ALTERADA ---
-    if n_st == "Reagendado" and nova_data:
-        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data.strftime("%d/%m/%Y")]
-    else:
-        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                if st.button("💾 ATUALIZAR STATUS"):
+                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                    
+                    # --- LÓGICA DE SALVAMENTO COM A NOVA DATA ---
+                    if n_st == "Reagendado" and nova_data:
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, nova_data.strftime("%d/%m/%Y")]
+                    else:
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.success("Atualizado com sucesso!")
