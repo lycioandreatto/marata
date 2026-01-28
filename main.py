@@ -731,94 +731,92 @@ elif menu == "📋 Novo Agendamento":
                             st.rerun()
 
 # --- PÁGINA: VER/EDITAR ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
-    st.header("🔍 Gerenciar Agenda")
+    st.header("🔍 Minha Agenda Completa")
+    
     if df_agenda is not None and not df_agenda.empty:
+        # Filtro de visibilidade por perfil
         if is_admin or is_diretoria:
-            lista_ana_age = sorted([str(a) for a in df_agenda['ANALISTA'].unique() if str(a).strip() and str(a).lower() != 'nan'])
-            ana_filtro = st.selectbox("Filtrar Agenda por Analista:", ["Todos"] + lista_ana_age)
-            df_temp = df_agenda.copy()
-            if ana_filtro != "Todos":
-                df_temp = df_temp[df_temp['ANALISTA'] == ana_filtro]
-            f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_temp['SUPERVISOR'].unique()))
-            df_f = df_temp.copy() if f_sup == "Todos" else df_temp[df_temp['SUPERVISOR'] == f_sup]
+            df_user = df_agenda.copy()
         elif is_analista:
-            df_f = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
-            f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_f['SUPERVISOR'].unique()))
-            if f_sup != "Todos":
-                df_f = df_f[df_f['SUPERVISOR'] == f_sup]
+            df_user = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
         else:
-            df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
+            df_user = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-        if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
-        if 'AGENDADO POR' not in df_f.columns: df_f['AGENDADO POR'] = "-"
-        
-        if df_base is not None:
-            col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
-            df_cidades = df_base[['Cliente', col_local_base]].copy()
-            df_f = pd.merge(df_f, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
-            df_f.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
-        
-        cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-        df_exp = df_f[cols_exp]
-        
-        c1, c2, _ = st.columns([0.02, 0.02, 0.24])
-        with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
-        with c2: 
-            try: 
-                st.download_button("📄 PDF", data=gerar_pdf(df_exp, tipo_relatorio="AGENDA"), file_name="agenda.pdf")
-            except: st.error("Erro ao gerar PDF")
+        if not df_user.empty:
+            # Trazer a Cidade da base se não existir
+            if df_base is not None and 'CIDADE' not in df_user.columns:
+                col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
+                df_cidades = df_base[['Cliente', col_local_base]].copy()
+                df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
+                df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-        df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-        
-        df_display = df_f[cols_v].copy()
-        try:
-            df_display['REG_TEMP'] = pd.to_datetime(df_display['REGISTRO'], dayfirst=True)
-            df_display = df_display.sort_values(by='REG_TEMP', ascending=False).drop(columns=['REG_TEMP'])
-        except:
-            df_display = df_display.sort_values(by='REGISTRO', ascending=False)
+            df_user["EDITAR"] = False
+            
+            # --- MESMA LÓGICA DE CORES DOS AGENDAMENTOS DO DIA ---
+            def style_agenda_completa(row):
+                styles = [''] * len(row)
+                if row['STATUS'] == "Realizado":
+                    dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
+                    try:
+                        # Converte para float tratando possíveis NaNs ou vazios
+                        val_float = float(dist_str) if (dist_str != 'nan' and dist_str.strip() != "") else 0
+                        if val_float > 500:
+                            return ['color: #E67E22; font-weight: bold'] * len(row) # Laranja Alerta
+                    except:
+                        pass
+                    return ['color: green; font-weight: bold'] * len(row) # Verde OK
+                return styles
 
-        # --- TRECHO NOVO PARA FONTE VERDE ---
-        def style_rows(row):
-            if row['STATUS'] == "Realizado":
-                return ['color: #28a745; font-weight: bold'] * len(row)
-            return [''] * len(row)
+            # Definindo colunas visíveis (incluindo DISTANCIA_LOG se existir)
+            cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            if 'DISTANCIA_LOG' in df_user.columns:
+                cols_v.append('DISTANCIA_LOG')
 
-        df_styled = df_display.style.apply(style_rows, axis=1)
-        # ------------------------------------
+            df_display = df_user[cols_v].copy()
+            df_styled = df_display.style.apply(style_agenda_completa, axis=1)
 
-        # Agora passamos o df_styled no lugar do df_display
-        edicao = st.data_editor(df_styled, key="edit_v12", hide_index=True, use_container_width=True,
-                                 column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
-                                 disabled=[c for c in cols_v if c != "EDITAR"])
+            edicao_user = st.data_editor(
+                df_styled, 
+                key="edit_full_agenda", 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={
+                    "EDITAR": st.column_config.CheckboxColumn("📝"),
+                    "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS")
+                },
+                disabled=[c for c in cols_v if c != "EDITAR"]
+            )
 
-        marcados = edicao[edicao["EDITAR"] == True]
-        if not marcados.empty:
-            sel_row = df_f.loc[df_f['REGISTRO'] == marcados.iloc[0]['REGISTRO']].iloc[0]
-            st.markdown("---")
-            st.subheader(f"Editar: {sel_row['CLIENTE']}")
-            st_list = ["Planejado", "Realizado", "Reagendado"]
-            ju_list = list(df_just.iloc[:, 0].dropna().unique())
-            if "OUTRO" not in ju_list: ju_list.append("OUTRO")
-            col1, col2 = st.columns(2)
-            with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-            with col2:
-                n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
-                mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
+            marcados = edicao_user[edicao_user["EDITAR"] == True]
+            if not marcados.empty:
+                sel_row = df_user.iloc[marcados.index[0]]
+                st.markdown("---")
+                st.subheader(f"Editar Registro: {sel_row['CLIENTE']}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    n_st = st.selectbox("Alterar Status:", ["Planejado", "Realizado", "Reagendado"], 
+                                      index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
+                with col2:
+                    ju_list = list(df_just.iloc[:, 0].dropna().unique())
+                    if "OUTRO" not in ju_list: ju_list.append("OUTRO")
+                    n_ju = st.selectbox("Nova Justificativa:", ju_list, 
+                                      index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
 
-            with st.form("save_form"):
-                b1, b2 = st.columns(2)
-                if b1.form_submit_button("💾 SALVAR"):
-                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                if st.button("💾 SALVAR ALTERAÇÃO"):
+                    # Aqui mantemos a distância que já estava gravada ou limpamos se mudar o status
+                    dist_atual = sel_row.get('DISTANCIA_LOG', "") if n_st == "Realizado" else ""
+                    coord_atual = sel_row.get('COORDENADAS', "") if n_st == "Realizado" else ""
+
+                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'DISTANCIA_LOG', 'COORDENADAS']] = [n_st, n_ju, dist_atual, coord_atual]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
+                    st.success("Registro atualizado!")
+                    time.sleep(1)
                     st.rerun()
-                if b2.form_submit_button("🗑️ EXCLUIR"):
-                    df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
-                    st.cache_data.clear()
-                    st.rerun()
+        else:
+            st.info("Você ainda não possui agendamentos nesta lista.")
     else:
-        st.info("Nenhum registro encontrado.")
+        st.warning("Agenda vazia.")
