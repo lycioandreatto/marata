@@ -321,10 +321,18 @@ if menu == "📊 Dashboard de Controle":
         
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
         
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Clientes Base (Filtro)", df_dash['CLIENTES NA BASE'].sum())
-        c2.metric("Total Agendados (Filtro)", df_dash['CLIENTES AGENDADOS'].sum())
-        c3.metric("Pendente Total (Filtro)", df_dash['FALTANDO'].sum())
+        # --- CARDS DO DASHBOARD ---
+        c1, c2, c3, c4 = st.columns(4)
+        total_base = df_dash['CLIENTES NA BASE'].sum()
+        total_agendados = df_dash['CLIENTES AGENDADOS'].sum()
+        total_pendente = df_dash['FALTANDO'].sum()
+        percent_adesao = (total_agendados / total_base * 100) if total_base > 0 else 0
+        
+        c1.metric("Total Clientes Base (Filtro)", total_base)
+        c2.metric("Total Agendados (Filtro)", total_agendados)
+        c3.metric("Pendente Total (Filtro)", total_pendente)
+        c4.metric("% Adesão Total", f"{percent_adesao:.1f}%")
+        
     else:
         st.error("Dados insuficientes para gerar o Dashboard.")
 
@@ -362,10 +370,17 @@ elif menu == "Novo Agendamento":
             codigos_agendados = df_agenda[df_agenda['SUPERVISOR'] == sup_sel]['CÓDIGO CLIENTE'].unique()
             clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
             
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total na Base", len(clientes_f))
-            m2.metric("Já Agendados", len(codigos_agendados))
-            m3.metric("Faltando", len(clientes_pendentes))
+            # --- CARDS DA TELA DE AGENDAMENTO ---
+            m1, m2, m3, m4 = st.columns(4)
+            n_total = len(clientes_f)
+            n_agendados = len(codigos_agendados)
+            n_pendentes = len(clientes_pendentes)
+            perc_sup = (n_agendados / n_total * 100) if n_total > 0 else 0
+            
+            m1.metric("Total na Base", n_total)
+            m2.metric("Já Agendados", n_agendados)
+            m3.metric("Faltando", n_pendentes)
+            m4.metric("% Adesão", f"{perc_sup:.1f}%")
             
             analista_vinc = NOME_ANALISTA
             if col_ana_base in clientes_f.columns:
