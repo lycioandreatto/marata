@@ -6,6 +6,7 @@ import io
 from fpdf import FPDF
 import pytz
 import time
+import os  # Adicionado para verificação de caminho
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
@@ -34,7 +35,6 @@ def gerar_pdf(df, tipo_relatorio="GERAL"):
     # Ordenação específica solicitada
     df_pdf = df.copy()
     if tipo_relatorio == "AGENDA" and "REGISTRO" in df_pdf.columns:
-        # Tenta converter para ordenar cronologicamente, se falhar mantém original
         try:
             df_pdf['REGISTRO_DT'] = pd.to_datetime(df_pdf['REGISTRO'], dayfirst=True)
             df_pdf = df_pdf.sort_values(by='REGISTRO_DT', ascending=False).drop(columns=['REGISTRO_DT'])
@@ -49,7 +49,6 @@ def gerar_pdf(df, tipo_relatorio="GERAL"):
     cols = df_pdf.columns.tolist()
     largura_total = 275
     
-    # Ajuste de fonte reduzido conforme solicitado
     qtd_cols = len(cols)
     if qtd_cols > 8:
         tamanho_fonte_cabecalho = 5
@@ -95,7 +94,6 @@ def gerar_pdf(df, tipo_relatorio="GERAL"):
     outras_cols_count = len(cols) - len(especiais)
     largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
     
-    # Cabeçalho
     pdf.set_font("Arial", 'B', tamanho_fonte_cabecalho)
     for col in cols:
         c_up = str(col).upper()
@@ -110,7 +108,6 @@ def gerar_pdf(df, tipo_relatorio="GERAL"):
         pdf.cell(w, 6, str(col), border=1, align='C')
     pdf.ln()
     
-    # Dados
     pdf.set_font("Arial", '', tamanho_fonte_dados) 
     for index, row in df_pdf.iterrows():
         for i, item in enumerate(row):
@@ -230,8 +227,17 @@ else:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    try: st.image("pngmarata.png", width=150)
-    except: st.warning("Logo não encontrada.")
+    # Busca o caminho absoluto da imagem para evitar o erro de localização
+    img_path = os.path.join(os.getcwd(), "pngmarata.png")
+    if os.path.exists(img_path):
+        st.image(img_path, width=150)
+    else:
+        # Tenta carregar sem o caminho absoluto caso o Streamlit Cloud esteja usando estrutura diferente
+        try:
+            st.image("pngmarata.png", width=150)
+        except:
+            st.warning("Logo não encontrada no diretório.")
+            
     st.markdown(f"👤 **{label_display}**")
     
     opcoes_menu = ["Novo Agendamento", "Ver/Editar Minha Agenda"]
@@ -272,7 +278,6 @@ if menu == "📊 Dashboard de Controle":
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
 
-        # --- FILTROS DO DASHBOARD ---
         st.subheader("Filtros de Visualização")
         f_c1, f_c2 = st.columns(2)
         
@@ -284,7 +289,7 @@ if menu == "📊 Dashboard de Controle":
                 ana_sel_dash = st.selectbox("Escolher Analista:", ["Todos"] + lista_analistas, key="ana_dash")
                 if ana_sel_dash != "Todos":
                     df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base] == ana_sel_dash]
-            else: # Analista Logado
+            else: 
                 ana_sel_dash = user_atual
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base].str.upper() == user_atual]
 
@@ -294,7 +299,6 @@ if menu == "📊 Dashboard de Controle":
             if sup_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_rv_base] == sup_sel_dash]
 
-        # --- PROCESSAMENTO DOS DADOS FILTRADOS (TRAZENDO REGISTRO) ---
         df_reg_agenda = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy().drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
         df_base_detalhe = df_base_filtrada.copy()
         df_base_detalhe = pd.merge(df_base_detalhe, df_reg_agenda, left_on='Cliente', right_on='CÓDIGO CLIENTE', how='left')
@@ -307,7 +311,6 @@ if menu == "📊 Dashboard de Controle":
         df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
         
-        # Ordenar por STATUS no Dashboard conforme solicitado
         df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
@@ -325,14 +328,12 @@ if menu == "📊 Dashboard de Controle":
             st.download_button("📥 Relatório Detalhado (Excel)", data=converter_para_excel(df_relatorio_completo), file_name="detalhamento_agendamentos.xlsx")
         with exp_c2:
             try:
-                # PDF do DASH continua organizado por STATUS
                 st.download_button("📄 Relatório Detalhado (PDF)", data=gerar_pdf(df_relatorio_completo, tipo_relatorio="DASH"), file_name="detalhamento_agendamentos.pdf")
             except:
                 st.error("Erro ao gerar PDF do detalhamento")
         
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
         
-        # --- CARDS DO DASHBOARD ---
         c1, c2, c3, c4 = st.columns(4)
         total_base = df_dash['CLIENTES NA BASE'].sum()
         total_agendados = df_dash['CLIENTES AGENDADOS'].sum()
@@ -381,7 +382,6 @@ elif menu == "Novo Agendamento":
             codigos_agendados = df_agenda[df_agenda['SUPERVISOR'] == sup_sel]['CÓDIGO CLIENTE'].unique()
             clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
             
-            # --- CARDS DA TELA DE AGENDAMENTO ---
             m1, m2, m3, m4 = st.columns(4)
             n_total = len(clientes_f)
             n_agendados = len(codigos_agendados)
@@ -475,14 +475,12 @@ elif menu == "Ver/Editar Minha Agenda":
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
             try: 
-                # PDF da AGENDA agora vai ordenado por REGISTRO (Último adicionado primeiro)
                 st.download_button("📄 PDF", data=gerar_pdf(df_exp, tipo_relatorio="AGENDA"), file_name="agenda.pdf")
             except: st.error("Erro ao gerar PDF")
 
         df_f["EDITAR"] = False
         cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         
-        # Ordenação visual na tela também pelo registro
         df_display = df_f[cols_v].copy()
         try:
             df_display['REG_TEMP'] = pd.to_datetime(df_display['REGISTRO'], dayfirst=True)
