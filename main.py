@@ -418,115 +418,136 @@ st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>S
 st.markdown("---")
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
-else:
-            st.info(f"Não há agendamentos para hoje ({hoje_str}).")
-
-# --- PÁGINA: NOVO AGENDAMENTO (VOCÊ DEVE INSERIR ESTE BLOCO AQUI) ---
-elif menu == "📋 Novo Agendamento":
-    st.header("📋 Agendar Nova Visita")
+# --- PÁGINA: AGENDAMENTOS DO DIA ---
+if menu == "📅 Agendamentos do Dia":
+    st.header("📅 Agendamentos do Dia")
+    hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
     
-    if df_base is not None:
-        # Identificação de colunas na Base
-        col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'Analista')
-        col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
-        col_local = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
+    if df_agenda is not None and not df_agenda.empty:
+        df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
+        
+        if is_admin or is_diretoria:
+            pass 
+        elif is_analista:
+            df_dia = df_dia[df_dia['ANALISTA'].str.upper() == user_atual]
+        else:
+            df_dia = df_dia[df_dia['SUPERVISOR'] == user_atual]
 
-        # Filtros de Seleção
-        f1, f2 = st.columns(2)
-        with f1:
-            if is_admin or is_diretoria:
-                lista_ana = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip()])
-                ana_sel = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_ana)
-            else:
-                ana_sel = user_atual
-                st.info(f"Analista: {ana_sel}")
+        total_visitas = len(df_dia)
+        visitas_realizadas = len(df_dia[df_dia['STATUS'] == "Realizado"])
 
-        with f2:
-            df_sups_f = df_base.copy()
-            if ana_sel != "Todos":
-                df_sups_f = df_sups_f[df_sups_f[col_ana_base].str.upper() == ana_sel.upper()]
+        m_col1, m_col2, m_col3 = st.columns([1, 1, 2])
+        m_col1.metric("Visitas Hoje", total_visitas)
+        m_col2.metric("Realizadas", visitas_realizadas, delta=f"{visitas_realizadas/total_visitas*100:.0f}%" if total_visitas > 0 else None)
+        
+        if not df_dia.empty:
+            if df_base is not None:
+                col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
+                df_cidades = df_base[['Cliente', col_local_base]].copy()
+                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
+                df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
+
+            df_dia["EDITAR"] = False
             
-            lista_sups = sorted([str(s) for s in df_sups_f[col_rv_base].unique() if str(s).strip()])
-            sup_sel = st.selectbox("Selecione o Supervisor:", lista_sups)
+            # --- CORREÇÃO DO ALERTA VISUAL ---
+            def style_status(row):
+                styles = [''] * len(row)
+                if row['STATUS'] == "Realizado":
+                    # Se houver distância salva e for maior que 500m
+                    dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
+                    try:
+                        dist_val = float(dist_str) if dist_str != 'nan' else 0
+                        if dist_val > 500:
+                            # COR LARANJA para alertas de distância
+                            return ['color: #E67E22; font-weight: bold'] * len(row)
+                    except:
+                        pass
+                    # COR VERDE para realizado normal
+                    return ['color: green; font-weight: bold'] * len(row)
+                return styles
 
-        # Listagem de Clientes
-        df_clientes = df_base[df_base[col_rv_base] == sup_sel].copy()
-        
-        st.write(f"### Clientes sob responsabilidade de {sup_sel}")
-        df_clientes['Selecionar'] = False
-        
-        # Editor de dados para selecionar múltiplos clientes
-        grid_clientes = st.data_editor(
-            df_clientes[['Selecionar', 'Cliente', 'Nome', col_local]],
-            hide_index=True,
-            use_container_width=True,
-            column_config={"Selecionar": st.column_config.CheckboxColumn("✔", default=False)},
-            key="grid_novo_agendamento"
-        )
-
-        # Escolha da Data
-        data_visita = st.date_input("Data do Agendamento:", datetime.now(fuso_br))
-        
-        if st.button("🚀 FINALIZAR AGENDAMENTO"):
-            selecionados = grid_clientes[grid_clientes['Selecionar'] == True]
+            # Definindo colunas visíveis
+            cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            if is_admin or is_diretoria or is_analista:
+                if 'DISTANCIA_LOG' in df_dia.columns:
+                    cols_v.append('DISTANCIA_LOG')
             
-            if not selecionados.empty:
-                novos_dados = []
-                for _, row_c in selecionados.iterrows():
-                    novo_id = str(uuid.uuid4())[:8]
-                    registro_agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
+            df_display = df_dia[cols_v].copy()
+            df_styled = df_display.style.apply(style_status, axis=1)
+
+            edicao_dia = st.data_editor(
+                df_styled, 
+                key="edit_dia", 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={
+                    "EDITAR": st.column_config.CheckboxColumn("📝"),
+                    "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS")
+                },
+                disabled=[c for c in cols_v if c != "EDITAR"]
+            )
+
+            marcados = edicao_dia[edicao_dia["EDITAR"] == True]
+            if not marcados.empty:
+                # Recupera o índice original para pegar os dados corretos
+                idx_selecionado = marcados.index[0]
+                sel_row = df_dia.iloc[idx_selecionado]
+                
+                st.markdown("---")
+                st.subheader(f"Atualizar Atendimento: {sel_row['CLIENTE']}")
+                st_list = ["Planejado", "Realizado", "Reagendado"]
+                ju_list = list(df_just.iloc[:, 0].dropna().unique())
+                if "OUTRO" not in ju_list: ju_list.append("OUTRO")
+                
+                col1, col2 = st.columns(2)
+                with col1: 
+                    n_st = st.radio("Status Atual:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
+                with col2:
+                    n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
+                    mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
+
+                if st.button("💾 ATUALIZAR STATUS"):
+                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                    lat_v = st.session_state.get('lat', 0)
+                    lon_v = st.session_state.get('lon', 0)
                     
-                    novos_dados.append({
-                        "ID": novo_id,
-                        "DATA": data_visita.strftime("%d/%m/%Y"),
-                        "ANALISTA": ana_sel if ana_sel != "Todos" else "SISTEMA",
-                        "SUPERVISOR": sup_sel,
-                        "CÓDIGO CLIENTE": str(row_c['Cliente']),
-                        "CLIENTE": row_c['Nome'],
-                        "STATUS": "Planejado",
-                        "JUSTIFICATIVA": "-",
-                        "REGISTRO": registro_agora,
-                        "AGENDADO POR": user_atual,
-                        "COORDENADAS": "-",
-                        "DISTANCIA_LOG": "-"
-                    })
-                
-                df_novos = pd.DataFrame(novos_dados)
-                # Combina com a agenda existente
-                df_agenda_atualizada = pd.concat([df_agenda, df_novos], ignore_index=True)
-                
-                # Salva na planilha (removendo coluna de índice se houver)
-                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_atualizada.drop(columns=['LINHA'], errors='ignore'))
-                
-                st.success(f"✅ {len(selecionados)} visitas agendadas!")
-                st.cache_data.clear()
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error("Por favor, marque pelo menos um cliente na tabela acima.")
+                    cliente_info = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
+                    log_distancia_valor = ""
+                    alerta_distancia = False
+                    
+                    if not cliente_info.empty:
+                        coord_base = cliente_info['COORDENADAS'].values[0]
+                        if pd.notnull(coord_base) and "," in str(coord_base):
+                            try:
+                                partes = str(coord_base).split(",")
+                                dist_m = calcular_distancia(lat_v, lon_v, partes[0].strip(), partes[1].strip())
+                                log_distancia_valor = f"{dist_m:.0f}m"
+                                if n_st == "Realizado" and dist_m > 50:
+                                    alerta_distancia = True
+                            except: log_distancia_valor = "Erro GPS"
 
-# --- PÁGINA: DASHBOARD DE CONTROLE ---
-elif menu == "📊 Dashboard de Controle":
-    # ... resto do seu código ...
+                    # Gravação na Planilha
+                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                    
+                    st.cache_data.clear()
+                    if alerta_distancia:
+                        st.warning(f"⚠️ Visita registrada com distância excedida ({log_distancia_valor})!")
+                        time.sleep(2)
+                    else:
+                        st.success("✅ Atualizado!")
+                        time.sleep(1)
+                    st.rerun()
+        else:
+            st.info(f"Não há agendamentos para hoje ({hoje_str}).")
 # --- PÁGINA: DASHBOARD ---
-# --- PÁGINA: DASHBOARD DE CONTROLE ---
 # --- PÁGINA: DASHBOARD DE CONTROLE ---
 # --- PÁGINA: DASHBOARD DE CONTROLE ---
 elif menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
     
     if df_base is not None and df_agenda is not None:
-        # --- [NOVO] 1. LEITURA DOS DADOS DE FATURAMENTO ---
-        try:
-            df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-            # Pandas renomeia colunas duplicadas. A coluna K (código) provavelmente será 'Cliente.1'
-            col_cod_cliente_fat = "Cliente.1" if "Cliente.1" in df_faturado.columns else "Cliente"
-            df_faturado['Data fat_DT'] = pd.to_datetime(df_faturado['Data fat.'], dayfirst=True, errors='coerce')
-            df_agenda['DATA_DT'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
-        except:
-            df_faturado = pd.DataFrame()
-
-        # 1. Identificação de Colunas
+        # 1. Identificação de Colunas (CNAE, Capital Social e filtros de empresa já processados na carga)
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'Analista')
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
@@ -560,6 +581,7 @@ elif menu == "📊 Dashboard de Controle":
             lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" and str(x) != "-" else 'PENDENTE'
         )
         
+        # Agrupamento para criar o df_dash (Crucial para o Ranking e Cards)
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         
@@ -570,32 +592,7 @@ elif menu == "📊 Dashboard de Controle":
         df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
         df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
 
-        # --- [NOVO] 2. LÓGICA DE CRUZAMENTO (CONVERSÃO) ---
-        visitas_realizadas_df = df_agenda[
-            (df_agenda['STATUS'] == "Realizado") & 
-            (df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente']))
-        ].copy()
-
-        def match_venda(row):
-            if df_faturado.empty: return False
-            cod = str(row['CÓDIGO CLIENTE']).strip()
-            dt_v = row['DATA_DT']
-            # Busca faturamento no dia ou D+1
-            vendas = df_faturado[
-                (df_faturado[col_cod_cliente_fat].astype(str).str.strip() == cod) &
-                (df_faturado['Data fat_DT'].isin([dt_v, dt_v + pd.Timedelta(days=1)]))
-            ]
-            return not vendas.empty
-
-        if not visitas_realizadas_df.empty:
-            visitas_realizadas_df['CONVERTEU'] = visitas_realizadas_df.apply(match_venda, axis=1)
-            total_v = len(visitas_realizadas_df)
-            com_pedido = visitas_realizadas_df['CONVERTEU'].sum()
-            taxa_conv = (com_pedido / total_v * 100) if total_v > 0 else 0
-        else:
-            total_v, com_pedido, taxa_conv = 0, 0, 0
-
-        # 3. Exibição dos Cards de Adesão
+        # 3. Exibição dos Cards e Tabela Principal
         c1, c2, c3, c4 = st.columns(4)
         total_base = df_dash['CLIENTES NA BASE'].sum()
         total_agendados = df_dash['CLIENTES AGENDADOS'].sum()
@@ -607,24 +604,11 @@ elif menu == "📊 Dashboard de Controle":
         c3.metric("Pendente Total", total_pendente)
         c4.metric("% Adesão Total", f"{percent_adesao:.1f}%")
 
-        # --- [NOVO] 3. EXIBIÇÃO DOS CARDS DE PERFORMANCE DE VENDAS ---
-        st.write("---")
-        st.subheader("💰 Conversão: Visita vs Faturamento (D+0 e D+1)")
-        v1, v2, v3 = st.columns(3)
-        v1.metric("Visitas Realizadas", total_v)
-        v2.metric("Vendas Positivadas", com_pedido)
-        v3.metric("% Eficiência", f"{taxa_conv:.1f}%")
-
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
 
-        # 4. Ranking de Engajamento
-        # ... (seu código de ranking continua igual aqui) ...
+        # 4. Ranking de Engajamento (Agora o df_dash existe com certeza)
         st.markdown("---")
         st.subheader("🏆 Ranking de Engajamento")
-        # ... 
-
-        # 5. Mapa de Calor
-        # ... (seu código de mapa continua igual no final) ...
         df_ranking = df_dash.copy()
         df_ranking['VALOR_NUM'] = df_ranking['% DE ADESÃO'].str.replace('%', '').astype(float)
         df_ranking = df_ranking.sort_values(by='VALOR_NUM', ascending=False).reset_index(drop=True)
