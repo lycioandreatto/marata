@@ -212,18 +212,15 @@ df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
 # --- SISTEMA DE ACESSO ---
 if not st.session_state.logado:
-    # 1. Tenta pegar a imagem
     img_b64 = get_base64_image("pngmarata.png")
-    
-    # 2. Se a imagem existir, cria o código da imagem, se não, deixa vazio
     img_html = f'<img src="data:image/png;base64,{img_b64}" width="60">' if img_b64 else ""
 
-    # 3. Desenha o cabeçalho
+    # CERTIFIQUE-SE DE QUE NÃO HÁ ASPAS ANTES DO st.markdown
     st.markdown(
         f"""
         <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
             {img_html}
-            <h1 style="color: #ff4b4b; margin: 0;">Acesso Gestão Maratá</h1>
+            <h1 style="color: #ff4b4b; margin: 0; font-size: 32px; font-weight: bold;">Acesso Gestão Maratá</h1>
         </div>
         """,
         unsafe_allow_html=True
