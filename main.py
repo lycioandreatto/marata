@@ -213,15 +213,21 @@ if "logado" not in st.session_state:
         st.session_state.usuario = ""
 
 if not st.session_state.logado:
-    # --- CENTRALIZAR A LOGO ---
-    col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
-    with col_logo2:
+    # 1. Criamos duas colunas: a primeira bem estreita (0.1) e a segunda larga (0.9)
+    col_logo, col_titulo = st.columns([0.1, 0.9])
+    
+    with col_logo:
         try:
-            st.image("pngmarata.png", width=200) # Certifique-off que o nome do arquivo está correto
+            # Diminuímos o width para 60 para não empurrar o título para baixo
+            st.image("pngmarata.png", width=60) 
         except:
-            st.warning("Arquivo de logo não encontrado.")
+            pass
 
-    st.title("☕ Acesso Gestão Maratá")
+    with col_titulo:
+        # 2. O markdown permite alinhar o texto com a altura da imagem
+        st.markdown("<h2 style='margin-top: 10px; color: #ff4b4b;'>Acesso Gestão Maratá</h2>", unsafe_allow_html=True)
+
+    # 3. As abas continuam aqui embaixo normalmente
     tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
     # ... resto do código ...
     with tab_login:
