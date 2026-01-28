@@ -664,8 +664,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 nova_data = None
 if n_st == "Reagendado":
     nova_data = st.date_input("Nova data de reagendamento:"),
-        value=datetime.now(fuso_br)
-    )
+else:
+    nova_data = none
 
             with col2:
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
