@@ -1,4 +1,5 @@
 import streamlit as st
+import base64
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
@@ -68,6 +69,13 @@ NOME_ANALISTA = "BARBARA"
 NOME_DIRETORIA = "ALDO"
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
+# Função para converter imagem em código que o HTML entende
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except:
+        return None
 def converter_para_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -203,21 +211,18 @@ def carregar_dados():
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
 # --- SISTEMA DE ACESSO ---
-if "logado" not in st.session_state:
-    # Verifica se existe cookie de login salvo
-    if "user_marata" in cookies:
-        st.session_state.logado = True
-        st.session_state.usuario = cookies["user_marata"]
-    else:
-        st.session_state.logado = False
-        st.session_state.usuario = ""
-
 if not st.session_state.logado:
-    # Este bloco cria um "container" onde a logo e o texto ficam lado a lado
+    # 1. Tenta pegar a imagem
+    img_b64 = get_base64_image("pngmarata.png")
+    
+    # 2. Se a imagem existir, cria o código da imagem, se não, deixa vazio
+    img_html = f'<img src="data:image/png;base64,{img_b64}" width="60">' if img_b64 else ""
+
+    # 3. Desenha o cabeçalho
     st.markdown(
-        """
+        f"""
         <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
-            <img src="https://github.com/lycioandreatto/marata/blob/main/pngmarata" width="60">
+            {img_html}
             <h1 style="color: #ff4b4b; margin: 0;">Acesso Gestão Maratá</h1>
         </div>
         """,
