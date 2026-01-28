@@ -20,7 +20,6 @@ st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
-    
     <style>
     [data-testid="stMetric"] {
         background-color: #f0f2f6;
@@ -28,36 +27,24 @@ st.markdown("""
         border-radius: 10px;
         border: 1px solid #d3d3d3;
         box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+        /* Força uma altura mínima para que o delta não empurre o card para baixo */
+        min-height: 130px; 
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     [data-testid="stMetric"] label, 
     [data-testid="stMetric"] div {
         color: black !important;
     }
     
-    /* Estilização do Card de Usuário Logado */
-    .user-card {
-        background-color: #1e1e1e;
-        padding: 12px 20px;
-        border-radius: 12px;
-        border-left: 5px solid #ff4b4b;
-        box-shadow: 3px 3px 10px rgba(0,0,0,0.3);
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        gap: 15px;
-    }
-    .user-card-text {
-        color: white;
-        font-weight: bold;
-        font-size: 1.1em;
-        letter-spacing: 0.5px;
-    }
-    .user-card-icon {
-        font-size: 1.5em;
+    /* Garante que o container do delta não quebre o layout */
+    [data-testid="stMetricDelta"] {
+        position: absolute;
+        bottom: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
-
 # --- CONEXÃO E CONFIGURAÇÕES ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 url_planilha = "https://docs.google.com/spreadsheets/d/1pgral1qpyEsn3MnOFtkuxGzBPQ3R7SHYQSs0NHtag3I/edit"
