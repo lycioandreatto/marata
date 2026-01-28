@@ -300,7 +300,6 @@ else:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-            
     # CARD DO USUÁRIO NO MENU LATERAL
     st.markdown(f"""
         <div class="user-card" style="border-left: 5px solid {border_color};">
@@ -326,14 +325,29 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista or is_diretoria:
+        if is_admin or is_diretoria:
+            # Adm e Diretoria vêem todos
             lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
+        elif is_analista:
+            # O SEGREDO ESTÁ AQUI: Filtra a agenda apenas para os supervisores da THAIS (ou analista logado)
+            df_agenda_analista = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual]
+            lista_sups = sorted(df_agenda_analista['SUPERVISOR'].unique())
+            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
+        else:
+            # Supervisor comum não tem selectbox, só botão para ele mesmo
+            sup_limpar = "Selecione..."
+
+        # Lógica do Botão de Deletar
+        if is_admin or is_analista or is_diretoria:
             if sup_limpar != "Selecione...":
                 if st.button(f"⚠️ APAGAR TUDO: {sup_limpar}"):
+                    # Remove apenas o supervisor selecionado da planilha toda
                     df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
                     st.cache_data.clear()
+                    st.success(f"Agenda de {sup_limpar} removida!")
+                    time.sleep(1)
                     st.rerun()
         else:
             if st.button(f"⚠️ APAGAR TODA MINHA AGENDA"):
