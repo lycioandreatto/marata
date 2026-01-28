@@ -404,7 +404,7 @@ if menu == "📅 Agendamentos do Dia":
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
-     if st.button("💾 ATUALIZAR STATUS"):
+    if st.button("💾 ATUALIZAR STATUS"):
 
     # Captura a localização via navegador
     location = streamlit_js_eval(
