@@ -179,8 +179,21 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        if is_admin or is_analista or is_diretoria:
-            sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
+        if is_admin or is_diretoria:
+            # Filtro de Analista para Lycio/Aldo
+            lista_analistas = ["Todos"] + sorted([a for a in df_base['Analista'].unique() if str(a).strip() and str(a) != 'nan'])
+            ana_sel = st.selectbox("Filtrar por Analista:", lista_analistas)
+            
+            if ana_sel == "Todos":
+                sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
+            else:
+                sups = sorted([s for s in df_base[df_base['Analista'] == ana_sel]['Região de vendas'].unique() if str(s).strip()])
+            
+            sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
+        
+        elif is_analista:
+            # Se for a Bárbara, mostra apenas os supervisores dela
+            sups = sorted([s for s in df_base[df_base['Analista'].str.upper() == user_atual]['Região de vendas'].unique() if str(s).strip()])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
             sup_sel = user_atual
@@ -188,6 +201,10 @@ if menu == "Novo Agendamento":
 
         if sup_sel != "Selecione...":
             clientes_f = df_base[df_base['Região de vendas'] == sup_sel]
+            
+            # CÁLCULO DA BASE (A realidade que discutimos)
+            qtd_clientes_base = len(clientes_f['Cliente'].unique())
+            st.metric("Total de Clientes na Base", qtd_clientes_base)
             
             # BUSCA AUTOMÁTICA DA ANALISTA VINCULADA
             analista_vinc = NOME_ANALISTA
@@ -231,9 +248,28 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista or is_diretoria:
-            f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
-            df_f = df_agenda.copy() if f_sup == "Todos" else df_agenda[df_agenda['SUPERVISOR'] == f_sup]
+        if is_admin or is_diretoria:
+            # Filtro em cascata também na visualização
+            lista_analistas_agenda = ["Todos"] + sorted(list(df_agenda['ANALISTA'].unique()))
+            ana_filtro = st.selectbox("Filtrar por Analista:", lista_analistas_agenda, key="f_ana_ver")
+            
+            if ana_filtro == "Todos":
+                lista_sups_ver = ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique())
+            else:
+                lista_sups_ver = ["Todos"] + sorted(df_agenda[df_agenda['ANALISTA'] == ana_filtro]['SUPERVISOR'].unique())
+            
+            f_sup = st.selectbox("Ver agenda de:", lista_sups_ver)
+            
+            df_f = df_agenda.copy()
+            if ana_filtro != "Todos": df_f = df_f[df_f['ANALISTA'] == ana_filtro]
+            if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
+            
+        elif is_analista:
+            # Analista vê apenas o que está linkado ao nome dela
+            df_f = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
+            lista_sups_ana = ["Todos"] + sorted(df_f['SUPERVISOR'].unique())
+            f_sup = st.selectbox("Filtrar Supervisor:", lista_sups_ana)
+            if f_sup != "Todos": df_f = df_f[df_f['SUPERVISOR'] == f_sup]
         else:
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
