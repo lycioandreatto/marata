@@ -505,9 +505,6 @@ if not df_dia.empty:
 else:
     st.info(f"Não há agendamentos para hoje ({hoje_str}).")
 
-    else:
-        st.warning("Nenhum dado de agenda disponível.")
-
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
