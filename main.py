@@ -27,27 +27,37 @@ def converter_para_excel(df):
         df.to_excel(writer, index=False, sheet_name='Relatorio')
     return output.getvalue()
 
-def gerar_pdf(df):
+def gerar_pdf(df, tipo_relatorio="GERAL"):
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
+    
+    # Ordenação específica solicitada
+    df_pdf = df.copy()
+    if tipo_relatorio == "AGENDA" and "REGISTRO" in df_pdf.columns:
+        # Tenta converter para ordenar cronologicamente, se falhar mantém original
+        try:
+            df_pdf['REGISTRO_DT'] = pd.to_datetime(df_pdf['REGISTRO'], dayfirst=True)
+            df_pdf = df_pdf.sort_values(by='REGISTRO_DT', ascending=False).drop(columns=['REGISTRO_DT'])
+        except:
+            df_pdf = df_pdf.sort_values(by='REGISTRO', ascending=False)
     
     pdf.set_font("Arial", 'B', 12)
     data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
     pdf.cell(0, 8, f"Relatorio Marata - Gerado em {data_geracao}", ln=True, align='C')
     pdf.ln(3)
     
-    cols = df.columns.tolist()
+    cols = df_pdf.columns.tolist()
     largura_total = 275
     
-    # Ajuste dinâmico de fonte baseado no número de colunas
+    # Ajuste de fonte reduzido conforme solicitado
     qtd_cols = len(cols)
     if qtd_cols > 8:
+        tamanho_fonte_cabecalho = 5
+        tamanho_fonte_dados = 4
+        limite_texto = 25
+    elif qtd_cols > 6:
         tamanho_fonte_cabecalho = 6
         tamanho_fonte_dados = 5
-        limite_texto = 20
-    elif qtd_cols > 6:
-        tamanho_fonte_cabecalho = 7
-        tamanho_fonte_dados = 6
         limite_texto = 30
     else:
         tamanho_fonte_cabecalho = 8
@@ -59,8 +69,8 @@ def gerar_pdf(df):
     largura_agendado = 30
     largura_data = 18
     largura_justificativa = 50
-    largura_registro = 25 # DIMINUÍDO (Era 35)
-    largura_cidade = 40   # AUMENTADO (Para compensar e dar mais espaço ao nome da cidade)
+    largura_registro = 25 
+    largura_cidade = 40   
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
@@ -102,7 +112,7 @@ def gerar_pdf(df):
     
     # Dados
     pdf.set_font("Arial", '', tamanho_fonte_dados) 
-    for index, row in df.iterrows():
+    for index, row in df_pdf.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
             if col_name == "CLIENTE": w, limit = largura_cliente, 50
@@ -297,7 +307,7 @@ if menu == "📊 Dashboard de Controle":
         df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
         
-        # Ordenar por Ordem Alfabética na coluna STATUS
+        # Ordenar por STATUS no Dashboard conforme solicitado
         df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
@@ -315,7 +325,8 @@ if menu == "📊 Dashboard de Controle":
             st.download_button("📥 Relatório Detalhado (Excel)", data=converter_para_excel(df_relatorio_completo), file_name="detalhamento_agendamentos.xlsx")
         with exp_c2:
             try:
-                st.download_button("📄 Relatório Detalhado (PDF)", data=gerar_pdf(df_relatorio_completo), file_name="detalhamento_agendamentos.pdf")
+                # PDF do DASH continua organizado por STATUS
+                st.download_button("📄 Relatório Detalhado (PDF)", data=gerar_pdf(df_relatorio_completo, tipo_relatorio="DASH"), file_name="detalhamento_agendamentos.pdf")
             except:
                 st.error("Erro ao gerar PDF do detalhamento")
         
@@ -463,18 +474,29 @@ elif menu == "Ver/Editar Minha Agenda":
         c1, c2, _ = st.columns([1,1,2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
-            try: st.download_button("📄 PDF", data=gerar_pdf(df_exp), file_name="agenda.pdf")
+            try: 
+                # PDF da AGENDA agora vai ordenado por REGISTRO (Último adicionado primeiro)
+                st.download_button("📄 PDF", data=gerar_pdf(df_exp, tipo_relatorio="AGENDA"), file_name="agenda.pdf")
             except: st.error("Erro ao gerar PDF")
 
         df_f["EDITAR"] = False
         cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-        edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
+        
+        # Ordenação visual na tela também pelo registro
+        df_display = df_f[cols_v].copy()
+        try:
+            df_display['REG_TEMP'] = pd.to_datetime(df_display['REGISTRO'], dayfirst=True)
+            df_display = df_display.sort_values(by='REG_TEMP', ascending=False).drop(columns=['REG_TEMP'])
+        except:
+            df_display = df_display.sort_values(by='REGISTRO', ascending=False)
+
+        edicao = st.data_editor(df_display, key="edit_v12", hide_index=True, use_container_width=True,
                                  column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
                                  disabled=[c for c in cols_v if c != "EDITAR"])
 
         marcados = edicao[edicao["EDITAR"] == True]
         if not marcados.empty:
-            sel_row = df_f.loc[marcados.index[0]]
+            sel_row = df_f.loc[df_f['REGISTRO'] == marcados.iloc[0]['REGISTRO']].iloc[0]
             st.markdown("---")
             st.subheader(f"Editar: {sel_row['CLIENTE']}")
             st_list = ["Planejado (X)", "Realizado", "Reagendado"]
