@@ -5,6 +5,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
 import io
+import uuid
 from fpdf import FPDF
 import pytz
 import time
