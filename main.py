@@ -16,7 +16,7 @@ st.markdown("""
     <style>
         /* Fundo da área principal - AZUL UM POUCO MAIS ESCURO */
         .stApp {
-            background-color: #4682B4;
+            background-color: #2D2DED;
             color: #000000;
         }
         
