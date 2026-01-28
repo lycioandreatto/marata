@@ -38,13 +38,14 @@ st.markdown("""
         }
 
         /* Cor dos botões e abas - TEXTO DOS BOTÕES PARA BRANCO */
-        .stButton>button {
+        .stButton>button, .stDownloadButton>button {
             border-radius: 5px;
             color: #FFFFFF !important;
+            background-color: #001F3F; /* Garante fundo escuro para contraste */
         }
         
         /* Garantir que o texto interno (p) do botão também seja branco */
-        .stButton>button p {
+        .stButton>button p, .stDownloadButton>button p {
             color: #FFFFFF !important;
         }
         
