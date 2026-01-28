@@ -456,7 +456,7 @@ if menu == "📅 Agendamentos do Dia":
                     dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
                     try:
                         dist_val = float(dist_str) if dist_str != 'nan' else 0
-                        if dist_val > 500:
+                        if dist_val > 50:
                             # COR LARANJA para alertas de distância
                             return ['color: #E67E22; font-weight: bold'] * len(row)
                     except:
@@ -762,7 +762,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
                     try:
                         val_float = float(dist_str) if (dist_str != 'nan' and dist_str.strip() != "") else 0
-                        if val_float > 500:
+                        if val_float > 50:
                             return ['color: #E67E22; font-weight: bold'] * len(row) # Laranja Alerta
                     except: pass
                     return ['color: green; font-weight: bold'] * len(row) # Verde OK
