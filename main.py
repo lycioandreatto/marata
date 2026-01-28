@@ -14,9 +14,9 @@ st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 # --- CUSTOMIZAÇÃO DE CORES (CSS) ---
 st.markdown("""
     <style>
-        /* Fundo da área principal - AZUL MAIS CLARO QUE O DA SIDEBAR */
+        /* Fundo da área principal - AZUL UM POUCO MAIS ESCURO */
         .stApp {
-            background-color: #E6F2FF;
+            background-color: #B0C4DE;
             color: #000000;
         }
         
