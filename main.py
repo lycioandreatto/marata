@@ -16,7 +16,7 @@ if not cookies.ready():
     st.stop()
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Maratá - SCA, page_icon="📅", layout="wide")
+st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
