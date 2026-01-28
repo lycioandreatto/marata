@@ -322,8 +322,8 @@ with st.sidebar:
         st.session_state.usuario = ""
         st.rerun()
         
-         for _ in range(10):
-                st.sidebar.write("")
+             for _ in range(10):
+                    st.sidebar.write("")
     st.markdown("---")
     st.subheader("🗑️ Limpeza em Massa")
     if df_agenda is not None and not df_agenda.empty:
