@@ -151,7 +151,13 @@ with st.sidebar:
     try: st.image("pngmarata.png", width=150)
     except: st.warning("Logo não encontrada.")
     st.markdown(f"👤 **{label_display}**")
-    menu = st.selectbox("Menu Principal", ["Novo Agendamento", "Ver/Editar Minha Agenda"])
+    
+    opcoes_menu = ["Novo Agendamento", "Ver/Editar Minha Agenda"]
+    if is_admin or is_analista or is_diretoria:
+        opcoes_menu.append("📊 Dashboard de Controle")
+        
+    menu = st.selectbox("Menu Principal", opcoes_menu)
+    
     if st.button("Sair"):
         st.session_state.logado = False
         st.rerun()
@@ -175,8 +181,41 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
 
+# --- PÁGINA: DASHBOARD (NOVA) ---
+if menu == "📊 Dashboard de Controle":
+    st.header("📊 Resumo de Engajamento por Supervisor")
+    
+    if df_base is not None and df_agenda is not None:
+        col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
+        
+        # Agrupar total por supervisor na Base
+        resumo_base = df_base.groupby(col_rv_base).size().reset_index(name='Total na Base')
+        
+        # Agrupar agendados únicos por supervisor na Agenda
+        resumo_agenda = df_agenda.groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
+        
+        # Unir dados
+        df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_rv_base, right_on='SUPERVISOR', how='left').fillna(0)
+        df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
+        df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
+        df_dash['% Conclusão'] = (df_dash['Já Agendados'] / df_dash['Total na Base'] * 100).round(1).astype(str) + '%'
+        
+        # Reorganizar colunas
+        df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
+        df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
+        
+        st.dataframe(df_dash, use_container_width=True, hide_index=True)
+        
+        # Métricas Globais
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Clientes Base", df_dash['CLIENTES NA BASE'].sum())
+        c2.metric("Total Agendados", df_dash['CLIENTES AGENDADOS'].sum())
+        c3.metric("Pendente Total", df_dash['FALTANDO'].sum())
+    else:
+        st.error("Dados insuficientes para gerar o Dashboard.")
+
 # --- PÁGINA: NOVO AGENDAMENTO ---
-if menu == "Novo Agendamento":
+elif menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), None)
@@ -208,30 +247,21 @@ if menu == "Novo Agendamento":
             st.info(f"Agendando para: {user_atual}")
 
         if sup_sel != "Selecione...":
-            # Filtrar clientes do supervisor na base
             clientes_f = df_base[df_base[col_rv_base] == sup_sel]
-            
-            # --- LÓGICA DE CONTADORES E FILTRO DE EXIBIÇÃO ---
-            # Pegar códigos de clientes que já estão na Agenda para este supervisor
             codigos_agendados = df_agenda[df_agenda['SUPERVISOR'] == sup_sel]['CÓDIGO CLIENTE'].unique()
-            
-            # Filtrar a base para mostrar apenas quem NÃO está agendado
             clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
             
-            # Mostrar métricas (Contadores)
             m1, m2, m3 = st.columns(3)
             m1.metric("Total na Base", len(clientes_f))
             m2.metric("Já Agendados", len(codigos_agendados))
             m3.metric("Faltando", len(clientes_pendentes))
             
-            # BUSCA AUTOMÁTICA DA ANALISTA VINCULADA
             analista_vinc = NOME_ANALISTA
             if col_ana_base in clientes_f.columns:
                 val_analista = clientes_f[col_ana_base].iloc[0]
                 if str(val_analista).strip() and str(val_analista).lower() != 'nan':
                     analista_vinc = str(val_analista).upper()
 
-            # Lista apenas os clientes que FALTAM agendar
             lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             
             if not lista_c:
@@ -274,14 +304,11 @@ elif menu == "Ver/Editar Minha Agenda":
         if is_admin or is_diretoria:
             lista_ana_age = sorted([str(a) for a in df_agenda['ANALISTA'].unique() if str(a).strip() and str(a).lower() != 'nan'])
             ana_filtro = st.selectbox("Filtrar Agenda por Analista:", ["Todos"] + lista_ana_age)
-            
             df_temp = df_agenda.copy()
             if ana_filtro != "Todos":
                 df_temp = df_temp[df_temp['ANALISTA'] == ana_filtro]
-            
             f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_temp['SUPERVISOR'].unique()))
             df_f = df_temp.copy() if f_sup == "Todos" else df_temp[df_temp['SUPERVISOR'] == f_sup]
-            
         elif is_analista:
             df_f = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
             f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_f['SUPERVISOR'].unique()))
@@ -292,7 +319,6 @@ elif menu == "Ver/Editar Minha Agenda":
 
         if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
         df_exp = df_f[['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
-        
         c1, c2, _ = st.columns([1,1,2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
@@ -313,7 +339,6 @@ elif menu == "Ver/Editar Minha Agenda":
             st_list = ["Planejado (X)", "Realizado", "Reagendado"]
             ju_list = list(df_just.iloc[:, 0].dropna().unique())
             if "OUTRO" not in ju_list: ju_list.append("OUTRO")
-            
             col1, col2 = st.columns(2)
             with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
             with col2:
