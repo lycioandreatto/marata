@@ -638,7 +638,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
         df_f["EDITAR"] = False
         cols_v = ['EDITAR', 'REGISTRO', 'DATA','REAGENDADO PARA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-        
+        for col in cols_v:
+    if col not in df_f.columns:
+        df_f[col] = "-"
+
         df_display = df_f[cols_v].copy()
         try:
             df_display['REG_TEMP'] = pd.to_datetime(df_display['REGISTRO'], dayfirst=True)
