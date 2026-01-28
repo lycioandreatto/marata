@@ -217,7 +217,7 @@ if not st.session_state.logado:
     col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
     with col_logo2:
         try:
-            st.image("pngmarata.png", width=200) # Certifique-off que o nome do arquivo está correto
+            st.image("pngmarata", width=200) # Certifique-off que o nome do arquivo está correto
         except:
             st.warning("Arquivo de logo não encontrado.")
 
