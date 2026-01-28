@@ -266,6 +266,8 @@ if menu == "📊 Dashboard de Controle":
         
         df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
+        # --- ORDENAÇÃO ALFABÉTICA PELO STATUS (AGENDADO antes de PENDENTE) ---
+        df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
