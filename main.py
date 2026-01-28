@@ -290,7 +290,7 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    opcoes_menu = ["📅 Agendamentos do Dia", "Novo Agendamento", "Ver/Editar Minha Agenda"]
+    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", "🔍 Ver/Editar Minha Agenda"]
     if is_admin or is_analista or is_diretoria:
         opcoes_menu.append("📊 Dashboard de Controle")
         
@@ -467,7 +467,7 @@ elif menu == "📊 Dashboard de Controle":
         st.error("Dados insuficientes para gerar o Dashboard.")
 
 # --- PÁGINA: NOVO AGENDAMENTO ---
-elif menu == "Novo Agendamento":
+elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), None)
@@ -558,7 +558,7 @@ elif menu == "Novo Agendamento":
                             st.rerun()
 
 # --- PÁGINA: VER/EDITAR ---
-elif menu == "Ver/Editar Minha Agenda":
+elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
         if is_admin or is_diretoria:
