@@ -213,7 +213,7 @@ if "logado" not in st.session_state:
         st.session_state.usuario = ""
 
 if not st.session_state.logado:
-    st.title("☕ Acesso Gestão Maratá")
+    st.title("☕ LOGIN - SISTEMA DE CONTROLE DE AGENDAMENTOS")
     tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
 
     with tab_login:
