@@ -489,19 +489,6 @@ if menu == "📅 Agendamentos do Dia":
                         except Exception as e:
                             st.error(f"Erro ao salvar na planilha: {e}")
 
-Por que ainda pode dar erro?
-
-    HTTPS: O navegador bloqueia o GPS se o seu site não estiver usando https://. Se você estiver testando em localhost, funciona, mas se estiver em um servidor sem certificado SSL, o navigator.geolocation sempre retornará erro.
-
-    Permissão Negada: Se você clicou em "Bloquear" uma vez, o navegador não pergunta de novo. Você precisa clicar no ícone de cadeado ao lado do endereço do site e resetar a permissão de "Localização".
-
-    Botão "Fantasma": O Streamlit às vezes limpa o estado antes do JavaScript devolver o valor. Por isso adicionei a mensagem pedindo para clicar novamente se retornar None.
-
-Próximo Passo
-
-Gostaria que eu revisasse também a parte do Dashboard onde você monta o link do Google Maps? Notei que a URL que você usou (googleusercontent.com...) parece estar com o formato incorreto para abrir o mapa diretamente.
-    # ... resto do seu código de salvamento ...
-
                     # 2. Monta justificativa final
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
 
