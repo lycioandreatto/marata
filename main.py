@@ -64,7 +64,7 @@ fuso_br = pytz.timezone('America/Sao_Paulo')
 
 # Administrador e Analista Especial
 NOME_ADMIN = "LYCIO"
-NOME_ANALISTA = "BARBARA"
+LISTA_ANALISTA = ["BARBARA","THAIS","ROBERIO","CAROL","REGIANE","ALLANA"]
 NOME_DIRETORIA = "ALDO"
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
@@ -277,7 +277,7 @@ if not st.session_state.logado:
 # --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
 is_admin = (user_atual == NOME_ADMIN.upper())
-is_analista = (user_atual == NOME_ANALISTA.upper())
+is_analista = (user_atual in LISTA_ANALISTA)
 is_diretoria = (user_atual == NOME_DIRETORIA.upper())
 
 # Definindo ícone e label com base no perfil
