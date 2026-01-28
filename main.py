@@ -516,9 +516,9 @@ elif menu == "📊 Dashboard de Controle":
         total_pendente = df_dash['FALTANDO'].sum()
         percent_adesao = (total_agendados / total_base * 100) if total_base > 0 else 0
         
-        c1.metric("Total Clientes Base (Filtro)", total_base)
-        c2.metric("Total Agendados (Filtro)", total_agendados)
-        c3.metric("Pendente Total (Filtro)", total_pendente)
+        c1.metric("Total Clientes Base", total_base)
+        c2.metric("Total Agendados", total_agendados)
+        c3.metric("Pendente Total", total_pendente)
         c4.metric("% Adesão Total", f"{percent_adesao:.1f}%")
 
         # --- NOVA FUNÇÃO: RANKING DE ENGAJAMENTO (ADICIONADA AQUI) ---
