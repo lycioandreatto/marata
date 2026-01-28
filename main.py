@@ -543,11 +543,22 @@ if menu == "📅 Agendamentos do Dia":
 # --- PÁGINA: DASHBOARD ---
 # --- PÁGINA: DASHBOARD DE CONTROLE ---
 # --- PÁGINA: DASHBOARD DE CONTROLE ---
+# --- PÁGINA: DASHBOARD DE CONTROLE ---
 elif menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
     
     if df_base is not None and df_agenda is not None:
-        # 1. Identificação de Colunas (CNAE, Capital Social e filtros de empresa já processados na carga)
+        # --- [NOVO] 1. LEITURA DOS DADOS DE FATURAMENTO ---
+        try:
+            df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+            # Pandas renomeia colunas duplicadas. A coluna K (código) provavelmente será 'Cliente.1'
+            col_cod_cliente_fat = "Cliente.1" if "Cliente.1" in df_faturado.columns else "Cliente"
+            df_faturado['Data fat_DT'] = pd.to_datetime(df_faturado['Data fat.'], dayfirst=True, errors='coerce')
+            df_agenda['DATA_DT'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
+        except:
+            df_faturado = pd.DataFrame()
+
+        # 1. Identificação de Colunas
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'Analista')
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
@@ -581,7 +592,6 @@ elif menu == "📊 Dashboard de Controle":
             lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" and str(x) != "-" else 'PENDENTE'
         )
         
-        # Agrupamento para criar o df_dash (Crucial para o Ranking e Cards)
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente'])].groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         
@@ -592,7 +602,32 @@ elif menu == "📊 Dashboard de Controle":
         df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
         df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
 
-        # 3. Exibição dos Cards e Tabela Principal
+        # --- [NOVO] 2. LÓGICA DE CRUZAMENTO (CONVERSÃO) ---
+        visitas_realizadas_df = df_agenda[
+            (df_agenda['STATUS'] == "Realizado") & 
+            (df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada['Cliente']))
+        ].copy()
+
+        def match_venda(row):
+            if df_faturado.empty: return False
+            cod = str(row['CÓDIGO CLIENTE']).strip()
+            dt_v = row['DATA_DT']
+            # Busca faturamento no dia ou D+1
+            vendas = df_faturado[
+                (df_faturado[col_cod_cliente_fat].astype(str).str.strip() == cod) &
+                (df_faturado['Data fat_DT'].isin([dt_v, dt_v + pd.Timedelta(days=1)]))
+            ]
+            return not vendas.empty
+
+        if not visitas_realizadas_df.empty:
+            visitas_realizadas_df['CONVERTEU'] = visitas_realizadas_df.apply(match_venda, axis=1)
+            total_v = len(visitas_realizadas_df)
+            com_pedido = visitas_realizadas_df['CONVERTEU'].sum()
+            taxa_conv = (com_pedido / total_v * 100) if total_v > 0 else 0
+        else:
+            total_v, com_pedido, taxa_conv = 0, 0, 0
+
+        # 3. Exibição dos Cards de Adesão
         c1, c2, c3, c4 = st.columns(4)
         total_base = df_dash['CLIENTES NA BASE'].sum()
         total_agendados = df_dash['CLIENTES AGENDADOS'].sum()
@@ -604,11 +639,24 @@ elif menu == "📊 Dashboard de Controle":
         c3.metric("Pendente Total", total_pendente)
         c4.metric("% Adesão Total", f"{percent_adesao:.1f}%")
 
+        # --- [NOVO] 3. EXIBIÇÃO DOS CARDS DE PERFORMANCE DE VENDAS ---
+        st.write("---")
+        st.subheader("💰 Conversão: Visita vs Faturamento (D+0 e D+1)")
+        v1, v2, v3 = st.columns(3)
+        v1.metric("Visitas Realizadas", total_v)
+        v2.metric("Vendas Positivadas", com_pedido)
+        v3.metric("% Eficiência", f"{taxa_conv:.1f}%")
+
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
 
-        # 4. Ranking de Engajamento (Agora o df_dash existe com certeza)
+        # 4. Ranking de Engajamento
+        # ... (seu código de ranking continua igual aqui) ...
         st.markdown("---")
         st.subheader("🏆 Ranking de Engajamento")
+        # ... 
+
+        # 5. Mapa de Calor
+        # ... (seu código de mapa continua igual no final) ...
         df_ranking = df_dash.copy()
         df_ranking['VALOR_NUM'] = df_ranking['% DE ADESÃO'].str.replace('%', '').astype(float)
         df_ranking = df_ranking.sort_values(by='VALOR_NUM', ascending=False).reset_index(drop=True)
