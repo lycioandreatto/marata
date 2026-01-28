@@ -40,12 +40,12 @@ def gerar_pdf(df):
     # A4 Paisagem tem aproximadamente 277mm de área útil
     largura_total = 275
     
-    # Lógica para larguras em modo Paisagem
-    largura_cliente = 70  
-    largura_supervisor = 40
-    largura_agendado = 40
-    largura_data = 25
-    largura_justificativa = 60
+    # AJUSTE DE LARGURAS PARA NÃO ESPREMER AS COLUNAS
+    largura_cliente = 65  
+    largura_supervisor = 35
+    largura_agendado = 35
+    largura_data = 22
+    largura_justificativa = 55
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
@@ -84,14 +84,13 @@ def gerar_pdf(df):
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
-            if col_name == "CLIENTE": w, limit = largura_cliente, 60
-            elif col_name == "SUPERVISOR": w, limit = largura_supervisor, 35
-            elif col_name == "AGENDADO POR": w, limit = largura_agendado, 35
-            elif col_name == "DATA": w, limit = largura_data, 15
-            elif col_name == "JUSTIFICATIVA": w, limit = largura_justificativa, 70
-            else: w, limit = largura_padrao, 30
+            if col_name == "CLIENTE": w, limit = largura_cliente, 50
+            elif col_name == "SUPERVISOR": w, limit = largura_supervisor, 30
+            elif col_name == "AGENDADO POR": w, limit = largura_agendado, 30
+            elif col_name == "DATA": w, limit = largura_data, 12
+            elif col_name == "JUSTIFICATIVA": w, limit = largura_justificativa, 60
+            else: w, limit = largura_padrao, 25
             
-            # Garante compatibilidade de caracteres e trunca o texto
             texto = str(item)[:limit].encode('latin-1', 'replace').decode('latin-1')
             pdf.cell(w, 8, texto, border=1)
         pdf.ln()
