@@ -407,25 +407,6 @@ if menu == "📅 Agendamentos do Dia":
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
                     
-if "gps_lat" not in st.session_state:
-    st.session_state.gps_lat = None
-    st.session_state.gps_lon = None
-if "gps_lat" not in st.session_state:
-    st.session_state.gps_lat = None
-    st.session_state.gps_lon = None
-
-# botão separado para capturar GPS
-if st.button("📍 CAPTURAR LOCALIZAÇÃO"):
-    lat, lon = capturar_coordenadas()
-    st.session_state.gps_lat = lat
-    st.session_state.gps_lon = lon
-
-# feedback visual
-if st.session_state.gps_lat and st.session_state.gps_lon:
-    st.success(
-        f"GPS capturado: {st.session_state.gps_lat}, {st.session_state.gps_lon}"
-    )
-
                 if st.button("💾 ATUALIZAR STATUS"):
                     lat, lon = capturar_coordenadas()
                     lat = str(lat) if lat is not None else ""
