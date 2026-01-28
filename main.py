@@ -280,7 +280,7 @@ if not st.session_state.logado:
 if "lat" not in st.session_state:
     with st.container():
         # Aviso visual para o usuário autorizar o navegador
-        st.info("📡 **Conectando ao satélite...** Por favor, autorize a localização no seu navegador para carregar o sistema.")
+        st.info("📡 **Conectando...** Por favor, autorize a localização no seu navegador para carregar o sistema.")
         
         # Chama a função do seu arquivo geoloc.py
         lat, lon = capturar_coordenadas()
