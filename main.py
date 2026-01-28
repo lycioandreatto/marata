@@ -429,7 +429,7 @@ if menu == "📅 Agendamentos do Dia":
                     )
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
-          if st.button("💾 ATUALIZAR STATUS"):
+              if st.button("💾 ATUALIZAR STATUS"):
                     # 1. Captura localização com componente de espera
                     with st.spinner("Obtendo localização GPS..."):
                         location = streamlit_js_eval(
