@@ -24,8 +24,35 @@ NOME_DIRETORIA = "ALDO"
 def converter_para_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Agenda')
+        df.to_excel(writer, index=False, sheet_name='Sheet1')
     return output.getvalue()
+
+def gerar_pdf_dashboard(df):
+    pdf = FPDF(orientation='L', unit='mm', format='A4')
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    data_geracao = datetime.now(fuso_br).strftime('%d/%m/%Y %H:%M')
+    pdf.cell(0, 10, f"Relatorio de Engajamento - Gerado em {data_geracao}", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Larguras: Supervisor, Código, Nome, Cidade, Status
+    larguras = [40, 30, 100, 40, 60] 
+    pdf.set_font("Arial", 'B', 8)
+    cols = ["SUPERVISOR", "CODIGO", "CLIENTE", "LOCALIDADE", "STATUS"]
+    
+    for i, col in enumerate(cols):
+        pdf.cell(larguras[i], 8, col, border=1, align='C')
+    pdf.ln()
+    
+    pdf.set_font("Arial", '', 7)
+    for _, row in df.iterrows():
+        pdf.cell(larguras[0], 7, str(row.iloc[0])[:25], border=1)
+        pdf.cell(larguras[1], 7, str(row.iloc[1]), border=1)
+        pdf.cell(larguras[2], 7, str(row.iloc[2])[:60], border=1)
+        pdf.cell(larguras[3], 7, str(row.iloc[3])[:25], border=1)
+        pdf.cell(larguras[4], 7, str(row.iloc[4]), border=1)
+        pdf.ln()
+    return pdf.output(dest='S').encode('latin-1')
 
 def gerar_pdf(df):
     pdf = FPDF(orientation='L', unit='mm', format='A4')
@@ -181,36 +208,50 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
 
-# --- PÁGINA: DASHBOARD (NOVA) ---
+# --- PÁGINA: DASHBOARD ---
 if menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
     
     if df_base is not None and df_agenda is not None:
+        # Identificação de Colunas
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
-        
-        # Agrupar total por supervisor na Base
+        col_cli_base = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
+        col_nom_base = next((c for c in df_base.columns if c.upper() == 'NOME 1'), 'Nome 1')
+        col_loc_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
+
         resumo_base = df_base.groupby(col_rv_base).size().reset_index(name='Total na Base')
-        
-        # Agrupar agendados únicos por supervisor na Agenda
         resumo_agenda = df_agenda.groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         
-        # Unir dados
         df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_rv_base, right_on='SUPERVISOR', how='left').fillna(0)
         df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
         df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
         df_dash['% Conclusão'] = (df_dash['Já Agendados'] / df_dash['Total na Base'] * 100).round(1).astype(str) + '%'
         
-        # Reorganizar colunas
-        df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
-        df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
+        df_view = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
+        df_view.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
+        st.dataframe(df_view, use_container_width=True, hide_index=True)
         
-        st.dataframe(df_dash, use_container_width=True, hide_index=True)
-        
-        # Métricas Globais
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Clientes Base", df_dash['CLIENTES NA BASE'].sum())
-        c2.metric("Total Agendados", df_dash['CLIENTES AGENDADOS'].sum())
-        c3.metric("Pendente Total", df_dash['FALTANDO'].sum())
+        c1.metric("Total Clientes Base", df_view['CLIENTES NA BASE'].sum())
+        c2.metric("Total Agendados", df_view['CLIENTES AGENDADOS'].sum())
+        c3.metric("Pendente Total", df_view['FALTANDO'].sum())
+
+        # --- NOVA SEÇÃO DE EXTRAÇÃO NO DASHBOARD ---
+        st.markdown("---")
+        st.subheader("📥 Extrair Relatório Detalhado")
+        st.caption("Gera uma lista de todos os clientes da base e o status atual de agendamento.")
+        
+        # Preparar dataframe de extração
+        agendados_set = set(df_agenda['CÓDIGO CLIENTE'].unique())
+        df_extrair = df_base[[col_rv_base, col_cli_base, col_nom_base, col_loc_base]].copy()
+        df_extrair['STATUS'] = df_extrair[col_cli_base].apply(lambda x: "✅ Agendado" if str(x) in agendados_set else "❌ Pendente")
+        
+        e1, e2, _ = st.columns([1,1,2])
+        with e1:
+            st.download_button("📄 Exportar PDF Detalhado", data=gerar_pdf_dashboard(df_extrair), file_name="Relatorio_Engajamento.pdf", use_container_width=True)
+        with e2:
+            st.download_button("📥 Exportar Excel Detalhado", data=converter_para_excel(df_extrair), file_name="Relatorio_Engajamento.xlsx", use_container_width=True)
+
     else:
         st.error("Dados insuficientes para gerar o Dashboard.")
 
