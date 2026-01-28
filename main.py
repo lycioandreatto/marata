@@ -1,4 +1,5 @@
 import streamlit as st
+from geoloc import capturar_coordenadas
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
@@ -274,6 +275,26 @@ if not st.session_state.logado:
                 else:
                     st.warning("Preencha todos os campos.")
     st.stop()
+    if "lat" not in st.session_state:
+    with st.container():
+        st.info("📍 Para prosseguir, autorize o acesso à sua localização no navegador.")
+        lat, lon = capturar_coordenadas()
+        
+        if lat and lon:
+            st.session_state.lat = lat
+            st.session_state.lon = lon
+            st.success(f"✅ GPS Ativo: {lat:.4f}, {lon:.4f}")
+            time.sleep(1) 
+            st.rerun() 
+        else:
+            st.warning("⚠️ GPS Necessário: Verifique se a localização está ativada e se você deu permissão.")
+            if st.button("🔄 Tentar capturar GPS novamente"):
+                st.rerun()
+            st.stop() # Não deixa carregar o menu lateral sem GPS
+
+# --- PERFIL DO USUÁRIO ---
+user_atual = st.session_state.usuario
+# ... continua o resto do código
 
 # --- PERFIL DO USUÁRIO ---
 user_atual = st.session_state.usuario
