@@ -35,7 +35,6 @@ def gerar_pdf(df):
     pdf.cell(0, 10, f"Relatorio Marata - Gerado em {data_geracao}", ln=True, align='C')
     pdf.ln(5)
     
-    # Ajuste dinâmico de larguras para o PDF
     cols = df.columns.tolist()
     largura_total = 275
     largura_col = largura_total / len(cols)
@@ -45,10 +44,10 @@ def gerar_pdf(df):
         pdf.cell(largura_col, 8, str(col), border=1, align='C')
     pdf.ln()
     
-    pdf.set_font("Arial", '', 8)
+    pdf.set_font("Arial", '', 7) # Fonte levemente menor para caber nomes de clientes
     for index, row in df.iterrows():
         for item in row:
-            pdf.cell(largura_col, 8, str(item)[:40], border=1)
+            pdf.cell(largura_col, 8, str(item)[:45], border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
@@ -185,38 +184,41 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
 
-# --- PÁGINA: DASHBOARD (NOVA) ---
+# --- PÁGINA: DASHBOARD ---
 if menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
     
     if df_base is not None and df_agenda is not None:
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         
-        # Agrupar total por supervisor na Base
+        # Lógica para o Relatório Detalhado (Excel/PDF)
+        codigos_agendados_global = df_agenda['CÓDIGO CLIENTE'].unique()
+        df_base_detalhe = df_base.copy()
+        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['Cliente'].apply(
+            lambda x: 'AGENDADO' if str(x) in codigos_agendados_global else 'PENDENTE'
+        )
+        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', 'STATUS AGENDAMENTO']]
+        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'STATUS']
+
+        # Resumo para a tela do Streamlit (Tabela compacta)
         resumo_base = df_base.groupby(col_rv_base).size().reset_index(name='Total na Base')
-        
-        # Agrupar agendados únicos por supervisor na Agenda
         resumo_agenda = df_agenda.groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
-        
-        # Unir dados
         df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_rv_base, right_on='SUPERVISOR', how='left').fillna(0)
         df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
         df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
         df_dash['% Conclusão'] = (df_dash['Já Agendados'] / df_dash['Total na Base'] * 100).round(1).astype(str) + '%'
-        
-        # Reorganizar colunas
         df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
         df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
         
         # --- BOTÕES DE EXPORTAÇÃO NO DASHBOARD ---
         exp_c1, exp_c2, _ = st.columns([1, 1, 2])
         with exp_c1:
-            st.download_button("📥 Dashboard Excel", data=converter_para_excel(df_dash), file_name="dashboard_engajamento.xlsx")
+            st.download_button("📥 Relatório Detalhado (Excel)", data=converter_para_excel(df_relatorio_completo), file_name="detalhamento_agendamentos.xlsx")
         with exp_c2:
             try:
-                st.download_button("📄 Dashboard PDF", data=gerar_pdf(df_dash), file_name="dashboard_engajamento.pdf")
+                st.download_button("📄 Relatório Detalhado (PDF)", data=gerar_pdf(df_relatorio_completo), file_name="detalhamento_agendamentos.pdf")
             except:
-                st.error("Erro ao gerar PDF do Dashboard")
+                st.error("Erro ao gerar PDF do detalhamento")
         
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
         
@@ -239,7 +241,6 @@ elif menu == "Novo Agendamento":
             if col_ana_base:
                 lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
                 ana_sel = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas)
-                
                 if ana_sel == "Todos":
                     sups = sorted([s for s in df_base[col_rv_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
                 else:
@@ -247,9 +248,7 @@ elif menu == "Novo Agendamento":
             else:
                 st.error("Coluna 'Analista' não encontrada na aba BASE.")
                 sups = []
-            
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
-            
         elif is_analista:
             if col_ana_base:
                 sups = sorted([s for s in df_base[df_base[col_ana_base].str.upper() == user_atual][col_rv_base].unique() if str(s).strip()])
@@ -282,7 +281,6 @@ elif menu == "Novo Agendamento":
                 st.success("✅ Todos os clientes desta base já foram agendados!")
             else:
                 cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
-                
                 if cliente_sel != "Selecione...":
                     qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
                     with st.form("form_novo_v"):
@@ -292,7 +290,6 @@ elif menu == "Novo Agendamento":
                             with cols_datas[i]:
                                 d = st.date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"d_{i}")
                                 datas_sel.append(d)
-                        
                         if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
                             cod_c, nom_c = cliente_sel.split(" - ", 1)
                             agora = datetime.now(fuso_br)
