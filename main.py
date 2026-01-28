@@ -28,6 +28,7 @@ def converter_para_excel(df):
     return output.getvalue()
 
 def gerar_pdf(df):
+    # 'L' define a orientação como Landscape (Paisagem)
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
     pdf.set_font("Arial", 'B', 14)
@@ -36,16 +37,16 @@ def gerar_pdf(df):
     pdf.ln(5)
     
     cols = df.columns.tolist()
+    # A4 Paisagem tem aproximadamente 277mm de área útil
     largura_total = 275
     
-    # Lógica para aumentar colunas específicas
-    largura_cliente = 60  
-    largura_supervisor = 35
-    largura_agendado = 35
-    largura_data = 25       # Aumentado
-    largura_justificativa = 60 # Aumentado
+    # Lógica para larguras em modo Paisagem
+    largura_cliente = 70  
+    largura_supervisor = 40
+    largura_agendado = 40
+    largura_data = 25
+    largura_justificativa = 60
     
-    # Identificar quais colunas especiais estão presentes no DF atual
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
     
@@ -55,7 +56,6 @@ def gerar_pdf(df):
     if "DATA" in col_map: especiais.append("DATA")
     if "JUSTIFICATIVA" in col_map: especiais.append("JUSTIFICATIVA")
     
-    # Calcular largura ocupada pelas colunas fixas/expandidas
     ocupado = 0
     if "CLIENTE" in especiais: ocupado += largura_cliente
     if "SUPERVISOR" in especiais: ocupado += largura_supervisor
@@ -84,20 +84,16 @@ def gerar_pdf(df):
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
-            if col_name == "CLIENTE": 
-                w, limit = largura_cliente, 50
-            elif col_name == "SUPERVISOR": 
-                w, limit = largura_supervisor, 30
-            elif col_name == "AGENDADO POR": 
-                w, limit = largura_agendado, 30
-            elif col_name == "DATA":
-                w, limit = largura_data, 10
-            elif col_name == "JUSTIFICATIVA":
-                w, limit = largura_justificativa, 60
-            else: 
-                w, limit = largura_padrao, 25
+            if col_name == "CLIENTE": w, limit = largura_cliente, 60
+            elif col_name == "SUPERVISOR": w, limit = largura_supervisor, 35
+            elif col_name == "AGENDADO POR": w, limit = largura_agendado, 35
+            elif col_name == "DATA": w, limit = largura_data, 15
+            elif col_name == "JUSTIFICATIVA": w, limit = largura_justificativa, 70
+            else: w, limit = largura_padrao, 30
             
-            pdf.cell(w, 8, str(item)[:limit], border=1)
+            # Garante compatibilidade de caracteres e trunca o texto
+            texto = str(item)[:limit].encode('latin-1', 'replace').decode('latin-1')
+            pdf.cell(w, 8, texto, border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
@@ -355,7 +351,7 @@ elif menu == "Novo Agendamento":
                                     "CLIENTE": nom_c, 
                                     "JUSTIFICATIVA": "-", 
                                     "STATUS": "Planejado (X)",
-                                    "AGENDADO POR": user_atual # Salva quem efetuou o agendamento
+                                    "AGENDADO POR": user_atual 
                                 })
                             df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
                             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
@@ -387,14 +383,12 @@ elif menu == "Ver/Editar Minha Agenda":
         if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
         if 'AGENDADO POR' not in df_f.columns: df_f['AGENDADO POR'] = "-"
         
-        # --- CRUZAMENTO PARA TRAZER CIDADE NA EXPORTAÇÃO ---
         if df_base is not None:
             col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
             df_cidades = df_base[['Cliente', col_local_base]].copy()
             df_f = pd.merge(df_f, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
             df_f.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
         
-        # Colunas para exportação (Incluindo CIDADE agora)
         cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         df_exp = df_f[cols_exp]
         
