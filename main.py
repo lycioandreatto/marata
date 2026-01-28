@@ -431,7 +431,7 @@ if menu == "📅 Agendamentos do Dia":
 
               if st.button("💾 ATUALIZAR STATUS"):
                     # 1. Captura localização com componente de espera
-                    with st.spinner("Obtendo localização GPS..."):
+                  with st.spinner("Obtendo localização GPS..."):
                         location = streamlit_js_eval(
                             js_expressions="""
                                 new Promise((resolve) => {
