@@ -1,4 +1,4 @@
-import streamlit as st
+with col1: n_st =import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
@@ -675,7 +675,22 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 b1, b2 = st.columns(2)
                 if b1.form_submit_button("💾 SALVAR"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    df_agenda.loc[
+    df_agenda['ID'] == sel_row['ID'],
+    ['STATUS', 'JUSTIFICATIVA']
+] = [n_st, final_j]
+
+if n_st == "Reagendado" and nova_data:
+    df_agenda.loc[
+        df_agenda['ID'] == sel_row['ID'],
+        'DATA REAGENDAMENTO'
+    ] = nova_data.strftime("%d/%m/%Y")
+else:
+    df_agenda.loc[
+        df_agenda['ID'] == sel_row['ID'],
+        'DATA REAGENDAMENTO'
+    ] = "-"
+
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.rerun()
