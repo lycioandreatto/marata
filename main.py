@@ -17,7 +17,6 @@ st.markdown("""
         /* Fundo da área principal - AZUL UM POUCO MAIS ESCURO */
         .stApp {
             background-color: #04780D;
-            color: #000000;
         }
         
         /* Fundo do Menu Lateral (Sidebar) - MANTIDO AZUL ESCURO */
@@ -38,10 +37,15 @@ st.markdown("""
             color: #000000 !important;
         }
 
-        /* Cor dos botões e abas */
+        /* Cor dos botões e abas - TEXTO DOS BOTÕES PARA BRANCO */
         .stButton>button {
             border-radius: 5px;
-            color: #FFFFFF
+            color: #FFFFFF !important;
+        }
+        
+        /* Garantir que o texto interno (p) do botão também seja branco */
+        .stButton>button p {
+            color: #FFFFFF !important;
         }
         
         .stTabs [data-baseweb="tab-list"] {
