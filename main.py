@@ -300,13 +300,6 @@ else:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    try:
-        st.image("pngmarata", width=150)
-    except:
-        try:
-            st.image("pngmarata.png", width=150)
-        except:
-            st.warning("Logo 'pngmarata' não encontrada.")
             
     # CARD DO USUÁRIO NO MENU LATERAL
     st.markdown(f"""
