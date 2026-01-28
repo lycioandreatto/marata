@@ -430,29 +430,19 @@ if menu == "📅 Agendamentos do Dia":
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
                 if st.button("💾 ATUALIZAR STATUS"):
-                    # 1. Captura localização via navegador
-                    location = streamlit_js_eval(
-                        js_expressions="""
-                            new promise((resolve) => {
-                                navigator.geolocation.watchPosition(
-                                    (pos) => resolve({
-                                        latitude: pos.coords.latitude,
-                                        longitude: pos.coords.longitude
-                                    }),
-                                    (err) => resolve(null),
-                                    { enableHighAccuracy: true }
-                                );
-                            });
-                        """,
-                        want_output=True
-                    )
-                    st.write("DEBUG localização:", location)
+    # 1. Captura localização de forma mais direta
+    # Usando o wrapper nativo da biblioteca para geolocalização
+    location = streamlit_js_eval(js_expressions="done(window.navigator.geolocation.getCurrentPosition(success => { done({latitude: success.coords.latitude, longitude: success.coords.longitude}) }, error => { done(null) }))", want_output=True, key="get_loc")
+    
+    # Se ainda retornar None no primeiro clique devido ao ciclo de renderização do Streamlit:
+    if location is None:
+        st.info("🛰️ Obtendo GPS... Por favor, clique novamente para confirmar.")
+        st.stop()
 
-                    if location is None:
-                        st.warning("⚠️ Não foi possível obter sua localização. Ative o GPS e tente novamente.")
-                        st.stop()
-                    latitude = location.get("latitude")
-                    longitude = location.get("longitude")
+    latitude = location.get("latitude")
+    longitude = location.get("longitude")
+    
+    # ... resto do seu código de salvamento ...
 
                     # 2. Monta justificativa final
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
