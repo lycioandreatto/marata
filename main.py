@@ -11,7 +11,7 @@ import os
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 
-# --- ESTILIZAÇÃO DOS CARDS ---
+# --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
     <style>
     [data-testid="stMetric"] {
@@ -21,10 +21,31 @@ st.markdown("""
         border: 1px solid #d3d3d3;
         box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
-    /* Alteração da cor do texto para preto */
     [data-testid="stMetric"] label, 
     [data-testid="stMetric"] div {
         color: black !important;
+    }
+    
+    /* Estilização do Card de Usuário Logado */
+    .user-card {
+        background-color: #1e1e1e;
+        padding: 12px 20px;
+        border-radius: 12px;
+        border-left: 5px solid #ff4b4b;
+        box-shadow: 3px 3px 10px rgba(0,0,0,0.3);
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    .user-card-text {
+        color: white;
+        font-weight: bold;
+        font-size: 1.1em;
+        letter-spacing: 0.5px;
+    }
+    .user-card-icon {
+        font-size: 1.5em;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -50,7 +71,6 @@ def gerar_pdf(df, tipo_relatorio="GERAL"):
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
     
-    # Ordenação específica solicitada
     df_pdf = df.copy()
     if tipo_relatorio == "AGENDA" and "REGISTRO" in df_pdf.columns:
         try:
@@ -234,14 +254,23 @@ is_admin = (user_atual == NOME_ADMIN.upper())
 is_analista = (user_atual == NOME_ANALISTA.upper())
 is_diretoria = (user_atual == NOME_DIRETORIA.upper())
 
+# Definindo ícone e label com base no perfil
 if is_admin:
     label_display = "ADMINISTRADOR"
+    user_icon = "👑"
+    border_color = "#FFD700"  # Dourado para ADM
 elif is_diretoria:
     label_display = f"DIRETORIA {user_atual}"
+    user_icon = "📈"
+    border_color = "#1E90FF"
 elif is_analista:
     label_display = f"ANALISTA {user_atual}"
+    user_icon = "🔬"
+    border_color = "#9370DB"
 else:
     label_display = f"SUPERVISOR {user_atual}"
+    user_icon = "👤"
+    border_color = "#ff4b4b"
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -253,7 +282,13 @@ with st.sidebar:
         except:
             st.warning("Logo 'pngmarata' não encontrada.")
             
-    st.markdown(f"👤 **{label_display}**")
+    # CARD DO USUÁRIO NO MENU LATERAL
+    st.markdown(f"""
+        <div class="user-card" style="border-left: 5px solid {border_color};">
+            <div class="user-card-icon">{user_icon}</div>
+            <div class="user-card-text">{label_display}</div>
+        </div>
+    """, unsafe_allow_html=True)
     
     opcoes_menu = ["Novo Agendamento", "Ver/Editar Minha Agenda"]
     if is_admin or is_analista or is_diretoria:
@@ -284,7 +319,7 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
 
-# --- TÍTULO CENTRAL NO TOPO (AJUSTADO PARA CIMA E COR BRANCA) ---
+# --- TÍTULO CENTRAL NO TOPO ---
 st.markdown("<h4 style='text-align: center; color: white; margin-top: -50px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
@@ -329,7 +364,6 @@ if menu == "📊 Dashboard de Controle":
         
         df_relatorio_completo = df_base_detalhe[['REGISTRO', col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['REGISTRO', 'SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
-        
         df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
@@ -490,7 +524,6 @@ elif menu == "Ver/Editar Minha Agenda":
         cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         df_exp = df_f[cols_exp]
         
-        # Ajuste de colunas para aproximar os botões Excel e PDF e equilibrar o tamanho
         c1, c2, _ = st.columns([0.15, 0.15, 0.7])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
