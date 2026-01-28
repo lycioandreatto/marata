@@ -21,6 +21,11 @@ st.markdown("""
         border: 1px solid #d3d3d3;
         box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
+    /* Alteração da cor do texto para preto */
+    [data-testid="stMetric"] label, 
+    [data-testid="stMetric"] div {
+        color: black !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
