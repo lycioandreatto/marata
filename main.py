@@ -338,10 +338,13 @@ with st.sidebar:
             # Supervisor comum não tem selectbox, só botão para ele mesmo
             sup_limpar = "Selecione..."
 
-        # Lógica do Botão de Deletar
+        # Lógica do Botão de Deletar com Confirmação
         if is_admin or is_analista or is_diretoria:
             if sup_limpar != "Selecione...":
-                if st.button(f"⚠️ APAGAR TUDO: {sup_limpar}"):
+                # Criamos um popover para confirmação
+                confirma = st.popover(f"⚠️ APAGAR TUDO: {sup_limpar}")
+                confirma.warning(f"Isso apagará permanentemente todos os registros de {sup_limpar}. Confirma?")
+                if confirma.button(f"Sim, deletar agenda de {sup_limpar}", key="conf_del_adm"):
                     # Remove apenas o supervisor selecionado da planilha toda
                     df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
@@ -350,10 +353,15 @@ with st.sidebar:
                     time.sleep(1)
                     st.rerun()
         else:
-            if st.button(f"⚠️ APAGAR TODA MINHA AGENDA"):
+            # Popover de confirmação para o próprio supervisor
+            confirma_proprio = st.popover("⚠️ APAGAR TODA MINHA AGENDA")
+            confirma_proprio.warning("Você tem certeza que deseja limpar toda a sua agenda?")
+            if confirma_proprio.button("Sim, apagar tudo", key="conf_del_self"):
                 df_rest = df_agenda[df_agenda['SUPERVISOR'] != user_atual].drop(columns=['LINHA'], errors='ignore')
                 conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
                 st.cache_data.clear()
+                st.success("Sua agenda foi limpa!")
+                time.sleep(1)
                 st.rerun()
 
 # --- TÍTULO CENTRAL NO TOPO ---
