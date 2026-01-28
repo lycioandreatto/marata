@@ -39,15 +39,18 @@ def gerar_pdf(df):
     cols = df.columns.tolist()
     largura_total = 275
     
-    largura_cliente = 60  
+    # Ajuste de larguras incluindo REGISTRO
+    largura_registro = 25
+    largura_cliente = 55  
     largura_supervisor = 30
     largura_agendado = 30
     largura_data = 18
-    largura_justificativa = 50
+    largura_justificativa = 45
     
     especiais = []
     col_map = {str(c).upper(): c for c in cols}
     
+    if "REGISTRO" in col_map: especiais.append("REGISTRO")
     if "CLIENTE" in col_map: especiais.append("CLIENTE")
     if "SUPERVISOR" in col_map: especiais.append("SUPERVISOR")
     if "AGENDADO POR" in col_map: especiais.append("AGENDADO POR")
@@ -55,6 +58,7 @@ def gerar_pdf(df):
     if "JUSTIFICATIVA" in col_map: especiais.append("JUSTIFICATIVA")
     
     ocupado = 0
+    if "REGISTRO" in especiais: ocupado += largura_registro
     if "CLIENTE" in especiais: ocupado += largura_cliente
     if "SUPERVISOR" in especiais: ocupado += largura_supervisor
     if "AGENDADO POR" in especiais: ocupado += largura_agendado
@@ -67,7 +71,8 @@ def gerar_pdf(df):
     pdf.set_font("Arial", 'B', 7)
     for col in cols:
         c_up = str(col).upper()
-        if c_up == "CLIENTE": w = largura_cliente
+        if c_up == "REGISTRO": w = largura_registro
+        elif c_up == "CLIENTE": w = largura_cliente
         elif c_up == "SUPERVISOR": w = largura_supervisor
         elif c_up == "AGENDADO POR": w = largura_agendado
         elif c_up == "DATA": w = largura_data
@@ -80,7 +85,8 @@ def gerar_pdf(df):
     for index, row in df.iterrows():
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
-            if col_name == "CLIENTE": w, limit = largura_cliente, 50
+            if col_name == "REGISTRO": w, limit = largura_registro, 20
+            elif col_name == "CLIENTE": w, limit = largura_cliente, 50
             elif col_name == "SUPERVISOR": w, limit = largura_supervisor, 30
             elif col_name == "AGENDADO POR": w, limit = largura_agendado, 30
             elif col_name == "DATA": w, limit = largura_data, 12
@@ -257,24 +263,16 @@ if menu == "📊 Dashboard de Controle":
             if sup_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_rv_base] == sup_sel_dash]
 
-        # --- PROCESSAMENTO DOS DADOS FILTRADOS (COM DATA DE INSERÇÃO) ---
-        # Mapeamos a data de registro da aba AGENDA para cruzar com a BASE
-        df_agenda_registro = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].drop_duplicates(subset=['CÓDIGO CLIENTE'], keep='first')
-        
+        # --- PROCESSAMENTO DOS DADOS FILTRADOS ---
+        codigos_agendados_global = df_agenda['CÓDIGO CLIENTE'].unique()
         df_base_detalhe = df_base_filtrada.copy()
-        df_base_detalhe = pd.merge(df_base_detalhe, df_agenda_registro, left_on='Cliente', right_on='CÓDIGO CLIENTE', how='left')
-        
-        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['CÓDIGO CLIENTE'].apply(
-            lambda x: 'AGENDADO' if pd.notnull(x) else 'PENDENTE'
+        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['Cliente'].apply(
+            lambda x: 'AGENDADO' if str(x) in codigos_agendados_global else 'PENDENTE'
         )
         
-        # Coluna da data de inserção formatada
-        df_base_detalhe['DATA INSERÇÃO'] = df_base_detalhe['REGISTRO'].fillna("-")
-
-        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO', 'DATA INSERÇÃO']]
-        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS', 'DATA INSERÇÃO']
-        
-        # Ordenação: Agendados primeiro
+        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
+        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
+        # --- ORDENAÇÃO ALFABÉTICA PELO STATUS (AGENDADO antes de PENDENTE) ---
         df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
