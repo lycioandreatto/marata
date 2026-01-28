@@ -395,7 +395,7 @@ if menu == "📅 Agendamentos do Dia":
                 df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
             df_dia["EDITAR"] = False
-            cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            cols_v = ['EDITAR', 'DATA','ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             
             df_display = df_dia[cols_v].copy()
             
