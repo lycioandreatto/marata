@@ -266,8 +266,8 @@ with st.sidebar:
                 st.cache_data.clear()
                 st.rerun()
 
-# --- TÍTULO CENTRAL NO TOPO ---
-st.markdown("<h4 style='text-align: center; color: #5D2E1F;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
+# --- TÍTULO CENTRAL NO TOPO (AJUSTADO PARA CIMA) ---
+st.markdown("<h4 style='text-align: center; color: #5D2E1F; margin-top: -50px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
 # --- PÁGINA: DASHBOARD ---
