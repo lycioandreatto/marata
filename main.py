@@ -431,17 +431,17 @@ if menu == "📅 Agendamentos do Dia":
 
               if st.button("💾 ATUALIZAR STATUS"):
                     # 1. Captura localização com componente de espera
-                              with st.spinner("Obtendo localização GPS..."):
-                                    location = streamlit_js_eval(
-                                        js_expressions="""
-                                            new Promise((resolve) => {
-                                                navigator.geolocation.getCurrentPosition(
-                                                    (pos) => {
-                                                        resolve({
-                                                            latitude: pos.coords.latitude,
-                                                            longitude: pos.coords.longitude
-                                                        });
-                                                    },
+                    with st.spinner("Obtendo localização GPS..."):
+                        location = streamlit_js_eval(
+                            js_expressions="""
+                                new Promise((resolve) => {
+                                    navigator.geolocation.getCurrentPosition(
+                                        (pos) => {
+                                            resolve({
+                                                latitude: pos.coords.latitude,
+                                                longitude: pos.coords.longitude
+                                            });
+                                        },
                                         (err) => {
                                             resolve(null);
                                         },
@@ -453,24 +453,21 @@ if menu == "📅 Agendamentos do Dia":
                                     );
                                 });
                             """,
-                            target_id="get_location", # ID fixo ajuda na consistência
+                            target_id="get_location",
                             want_output=True
                         )
 
-                    # Pequena pausa para o Streamlit processar o retorno do JS
                     if location is None:
-                        time.sleep(1)
-                        # Se continuar None, exibe erro
-                        st.error("❌ Erro de Localização: Certifique-se que o GPS está ativo e você deu permissão ao navegador.")
+                        st.error("❌ Erro de Localização: Ative o GPS e dê permissão ao navegador.")
                         st.stop()
-                    
+
                     latitude = location.get("latitude")
                     longitude = location.get("longitude")
 
-                    # 2. Monta justificativa final
+                    # Continuação do seu código (Justificativa e Update)
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-
-                    # 3. Atualiza no DataFrame (incluindo LATITUDE/LONGITUDE)
+                    
+                    # 3. Atualiza no DataFrame
                     df_agenda.loc[
                         df_agenda['ID'] == sel_row['ID'],
                         ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']
@@ -484,10 +481,9 @@ if menu == "📅 Agendamentos do Dia":
                     )
 
                     st.cache_data.clear()
-                    st.success(f"✅ Atualizado! Localização capturada: {latitude}, {longitude}")
+                    st.success(f"✅ Atualizado! Localização: {latitude}, {longitude}")
                     time.sleep(1.5)
                     st.rerun()
-
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
     st.header("📊 Resumo de Engajamento por Supervisor")
