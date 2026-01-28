@@ -18,7 +18,31 @@ if not cookies.ready():
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 from streamlit_js_eval import streamlit_js_eval
-streamlit_js_eval(js_expressions="window.parent.document.title = 'Maratá - SCA'", want_output=False)
+import streamlit.components.v1 as components
+
+# --- TÍTULO BLINDADO (SEM O SUFIXO STREAMLIT) ---
+components.html(
+    """
+    <script>
+    const novoTitulo = "Maratá - SCA";
+    window.parent.document.title = novoTitulo;
+    
+    // Cria um observador que vigia qualquer mudança no título da aba
+    const observador = new MutationObserver(function(mutations) {
+        if (window.parent.document.title !== novoTitulo) {
+            window.parent.document.title = novoTitulo;
+        }
+    });
+
+    // Começa a observar a tag <title> lá no topo do navegador
+    const target = window.parent.document.querySelector('title');
+    if (target) {
+        observador.observe(target, { childList: true });
+    }
+    </script>
+    """,
+    height=0,
+)
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
