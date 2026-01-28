@@ -430,18 +430,76 @@ if menu == "📅 Agendamentos do Dia":
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
                 if st.button("💾 ATUALIZAR STATUS"):
-    # 1. Captura localização de forma mais direta
-    # Usando o wrapper nativo da biblioteca para geolocalização
-    location = streamlit_js_eval(js_expressions="done(window.navigator.geolocation.getCurrentPosition(success => { done({latitude: success.coords.latitude, longitude: success.coords.longitude}) }, error => { done(null) }))", want_output=True, key="get_loc")
-    
-    # Se ainda retornar None no primeiro clique devido ao ciclo de renderização do Streamlit:
-    if location is None:
-        st.info("🛰️ Obtendo GPS... Por favor, clique novamente para confirmar.")
-        st.stop()
+                    # 1. Captura localização via navegador (Corrigido: Promise com P maiúsculo e sintaxe limpa)
+                    location = streamlit_js_eval(
+                        js_expressions="""
+                            new Promise((resolve, reject) => {
+                                if (!navigator.geolocation) {
+                                    resolve(null);
+                                }
+                                navigator.geolocation.getCurrentPosition(
+                                    (pos) => {
+                                        resolve({
+                                            latitude: pos.coords.latitude,
+                                            longitude: pos.coords.longitude
+                                        });
+                                    },
+                                    (err) => {
+                                        resolve(null);
+                                    },
+                                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                                );
+                            });
+                        """,
+                        want_output=True,
+                        key="get_location"
+                    )
 
-    latitude = location.get("latitude")
-    longitude = location.get("longitude")
-    
+                    # Se a localização ainda não carregou (Streamlit precisa de um segundo clique ou delay)
+                    if location is None:
+                        st.warning("🌐 Tentando obter sinal de GPS... Por favor, clique no botão novamente em 2 segundos.")
+                        st.info("Certifique-se de que permitiu o acesso à localização no cadeado do navegador (ao lado da URL).")
+                    else:
+                        latitude = location.get("latitude")
+                        longitude = location.get("longitude")
+                        
+                        # DEBUG para você ver no console se pegou
+                        # st.write(f"Localização capturada: {latitude}, {longitude}")
+
+                        # 2. Monta justificativa final
+                        final_j = mot_outro if n_ju == "OUTRO" else n_ju
+
+                        # 3. Atualiza no DataFrame (incluindo LATITUDE/LONGITUDE)
+                        df_agenda.loc[
+                            df_agenda['ID'] == sel_row['ID'],
+                            ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']
+                        ] = [n_st, final_j, latitude, longitude]
+
+                        # 4. Salva no Google Sheets
+                        try:
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=['LINHA'], errors='ignore')
+                            )
+                            st.cache_data.clear()
+                            st.success("✅ Atualizado com sucesso com localização!")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar na planilha: {e}")
+
+Por que ainda pode dar erro?
+
+    HTTPS: O navegador bloqueia o GPS se o seu site não estiver usando https://. Se você estiver testando em localhost, funciona, mas se estiver em um servidor sem certificado SSL, o navigator.geolocation sempre retornará erro.
+
+    Permissão Negada: Se você clicou em "Bloquear" uma vez, o navegador não pergunta de novo. Você precisa clicar no ícone de cadeado ao lado do endereço do site e resetar a permissão de "Localização".
+
+    Botão "Fantasma": O Streamlit às vezes limpa o estado antes do JavaScript devolver o valor. Por isso adicionei a mensagem pedindo para clicar novamente se retornar None.
+
+Próximo Passo
+
+Gostaria que eu revisasse também a parte do Dashboard onde você monta o link do Google Maps? Notei que a URL que você usou (googleusercontent.com...) parece estar com o formato incorreto para abrir o mapa diretamente.
     # ... resto do seu código de salvamento ...
 
                     # 2. Monta justificativa final
