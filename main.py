@@ -187,9 +187,6 @@ def carregar_dados():
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
-        if 'DATA REAGENDAMENTO' not in df_a.columns:
-            df_a['DATA REAGENDAMENTO'] = "-"
-
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
@@ -638,7 +635,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             except: st.error("Erro ao gerar PDF")
 
         df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'REAGENDADO PARA','ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         
         df_display = df_f[cols_v].copy()
         try:
@@ -661,59 +658,22 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             if "OUTRO" not in ju_list: ju_list.append("OUTRO")
             col1, col2 = st.columns(2)
             with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
-                nova_data = None
-if n_st == "Reagendado":
-    nova_data = st.date_input("Nova data de reagendamento:"),
-else:
-    nova_data = none
-
             with col2:
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                 mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
 
-           with st.form("save_form"):
-    b1, b2 = st.columns(2)
-
-    if b1.form_submit_button("💾 SALVAR"):
-        final_j = mot_outro if n_ju == "OUTRO" else n_ju
-
-        # Atualiza status e justificativa
-        df_agenda.loc[
-            df_agenda['ID'] == sel_row['ID'],
-            ['STATUS', 'JUSTIFICATIVA']
-        ] = [n_st, final_j]
-
-        # Atualiza data de reagendamento apenas se for Reagendado
-        if n_st == "Reagendado" and nova_data:
-            df_agenda.loc[
-                df_agenda['ID'] == sel_row['ID'],
-                'DATA REAGENDAMENTO'
-            ] = nova_data.strftime("%d/%m/%Y")
-        else:
-            df_agenda.loc[
-                df_agenda['ID'] == sel_row['ID'],
-                'DATA REAGENDAMENTO'
-            ] = "-"
-
-        conn.update(
-            spreadsheet=url_planilha,
-            worksheet="AGENDA",
-            data=df_agenda.drop(columns=['LINHA'], errors='ignore')
-        )
-        st.cache_data.clear()
-        st.rerun()
-
-    if b2.form_submit_button("🗑️ EXCLUIR"):
-        df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(
-            columns=['LINHA'], errors='ignore'
-        )
-        conn.update(
-            spreadsheet=url_planilha,
-            worksheet="AGENDA",
-            data=df_novo_a
-        )
-        st.cache_data.clear()
-        st.rerun()
-
+            with st.form("save_form"):
+                b1, b2 = st.columns(2)
+                if b1.form_submit_button("💾 SALVAR"):
+                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                    st.cache_data.clear()
+                    st.rerun()
+                if b2.form_submit_button("🗑️ EXCLUIR"):
+                    df_novo_a = df_agenda[df_agenda['ID'] != sel_row['ID']].drop(columns=['LINHA'], errors='ignore')
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_novo_a)
+                    st.cache_data.clear()
+                    st.rerun()
     else:
         st.info("Nenhum registro encontrado.")
