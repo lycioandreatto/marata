@@ -201,6 +201,9 @@ def carregar_dados():
         return None, None, None, pd.DataFrame(columns=["USUARIO", "SENHA"])
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
+if df_agenda is not None and not df_agenda.empty:
+    if 'DATA_REAGENDADA' not in df_agenda.columns:
+        df_agenda['DATA_REAGENDADA'] = ""
 
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
@@ -393,10 +396,16 @@ if menu == "📅 Agendamentos do Dia":
                 with col2:
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
+                nova_data = ""
+                if n_st == "Reagendado":
+                    nova_data = st.date_input(
+                        "📅 Nova data do reagendamento",
+                        value=datetime.now(fuso_br).date()
+                    ).strftime("%d/%m/%Y")
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA','DATA REAGENDADA']] = [n_st, final_j, nova_data]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.success("Atualizado com sucesso!")
@@ -664,12 +673,18 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             with col2:
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                 mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
+            nova_data = ""
+            if n_st == "Reagendado":
+                nova_data = st.date_input(
+                    "📅 Nova data do reagendamento",
+                    value=datetime.now(fuso_br).date()
+                ).strftime("%d/%m/%Y")
 
             with st.form("save_form"):
                 b1, b2 = st.columns(2)
                 if b1.form_submit_button("💾 SALVAR"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA REAGENDADA']] = [n_st, final_j, nova_data]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.rerun()
