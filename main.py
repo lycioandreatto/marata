@@ -97,7 +97,7 @@ def gerar_pdf(df, tipo_relatorio="GERAL"):
     else:
         tamanho_fonte_cabecalho, tamanho_fonte_dados, limite_texto = 8, 7, 40
 
-    largura_map = {"CLIENTE": 60, "SUPERVISOR": 30, "AGENDADO POR": 30, "DATA": 18, "JUSTIFICATIVA": 50, "REGISTRO": 25, "CIDADE": 40}
+    largura_map = {"CLIENTE": 50, "SUPERVISOR": 30, "AGENDADO POR": 30, "DATA": 18, "JUSTIFICATIVA": 40, "REAGENDAMENTO": 35, "REGISTRO": 25, "CIDADE": 35}
     especiais = [c for c in cols if str(c).upper() in largura_map]
     ocupado = sum(largura_map[str(c).upper()] for c in especiais)
     outras_cols_count = len(cols) - len(especiais)
@@ -114,7 +114,7 @@ def gerar_pdf(df, tipo_relatorio="GERAL"):
         for i, item in enumerate(row):
             col_name = str(cols[i]).upper()
             w = largura_map.get(col_name, largura_padrao)
-            limit = 60 if col_name == "JUSTIFICATIVA" else limite_texto
+            limit = 60 if col_name in ["JUSTIFICATIVA", "REAGENDAMENTO"] else limite_texto
             texto = str(item)[:limit].encode('latin-1', 'replace').decode('latin-1')
             pdf.cell(w, 5, texto, border=1)
         pdf.ln()
@@ -134,6 +134,7 @@ def carregar_dados():
         df_a.columns = [str(c).strip() for c in df_a.columns]
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
+        if 'REAGENDAMENTO' not in df_a.columns: df_a['REAGENDAMENTO'] = "-"
         df_a['LINHA'] = df_a.index + 2
         for df in [df_b, df_a]:
             cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
@@ -226,7 +227,7 @@ if menu == "📅 Agendamentos do Dia":
                 col_local = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_dia = pd.merge(df_dia, df_base[['Cliente', col_local]], left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').rename(columns={col_local: 'CIDADE'})
             df_dia["EDITAR"] = False
-            edicao_dia = st.data_editor(df_dia[['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']], key="edit_dia", hide_index=True, use_container_width=True, column_config={"EDITAR": st.column_config.CheckboxColumn("📝")}, disabled=['DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR'])
+            edicao_dia = st.data_editor(df_dia[['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'REAGENDAMENTO', 'STATUS', 'AGENDADO POR']], key="edit_dia", hide_index=True, use_container_width=True, column_config={"EDITAR": st.column_config.CheckboxColumn("📝")}, disabled=['DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'REAGENDAMENTO', 'STATUS', 'AGENDADO POR'])
             marcados = edicao_dia[edicao_dia["EDITAR"]]
             if not marcados.empty:
                 sel_row = df_dia.iloc[marcados.index[0]]
@@ -238,15 +239,15 @@ if menu == "📅 Agendamentos do Dia":
                 mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
                 
                 # Campos Reagendamento
-                n_data, n_motivo = sel_row['DATA'], sel_row['JUSTIFICATIVA']
+                n_data, n_reag_info = sel_row['DATA'], sel_row['REAGENDAMENTO']
                 if n_st == "Reagendado":
                     col_re1, col_re2 = st.columns(2)
                     with col_re1: n_data = st.date_input("Nova Data:", datetime.now(fuso_br)).strftime("%d/%m/%Y")
-                    with col_re2: n_motivo = st.text_area("Motivo do Reagendamento:")
+                    with col_re2: n_reag_info = st.text_area("Motivo do Reagendamento:")
 
                 if st.button("💾 ATUALIZAR STATUS"):
-                    final_j = n_motivo if n_st == "Reagendado" else (mot_outro if n_ju == "OUTRO" else n_ju)
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, final_j, n_data]
+                    final_j = mot_outro if n_ju == "OUTRO" else n_ju
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA', 'REAGENDAMENTO']] = [n_st, final_j, n_data, n_reag_info]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.success("Atualizado!"); st.cache_data.clear(); time.sleep(1); st.rerun()
         else: st.info(f"Sem agendamentos para hoje.")
@@ -289,7 +290,7 @@ elif menu == "📋 Novo Agendamento":
                     datas = [st.date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"nd_{i}") for i in range(qtd)]
                     if st.form_submit_button("SALVAR"):
                         cod, nom = cliente_sel.split(" - ", 1)
-                        novos = [{"ID": datetime.now(fuso_br).strftime("%Y%m%d%H%M%S")+str(i), "REGISTRO": datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M"), "DATA": d.strftime("%d/%m/%Y"), "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod, "CLIENTE": nom, "STATUS": "Planejado", "AGENDADO POR": user_atual, "JUSTIFICATIVA": "-"} for i, d in enumerate(datas)]
+                        novos = [{"ID": datetime.now(fuso_br).strftime("%Y%m%d%H%M%S")+str(i), "REGISTRO": datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M"), "DATA": d.strftime("%d/%m/%Y"), "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod, "CLIENTE": nom, "STATUS": "Planejado", "AGENDADO POR": user_atual, "JUSTIFICATIVA": "-", "REAGENDAMENTO": "-"} for i, d in enumerate(datas)]
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novos)], ignore_index=True))
                         st.success("Salvo!"); st.cache_data.clear(); time.sleep(1); st.rerun()
         else: st.success("Tudo agendado!")
@@ -300,7 +301,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
     if df_agenda is not None:
         df_f = df_agenda.copy() if (is_admin or is_diretoria) else df_agenda[df_agenda['ANALISTA' if is_analista else 'SUPERVISOR'].str.upper() == user_atual]
         df_f["EDITAR"] = False
-        edicao = st.data_editor(df_f[['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']].sort_values(by='REGISTRO', ascending=False), key="ed_v", hide_index=True, use_container_width=True, column_config={"EDITAR": st.column_config.CheckboxColumn("📝")}, disabled=['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR'])
+        edicao = st.data_editor(df_f[['EDITAR', 'REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'REAGENDAMENTO', 'STATUS', 'AGENDADO POR']].sort_values(by='REGISTRO', ascending=False), key="ed_v", hide_index=True, use_container_width=True, column_config={"EDITAR": st.column_config.CheckboxColumn("📝")}, disabled=['REGISTRO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'REAGENDAMENTO', 'STATUS', 'AGENDADO POR'])
+        
+        # Botões de Exportação
+        col_ex1, col_ex2 = st.columns(2)
+        with col_ex1: st.download_button("📊 Baixar em Excel", data=converter_para_excel(df_f.drop(columns=['EDITAR', 'LINHA'], errors='ignore')), file_name="agenda_marata.xlsx")
+        with col_ex2: st.download_button("📄 Baixar em PDF", data=gerar_pdf(df_f.drop(columns=['EDITAR', 'LINHA'], errors='ignore'), "AGENDA"), file_name="agenda_marata.pdf")
+        
         marcados = edicao[edicao["EDITAR"]]
         if not marcados.empty:
             sel_row = df_f[df_f['REGISTRO'] == marcados.iloc[0]['REGISTRO']].iloc[0]
@@ -310,14 +317,15 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             with c1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
             with c2: n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
             
-            # Novos campos solicitados para Reagendamento
-            n_data, n_motivo = sel_row['DATA'], (n_ju if n_ju != "OUTRO" else st.text_input("Especifique:"))
+            n_data, n_reag_info = sel_row['DATA'], sel_row['REAGENDAMENTO']
+            final_j = (st.text_input("Especifique:") if n_ju == "OUTRO" else n_ju)
+
             if n_st == "Reagendado":
                 col_re1, col_re2 = st.columns(2)
                 with col_re1: n_data = st.date_input("Nova Data de Reagendamento:", datetime.now(fuso_br)).strftime("%d/%m/%Y")
-                with col_re2: n_motivo = st.text_area("Motivo detalhado do Reagendamento:", value=sel_row['JUSTIFICATIVA'] if sel_row['JUSTIFICATIVA'] != "-" else "")
+                with col_re2: n_reag_info = st.text_area("Motivo detalhado do Reagendamento:", value=sel_row['REAGENDAMENTO'] if sel_row['REAGENDAMENTO'] != "-" else "")
 
             if st.button("💾 SALVAR ALTERAÇÃO"):
-                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA']] = [n_st, n_motivo, n_data]
+                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'DATA', 'REAGENDAMENTO']] = [n_st, final_j, n_data, n_reag_info]
                 conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                 st.success("Alterado com sucesso!"); st.cache_data.clear(); time.sleep(1); st.rerun()
