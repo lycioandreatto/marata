@@ -38,24 +38,49 @@ def gerar_pdf(df):
     cols = df.columns.tolist()
     largura_total = 275
     
-    # Lógica para aumentar a coluna CLIENTE
-    largura_cliente = 80  # Largura expandida para o cliente
-    outras_cols_count = len(cols) - 1
-    largura_padrao = (largura_total - largura_cliente) / outras_cols_count
+    # Lógica para aumentar colunas específicas
+    largura_cliente = 70  
+    largura_supervisor = 45
+    largura_agendado = 45
+    
+    # Identificar quais colunas especiais estão presentes no DF atual
+    especiais = []
+    if "CLIENTE" in [str(c).upper() for c in cols]: especiais.append("CLIENTE")
+    if "SUPERVISOR" in [str(c).upper() for c in cols]: especiais.append("SUPERVISOR")
+    if "AGENDADO POR" in [str(c).upper() for c in cols]: especiais.append("AGENDADO POR")
+    
+    # Calcular largura ocupada pelas colunas fixas/expandidas
+    ocupado = 0
+    if "CLIENTE" in especiais: ocupado += largura_cliente
+    if "SUPERVISOR" in especiais: ocupado += largura_supervisor
+    if "AGENDADO POR" in especiais: ocupado += largura_agendado
+    
+    outras_cols_count = len(cols) - len(especiais)
+    largura_padrao = (largura_total - ocupado) / outras_cols_count if outras_cols_count > 0 else 0
     
     pdf.set_font("Arial", 'B', 8)
     for col in cols:
-        w = largura_cliente if str(col).upper() == "CLIENTE" else largura_padrao
+        c_up = str(col).upper()
+        if c_up == "CLIENTE": w = largura_cliente
+        elif c_up == "SUPERVISOR": w = largura_supervisor
+        elif c_up == "AGENDADO POR": w = largura_agendado
+        else: w = largura_padrao
         pdf.cell(w, 8, str(col), border=1, align='C')
     pdf.ln()
     
     pdf.set_font("Arial", '', 7) 
     for index, row in df.iterrows():
         for i, item in enumerate(row):
-            col_name = cols[i]
-            w = largura_cliente if str(col_name).upper() == "CLIENTE" else largura_padrao
-            # Aumentado o limite de caracteres para o cliente (60) e mantido 45 para os outros
-            limit = 60 if str(col_name).upper() == "CLIENTE" else 45
+            col_name = str(cols[i]).upper()
+            if col_name == "CLIENTE": 
+                w, limit = largura_cliente, 60
+            elif col_name == "SUPERVISOR": 
+                w, limit = largura_supervisor, 40
+            elif col_name == "AGENDADO POR": 
+                w, limit = largura_agendado, 40
+            else: 
+                w, limit = largura_padrao, 35
+            
             pdf.cell(w, 8, str(item)[:limit], border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
