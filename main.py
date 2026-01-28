@@ -1,4 +1,4 @@
-with col1: n_st =import streamlit as st
+import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
@@ -187,7 +187,6 @@ def carregar_dados():
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
-        if 'DATA REAGENDAMENTO' not in df_a.columns: df_a['DATA REAGENDAMENTO'] = "-"   
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
@@ -636,7 +635,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             except: st.error("Erro ao gerar PDF")
 
         df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA','REAGENDADO PARA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         
         df_display = df_f[cols_v].copy()
         try:
@@ -662,35 +661,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             with col2:
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                 mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
-            if n_st == "Reagendado":
-              nova_data = st.date_input(
-              "Nova data de reagendamento:",
-               datetime.now(fuso_br)
-                )
-            else:
-              nova_data = None
-
 
             with st.form("save_form"):
                 b1, b2 = st.columns(2)
                 if b1.form_submit_button("💾 SALVAR"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[
-    df_agenda['ID'] == sel_row['ID'],
-    ['STATUS', 'JUSTIFICATIVA']
-] = [n_st, final_j]
-
-if n_st == "Reagendado" and nova_data:
-    df_agenda.loc[
-        df_agenda['ID'] == sel_row['ID'],
-        'DATA REAGENDAMENTO'
-    ] = nova_data.strftime("%d/%m/%Y")
-else:
-    df_agenda.loc[
-        df_agenda['ID'] == sel_row['ID'],
-        'DATA REAGENDAMENTO'
-    ] = "-"
-
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.rerun()
