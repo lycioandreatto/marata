@@ -410,6 +410,21 @@ if menu == "📅 Agendamentos do Dia":
 if "gps_lat" not in st.session_state:
     st.session_state.gps_lat = None
     st.session_state.gps_lon = None
+if "gps_lat" not in st.session_state:
+    st.session_state.gps_lat = None
+    st.session_state.gps_lon = None
+
+# botão separado para capturar GPS
+if st.button("📍 CAPTURAR LOCALIZAÇÃO"):
+    lat, lon = capturar_coordenadas()
+    st.session_state.gps_lat = lat
+    st.session_state.gps_lon = lon
+
+# feedback visual
+if st.session_state.gps_lat and st.session_state.gps_lon:
+    st.success(
+        f"GPS capturado: {st.session_state.gps_lat}, {st.session_state.gps_lon}"
+    )
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     lat, lon = capturar_coordenadas()
