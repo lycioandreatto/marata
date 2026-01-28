@@ -54,6 +54,11 @@ st.markdown("""
     .user-card-icon {
         font-size: 1.5em;
     }
+    /* Estilo para Alerta Negativo */
+    .metric-alert {
+        background-color: #ffcccc !important;
+        border: 1px solid #ff4b4b !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -516,6 +521,7 @@ elif menu == "📋 Novo Agendamento":
             codigos_agendados = df_agenda[df_agenda['SUPERVISOR'] == sup_sel]['CÓDIGO CLIENTE'].unique()
             clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
             
+            # --- SEÇÃO DE ALERTA E MÉTRICAS ---
             m1, m2, m3, m4 = st.columns(4)
             n_total = len(clientes_f)
             n_agendados = len(codigos_agendados)
@@ -524,7 +530,18 @@ elif menu == "📋 Novo Agendamento":
             
             m1.metric("Total na Base", n_total)
             m2.metric("Já Agendados", n_agendados)
-            m3.metric("Faltando", n_pendentes)
+            
+            # Alerta visual para clientes nunca visitados
+            st.markdown("""
+                <style>
+                div[data-testid="stMetric"]:nth-child(3) {
+                    background-color: #ffebeb !important;
+                    border: 2px solid #ff4b4b !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            
+            m3.metric("NUNCA VISITADOS ⚠️", n_pendentes, delta=f"-{n_pendentes}", delta_color="inverse")
             m4.metric("% Adesão", f"{perc_sup:.1f}%")
             
             analista_vinc = NOME_ANALISTA
@@ -538,6 +555,7 @@ elif menu == "📋 Novo Agendamento":
             if not lista_c:
                 st.success("✅ Todos os clientes desta base já foram agendados!")
             else:
+                st.warning(f"Atenção: Existem {n_pendentes} clientes que ainda não possuem NENHUM agendamento.")
                 cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
                 if cliente_sel != "Selecione...":
                     qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
