@@ -385,7 +385,12 @@ if menu == "📅 Agendamentos do Dia":
         else:
             df_dia = df_dia[df_dia['SUPERVISOR'] == user_atual]
 
-        st.columns([1, 3])[0].metric("Visitas Hoje", len(df_dia))
+        total_visitas = len(df_dia)
+        visitas_realizadas = len(df_dia[df_dia['STATUS'] == "Realizado"])
+
+        m_col1, m_col2, m_col3 = st.columns([1, 1, 2])
+        m_col1.metric("Visitas Hoje", total_visitas)
+        m_col2.metric("Realizadas", visitas_realizadas, delta=f"{visitas_realizadas/total_visitas*100:.0f}%" if total_visitas > 0 else None)
         
         if not df_dia.empty:
             if df_base is not None:
