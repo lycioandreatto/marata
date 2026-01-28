@@ -436,9 +436,6 @@ if menu == "📅 Agendamentos do Dia":
                         key="get_location",
                         want_output=True
                     )
-                    st.write("Permissões do navegador:",
-                             streamlit_js_eval("navigator.permissions.query({name: 'geolocation'})",
-                                               want_output=True))
                     st.write("DEBUG localização:", location)
 
                     if location is None:
