@@ -445,44 +445,23 @@ if menu == "📅 Agendamentos do Dia":
                 df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            # --- INICIO DO BLOCO CORRIGIDO ---
             df_dia["EDITAR"] = False
-            
-            # 1. Definimos as colunas visíveis
-            cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-            
-            # 2. Adicionamos a coluna de distância apenas para ADM/Analista/Diretoria
-            if is_admin or is_diretoria or is_analista:
-                if 'DISTANCIA_LOG' in df_dia.columns:
-                    cols_v.append('DISTANCIA_LOG')
+            cols_v = ['EDITAR', 'DATA','ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             
             df_display = df_dia[cols_v].copy()
             
+            # --- ADICIONE ISTO AQUI ---
             def style_realizado(row):
                 if row['STATUS'] == "Realizado":
-                    # Auditoria visual: Laranja se estiver longe (mais de 500m)
-                    if 'DISTANCIA_LOG' in row.index:
-                        try:
-                            dist_val = str(row['DISTANCIA_LOG']).replace('m','')
-                            if dist_val and float(dist_val) > 500:
-                                return ['color: #E67E22; font-weight: bold'] * len(row)
-                        except: pass
                     return ['color: green; font-weight: bold'] * len(row)
                 return [''] * len(row)
             
             df_styled = df_display.style.apply(style_realizado, axis=1)
+            # --------------------------
 
-            edicao_dia = st.data_editor(
-                df_styled, 
-                key="edit_dia", 
-                hide_index=True, 
-                use_container_width=True,
-                column_config={
-                    "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS")
-                },
-                disabled=[c for c in cols_v if c != "EDITAR"]
-            )
+            edicao_dia = st.data_editor(df_styled, key="edit_dia", hide_index=True, use_container_width=True,
+                                     column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
+                                     disabled=[c for c in cols_v if c != "EDITAR"])
 
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
@@ -504,33 +483,57 @@ if menu == "📅 Agendamentos do Dia":
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
                     
-                    cliente_info = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
-                    log_distancia_valor = ""
+                    # 1. Buscar a coordenada alvo na aba BASE
+                    cod_cliente_atual = str(sel_row['CÓDIGO CLIENTE'])
+                    # Filtra a base para achar a coordenada do cliente específico
+                    cliente_info = df_base[df_base['Cliente'].astype(str) == cod_cliente_atual]
+                    
+                    distancia_info = ""
                     alerta_distancia = False
                     
                     if not cliente_info.empty:
                         coord_base = cliente_info['COORDENADAS'].values[0]
+                        
                         if pd.notnull(coord_base) and "," in str(coord_base):
                             try:
+                                # O segredo está aqui: split e depois strip em cada parte
                                 partes = str(coord_base).split(",")
-                                dist_m = calcular_distancia(lat_v, lon_v, partes[0].strip(), partes[1].strip())
-                                log_distancia_valor = f"{dist_m:.0f}m"
-                                if n_st == "Realizado" and dist_m > 500:
+                                lat_alvo = partes[0].strip() # Remove espaços do início/fim
+                                lon_alvo = partes[1].strip() # Remove espaços do início/fim
+                                
+                                # Converte para float para garantir que são números
+                                lat_f = float(lat_alvo)
+                                lon_f = float(lon_alvo)
+                                
+                                dist_metros = calcular_distancia(lat_v, lon_v, lat_f, lon_f)
+                                
+                                if n_st == "Realizado" and dist_metros > 500:
                                     alerta_distancia = True
-                            except: log_distancia_valor = "Erro GPS"
-
-                    # SALVAMENTO NAS COLUNAS SEPARADAS
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
+                                    distancia_info = f" (⚠️ DISTANTE: {dist_metros:.0f}m)"
+                                else:
+                                    distancia_info = f" (Distância: {dist_metros:.0f}m)"
+                            except Exception as e:
+                                # Grava o erro exato para diagnóstico se falhar
+                                distancia_info = f" (Erro de conversão: {str(e)})"
+                    
+                    # 2. Preparar a justificativa final com o log de distância
+                    justificativa_final = f"{final_j}{distancia_info}"
+                    
+                    # 3. Salvar os dados
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS']] = [n_st, justificativa_final, f"{lat_v}, {lon_v}"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     
                     st.cache_data.clear()
+                    
+                    # 4. Feedback visual para o usuário
                     if alerta_distancia:
-                        st.warning(f"Visita registrada! (Atenção: Localização divergente)")
+                        st.warning(f"Atenção: Visita registrada, mas você estava a {dist_metros:.0f} metros do local cadastrado.")
+                        time.sleep(3) # Tempo maior para ele ler o aviso
                     else:
-                        st.success("✅ Atualizado!")
-                    time.sleep(1)
+                        st.success("✅ Atualizado com sucesso!")
+                        time.sleep(1)
+                        
                     st.rerun()
-            # --- FIM DO BLOCO CORRIGIDO ---
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
