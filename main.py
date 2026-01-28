@@ -733,6 +733,7 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda Completa")
     
@@ -746,6 +747,27 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_user = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
         if not df_user.empty:
+            # --- CÁLCULO DO CONTADOR DE DIVERGÊNCIAS ---
+            def extrair_distancia(val):
+                try:
+                    s = str(val).replace('m', '').replace('Erro GPS', '0')
+                    return float(s) if (s != 'nan' and s.strip() != "") else 0
+                except: return 0
+
+            df_user['dist_num'] = df_user['DISTANCIA_LOG'].apply(extrair_distancia)
+            
+            # --- VISÃO EXCLUSIVA: ADM / DIRETORIA / ANALISTA ---
+            if is_admin or is_diretoria or is_analista:
+                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_num'] > 500)])
+                total_realizado = len(df_user[df_user['STATUS'] == "Realizado"])
+
+                c1, c2, _ = st.columns([1, 1, 2])
+                c1.metric("Total Realizado", total_realizado)
+                c2.metric("Fora do Raio (>500m)", fora_raio, 
+                          delta="Alerta" if fora_raio > 0 else None, 
+                          delta_color="inverse")
+                st.markdown("---")
+
             # Trazer a Cidade da base se não existir
             if df_base is not None and 'CIDADE' not in df_user.columns:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
@@ -753,19 +775,15 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            df_user["EXCLUIR"] = False # Mudamos o nome para ficar claro
+            df_user["EXCLUIR"] = False
             
-            # --- LÓGICA DE CORES (IDENTICA À TELA DO DIA) ---
+            # --- LÓGICA DE CORES ---
             def style_agenda_completa(row):
                 styles = [''] * len(row)
                 if row['STATUS'] == "Realizado":
-                    dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
-                    try:
-                        val_float = float(dist_str) if (dist_str != 'nan' and dist_str.strip() != "") else 0
-                        if val_float > 50:
-                            return ['color: #E67E22; font-weight: bold'] * len(row) # Laranja Alerta
-                    except: pass
-                    return ['color: green; font-weight: bold'] * len(row) # Verde OK
+                    if row['dist_num'] > 500:
+                        return ['color: #E67E22; font-weight: bold'] * len(row)
+                    return ['color: green; font-weight: bold'] * len(row)
                 return styles
 
             # Colunas Visíveis
@@ -790,29 +808,23 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
             marcados = edicao_user[edicao_user["EXCLUIR"] == True]
             if not marcados.empty:
-                # Pegamos o ID original para garantir a exclusão correta
                 idx_selecionado = marcados.index[0]
                 sel_row = df_user.iloc[idx_selecionado]
                 id_para_deletar = str(sel_row['ID'])
                 
-                st.markdown("---")
-                st.warning(f"**Atenção:** Você deseja excluir permanentemente o agendamento de **{sel_row['CLIENTE']}** do dia {sel_row['DATA']}?")
-                
+                st.warning(f"Confirmar exclusão de **{sel_row['CLIENTE']}**?")
                 col_btn1, col_btn2 = st.columns([1, 4])
                 with col_btn1:
-                    if st.button("❌ EXCLUIR AGORA"):
-                        # Remove a linha da planilha original usando o ID
+                    if st.button("❌ CONFIRMAR"):
                         df_agenda_novo = df_agenda[df_agenda['ID'].astype(str) != id_para_deletar].drop(columns=['LINHA'], errors='ignore')
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_novo)
-                        
                         st.cache_data.clear()
-                        st.success("Agendamento removido com sucesso!")
+                        st.success("Removido!")
                         time.sleep(1)
                         st.rerun()
                 with col_btn2:
-                    if st.button("Cancelar"):
-                        st.rerun()
+                    if st.button("Cancelar"): st.rerun()
         else:
             st.info("Sua agenda está vazia.")
     else:
-        st.warning("Nenhum dado encontrado na Agenda.")
+        st.warning("Nenhum dado encontrado.")
