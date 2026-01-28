@@ -685,7 +685,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 b1, b2 = st.columns(2)
                 if b1.form_submit_button("💾 SALVAR"):
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA','DATA_REAGENDADA"]] = [n_st, final_j, nova_data]
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA','DATA_REAGENDADA']] = [n_st, final_j, nova_data]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
                     st.rerun()
