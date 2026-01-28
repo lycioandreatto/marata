@@ -180,19 +180,18 @@ if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
         if is_admin or is_diretoria:
-            # Filtro de Analista para Lycio e Aldo
-            lista_analistas = ["Todos"] + sorted([a for a in df_base['ANALISTA'].unique() if str(a).strip() and str(a) != 'nan'])
-            analista_sel = st.selectbox("Selecione o Analista:", lista_analistas)
+            # Seleção de Analista para Lycio e Aldo
+            lista_analistas = sorted([str(a) for a in df_base['Analista'].unique() if str(a).strip() and str(a) != 'nan'])
+            analista_sel = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas)
             
             if analista_sel == "Todos":
                 sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
             else:
-                sups = sorted([s for s in df_base[df_base['ANALISTA'] == analista_sel]['Região de vendas'].unique() if str(s).strip()])
+                sups = sorted([s for s in df_base[df_base['Analista'] == analista_sel]['Região de vendas'].unique() if str(s).strip()])
             
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
-            
         elif is_analista:
-            sups = sorted([s for s in df_base[df_base['ANALISTA'].str.upper() == user_atual]['Região de vendas'].unique() if str(s).strip()])
+            sups = sorted([s for s in df_base[df_base['Analista'].str.upper() == user_atual]['Região de vendas'].unique() if str(s).strip()])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
             sup_sel = user_atual
@@ -203,8 +202,8 @@ if menu == "Novo Agendamento":
             
             # BUSCA AUTOMÁTICA DA ANALISTA VINCULADA
             analista_vinc = NOME_ANALISTA
-            if 'ANALISTA' in clientes_f.columns:
-                val_analista = clientes_f['ANALISTA'].iloc[0]
+            if 'Analista' in clientes_f.columns:
+                val_analista = clientes_f['Analista'].iloc[0]
                 if str(val_analista).strip() and str(val_analista) != 'nan':
                     analista_vinc = str(val_analista).upper()
 
@@ -243,9 +242,26 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_analista or is_diretoria:
-            f_sup = st.selectbox("Ver agenda de:", ["Todos"] + sorted(df_agenda['SUPERVISOR'].unique()))
-            df_f = df_agenda.copy() if f_sup == "Todos" else df_agenda[df_agenda['SUPERVISOR'] == f_sup]
+        if is_admin or is_diretoria:
+            # Seleção de Analista para filtrar agenda já feita (Lycio e Aldo)
+            lista_ana_agenda = sorted([str(a) for a in df_agenda['ANALISTA'].unique() if str(a).strip() and str(a) != 'nan'])
+            ana_filtro = st.selectbox("Filtrar Agenda por Analista:", ["Todos"] + lista_ana_agenda)
+            
+            df_temp = df_agenda.copy()
+            if ana_filtro != "Todos":
+                df_temp = df_temp[df_temp['ANALISTA'] == ana_filtro]
+            
+            lista_sups_f = sorted(df_temp['SUPERVISOR'].unique())
+            f_sup = st.selectbox("Ver agenda de:", ["Todos"] + lista_sups_f)
+            
+            df_f = df_temp.copy() if f_sup == "Todos" else df_temp[df_temp['SUPERVISOR'] == f_sup]
+
+        elif is_analista:
+            df_f = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
+            lista_sups_f = sorted(df_f['SUPERVISOR'].unique())
+            f_sup = st.selectbox("Filtrar por Supervisor:", ["Todos"] + lista_sups_f)
+            if f_sup != "Todos":
+                df_f = df_f[df_f['SUPERVISOR'] == f_sup]
         else:
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
