@@ -566,7 +566,7 @@ elif menu == "📋 Novo Agendamento":
             m3.metric("Faltando", n_pendentes)
             m4.metric("% Adesão", f"{perc_sup:.1f}%")
             
-            analista_vinc = NOME_ANALISTA
+            analista_vinc = user_atual if is_analista else "ADMIN"
             if col_ana_base in clientes_f.columns:
                 val_analista = clientes_f[col_ana_base].iloc[0]
                 if str(val_analista).strip() and str(val_analista).lower() != 'nan':
