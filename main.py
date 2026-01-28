@@ -372,17 +372,9 @@ if menu == "📅 Agendamentos do Dia":
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
                 df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_dia.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
-        if 'DATA_REAGENDADA' in df_dia.columns:
-            df_dia['Reagendado para:'] = df_dia['DATA_REAGENDADA'].apply(
-        lambda x: x if pd.notna(x) and str(x).strip() != "" else ""
-    )
-else:
-    df_dia['Reagendado para:'] = ""
+        
 
-            df_dia["EDITAR"] = False
-            cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-            
-            df_display = df_dia[cols_v].copy()
+        df_display = df_dia[cols_v].copy()
             
             edicao_dia = st.data_editor(df_display, key="edit_dia", hide_index=True, use_container_width=True,
                                      column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
