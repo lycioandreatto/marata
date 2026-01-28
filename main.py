@@ -20,6 +20,10 @@ st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
+     /* Estilização para o editor de dados */
+       .stDataFrame td {
+        vertical-align: middle;
+    }
     <style>
     [data-testid="stMetric"] {
         background-color: #f0f2f6;
@@ -404,7 +408,16 @@ if menu == "📅 Agendamentos do Dia":
             
             df_display = df_dia[cols_v].copy()
             
-            edicao_dia = st.data_editor(df_display, key="edit_dia", hide_index=True, use_container_width=True,
+            # --- ADICIONE ISTO AQUI ---
+            def style_realizado(row):
+                if row['STATUS'] == "Realizado":
+                    return ['color: green; font-weight: bold'] * len(row)
+                return [''] * len(row)
+            
+            df_styled = df_display.style.apply(style_realizado, axis=1)
+            # --------------------------
+
+            edicao_dia = st.data_editor(df_styled, key="edit_dia", hide_index=True, use_container_width=True,
                                      column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
                                      disabled=[c for c in cols_v if c != "EDITAR"])
 
