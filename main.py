@@ -14,13 +14,13 @@ st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
 # --- CUSTOMIZAÇÃO DE CORES (CSS) ---
 st.markdown("""
     <style>
-        /* Fundo da área principal */
+        /* Fundo da área principal - MUDADO PARA BRANCO */
         .stApp {
-            background-color: #002B1B;
-            color: white;
+            background-color: #FFFFFF;
+            color: #000000;
         }
         
-        /* Fundo do Menu Lateral (Sidebar) */
+        /* Fundo do Menu Lateral (Sidebar) - MANTIDO AZUL */
         [data-testid="stSidebar"] {
             background-color: #001F3F;
         }
@@ -33,12 +33,12 @@ st.markdown("""
             color: white !important;
         }
 
-        /* Ajuste de cor de títulos na área principal */
+        /* Ajuste de cor de títulos na área principal para preto (contraste com fundo branco) */
         h1, h2, h3, h4, h5, h6, p, span {
-            color: white !important;
+            color: #000000 !important;
         }
 
-        /* Cor dos botões e abas para melhor contraste */
+        /* Cor dos botões e abas */
         .stButton>button {
             border-radius: 5px;
         }
@@ -50,9 +50,9 @@ st.markdown("""
         .stTabs [data-baseweb="tab"] {
             height: 50px;
             white-space: pre-wrap;
-            background-color: rgba(255, 255, 255, 0.1);
+            background-color: rgba(0, 0, 0, 0.05);
             border-radius: 4px 4px 0px 0px;
-            color: white;
+            color: #000000;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -313,7 +313,7 @@ with st.sidebar:
                 st.rerun()
 
 # --- TÍTULO CENTRAL NO TOPO (AJUSTADO PARA CIMA) ---
-st.markdown("<h4 style='text-align: center; color: #FFFFFF; margin-top: -50px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: #000000; margin-top: -50px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
 # --- PÁGINA: DASHBOARD ---
