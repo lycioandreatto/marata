@@ -44,7 +44,7 @@ def gerar_pdf(df):
         pdf.cell(largura_col, 8, str(col), border=1, align='C')
     pdf.ln()
     
-    pdf.set_font("Arial", '', 7) # Fonte levemente menor para caber nomes de clientes
+    pdf.set_font("Arial", '', 7) 
     for index, row in df.iterrows():
         for item in row:
             pdf.cell(largura_col, 8, str(item)[:45], border=1)
@@ -66,6 +66,7 @@ def carregar_dados():
         df_a.columns = [str(c).strip() for c in df_a.columns]
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
+        if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
@@ -192,18 +193,15 @@ if menu == "📊 Dashboard de Controle":
         col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
         col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
         
-        # Lógica para o Relatório Detalhado (Excel/PDF)
         codigos_agendados_global = df_agenda['CÓDIGO CLIENTE'].unique()
         df_base_detalhe = df_base.copy()
         df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['Cliente'].apply(
             lambda x: 'AGENDADO' if str(x) in codigos_agendados_global else 'PENDENTE'
         )
         
-        # Inclusão da coluna Local (Cidade) no relatório detalhado
         df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
         df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
 
-        # Resumo para a tela do Streamlit (Tabela compacta)
         resumo_base = df_base.groupby(col_rv_base).size().reset_index(name='Total na Base')
         resumo_agenda = df_agenda.groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
         df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_rv_base, right_on='SUPERVISOR', how='left').fillna(0)
@@ -213,7 +211,6 @@ if menu == "📊 Dashboard de Controle":
         df_dash = df_dash[[col_rv_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']]
         df_dash.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
         
-        # --- BOTÕES DE EXPORTAÇÃO NO DASHBOARD ---
         exp_c1, exp_c2, _ = st.columns([1, 1, 2])
         with exp_c1:
             st.download_button("📥 Relatório Detalhado (Excel)", data=converter_para_excel(df_relatorio_completo), file_name="detalhamento_agendamentos.xlsx")
@@ -225,7 +222,6 @@ if menu == "📊 Dashboard de Controle":
         
         st.dataframe(df_dash, use_container_width=True, hide_index=True)
         
-        # Métricas Globais
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Clientes Base", df_dash['CLIENTES NA BASE'].sum())
         c2.metric("Total Agendados", df_dash['CLIENTES AGENDADOS'].sum())
@@ -300,9 +296,16 @@ elif menu == "Novo Agendamento":
                             for i, dt in enumerate(datas_sel):
                                 nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
                                 novas_linhas.append({
-                                    "ID": nid, "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), "DATA": dt.strftime("%d/%m/%Y"),
-                                    "ANALISTA": analista_vinc, "SUPERVISOR": sup_sel, "CÓDIGO CLIENTE": cod_c, 
-                                    "CLIENTE": nom_c, "JUSTIFICATIVA": "-", "STATUS": "Planejado (X)"
+                                    "ID": nid, 
+                                    "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
+                                    "DATA": dt.strftime("%d/%m/%Y"),
+                                    "ANALISTA": analista_vinc, 
+                                    "SUPERVISOR": sup_sel, 
+                                    "CÓDIGO CLIENTE": cod_c, 
+                                    "CLIENTE": nom_c, 
+                                    "JUSTIFICATIVA": "-", 
+                                    "STATUS": "Planejado (X)",
+                                    "AGENDADO POR": user_atual # Salva quem efetuou o agendamento
                                 })
                             df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
                             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
@@ -332,7 +335,12 @@ elif menu == "Ver/Editar Minha Agenda":
             df_f = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
         if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
-        df_exp = df_f[['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']]
+        if 'AGENDADO POR' not in df_f.columns: df_f['AGENDADO POR'] = "-"
+        
+        # Colunas para exportação
+        cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+        df_exp = df_f[cols_exp]
+        
         c1, c2, _ = st.columns([1,1,2])
         with c1: st.download_button("📥 Excel", data=converter_para_excel(df_exp), file_name="agenda.xlsx")
         with c2: 
@@ -340,7 +348,7 @@ elif menu == "Ver/Editar Minha Agenda":
             except: st.error("Erro ao gerar PDF")
 
         df_f["EDITAR"] = False
-        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS']
+        cols_v = ['EDITAR', 'REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         edicao = st.data_editor(df_f[cols_v], key="edit_v12", hide_index=True, use_container_width=True,
                                  column_config={"EDITAR": st.column_config.CheckboxColumn("📝")},
                                  disabled=[c for c in cols_v if c != "EDITAR"])
