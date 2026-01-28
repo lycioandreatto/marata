@@ -663,8 +663,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             with col1: n_st = st.radio("Status:", st_list, index=st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0)
                 nova_data = None
 if n_st == "Reagendado":
-    nova_data = st.date_input(
-        "Nova data de reagendamento:",
+    nova_data = st.date_input("Nova data de reagendamento:"),
         value=datetime.now(fuso_br)
     )
 
