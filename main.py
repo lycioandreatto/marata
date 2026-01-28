@@ -187,8 +187,7 @@ def carregar_dados():
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         if 'AGENDADO POR' not in df_a.columns: df_a['AGENDADO POR'] = "-"
-        if 'DATA REAGENDAMENTO' not in df_a.columns:
-          df_a['DATA REAGENDAMENTO'] = "-"
+        if 'DATA REAGENDAMENTO' not in df_a.columns: df_a['DATA REAGENDAMENTO'] = "-"   
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
@@ -638,10 +637,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
         df_f["EDITAR"] = False
         cols_v = ['EDITAR', 'REGISTRO', 'DATA','REAGENDADO PARA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-        for col in cols_v:
-    if col not in df_f.columns:
-        df_f[col] = "-"
-
+        
         df_display = df_f[cols_v].copy()
         try:
             df_display['REG_TEMP'] = pd.to_datetime(df_display['REGISTRO'], dayfirst=True)
@@ -666,6 +662,14 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             with col2:
                 n_ju = st.selectbox("Justificativa:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                 mot_outro = st.text_input("Qual o motivo?") if n_ju == "OUTRO" else ""
+            if n_st == "Reagendado":
+              nova_data = st.date_input(
+              "Nova data de reagendamento:",
+               datetime.now(fuso_br)
+                )
+            else:
+              nova_data = None
+
 
             with st.form("save_form"):
                 b1, b2 = st.columns(2)
