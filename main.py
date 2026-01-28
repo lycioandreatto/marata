@@ -213,21 +213,17 @@ if "logado" not in st.session_state:
         st.session_state.usuario = ""
 
 if not st.session_state.logado:
-    # 1. Criamos duas colunas: a primeira bem estreita (0.1) e a segunda larga (0.9)
-    col_logo, col_titulo = st.columns([0.1, 0.9])
-    
-    with col_logo:
-        try:
-            # Diminuímos o width para 60 para não empurrar o título para baixo
-            st.image("pngmarata.png", width=60) 
-        except:
-            pass
+    # Este bloco cria um "container" onde a logo e o texto ficam lado a lado
+    st.markdown(
+        """
+        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+            <img src="https://raw.githubusercontent.com/username/repo/main/pngmarata.png" width="60">
+            <h1 style="color: #ff4b4b; margin: 0;">Acesso Gestão Maratá</h1>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    with col_titulo:
-        # 2. O markdown permite alinhar o texto com a altura da imagem
-        st.markdown("<h2 style='margin-top: 10px; color: #ff4b4b;'>Acesso Gestão Maratá</h2>", unsafe_allow_html=True)
-
-    # 3. As abas continuam aqui embaixo normalmente
     tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
     # ... resto do código ...
     with tab_login:
