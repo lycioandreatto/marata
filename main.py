@@ -203,6 +203,11 @@ def carregar_dados():
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
+for col in ["LATITUDE", "LONGITUDE"]:
+    if col not in df_agenda.columns:
+        df_agenda[col] = ""
+
+
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
     # Verifica se existe cookie de login salvo
@@ -404,6 +409,8 @@ if menu == "📅 Agendamentos do Dia":
 
                 if st.button("💾 ATUALIZAR STATUS"):
                     lat, lon = capturar_coordenadas()
+                    lat = str(lat) if lat is not None else ""
+                    lon = str(lon) if lon is not None else ""
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
                     df_agenda.loc[df_agenda['ID'] == sel_row['ID'],
                         ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [n_st, final_j, lat, lon]
