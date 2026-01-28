@@ -502,7 +502,10 @@ if not df_dia.empty:
             st.success("Atualizado com sucesso!")
             time.sleep(1)
             st.rerun()
-else:
+if df_agenda is not None and not df_agenda.empty: 
+    df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy() 
+    if not df_dia.empty:
+    else:
     st.info(f"Não há agendamentos para hoje ({hoje_str}).")
 else: 
     st.warning("Nenhum dado de agenda disponível.")
