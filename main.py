@@ -381,7 +381,7 @@ if menu == "📅 Agendamentos do Dia":
                 sel_row = df_dia.iloc[marcados.index[0]]
                 st.markdown("---")
                 st.subheader(f"Atualizar Atendimento: {sel_row['CLIENTE']}")
-                st_list = ["Planejado (X)", "Realizado", "Reagendado"]
+                st_list = ["Planejado", "Realizado", "Reagendado"]
                 ju_list = list(df_just.iloc[:, 0].dropna().unique())
                 if "OUTRO" not in ju_list: ju_list.append("OUTRO")
                 
@@ -585,7 +585,7 @@ elif menu == "📋 Novo Agendamento":
                                     "CÓDIGO CLIENTE": cod_c, 
                                     "CLIENTE": nom_c, 
                                     "JUSTIFICATIVA": "-", 
-                                    "STATUS": "Planejado (X)",
+                                    "STATUS": "Planejado",
                                     "AGENDADO POR": user_atual 
                                 })
                             df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
@@ -653,7 +653,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             sel_row = df_f.loc[df_f['REGISTRO'] == marcados.iloc[0]['REGISTRO']].iloc[0]
             st.markdown("---")
             st.subheader(f"Editar: {sel_row['CLIENTE']}")
-            st_list = ["Planejado (X)", "Realizado", "Reagendado"]
+            st_list = ["Planejado", "Realizado", "Reagendado"]
             ju_list = list(df_just.iloc[:, 0].dropna().unique())
             if "OUTRO" not in ju_list: ju_list.append("OUTRO")
             col1, col2 = st.columns(2)
