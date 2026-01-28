@@ -6,7 +6,7 @@ import io
 from fpdf import FPDF
 import pytz
 import time
-import os  # Adicionado para verificação de caminho
+import os
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão Maratá", page_icon="☕", layout="wide")
@@ -227,16 +227,14 @@ else:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    # Busca o caminho absoluto da imagem para evitar o erro de localização
-    img_path = os.path.join(os.getcwd(), "pngmarata.png")
-    if os.path.exists(img_path):
-        st.image(img_path, width=150)
-    else:
-        # Tenta carregar sem o caminho absoluto caso o Streamlit Cloud esteja usando estrutura diferente
+    # Tentativa de carregar exatamente como você descreveu
+    try:
+        st.image("pngmarata", width=150)
+    except:
         try:
             st.image("pngmarata.png", width=150)
         except:
-            st.warning("Logo não encontrada no diretório.")
+            st.warning("Logo 'pngmarata' não encontrada.")
             
     st.markdown(f"👤 **{label_display}**")
     
