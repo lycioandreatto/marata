@@ -337,8 +337,15 @@ elif menu == "Ver/Editar Minha Agenda":
         if 'ANALISTA' not in df_f.columns: df_f['ANALISTA'] = "-"
         if 'AGENDADO POR' not in df_f.columns: df_f['AGENDADO POR'] = "-"
         
-        # Colunas para exportação
-        cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+        # --- CRUZAMENTO PARA TRAZER CIDADE NA EXPORTAÇÃO ---
+        if df_base is not None:
+            col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
+            df_cidades = df_base[['Cliente', col_local_base]].copy()
+            df_f = pd.merge(df_f, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
+            df_f.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
+        
+        # Colunas para exportação (Incluindo CIDADE agora)
+        cols_exp = ['REGISTRO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
         df_exp = df_f[cols_exp]
         
         c1, c2, _ = st.columns([1,1,2])
