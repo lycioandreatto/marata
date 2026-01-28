@@ -1,4 +1,5 @@
 import streamlit as st
+from geoloc import capturar_coordenadas
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
