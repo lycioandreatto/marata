@@ -7,7 +7,6 @@ from fpdf import FPDF
 import pytz
 import time
 import os
-from geoloc import capturar_coordenadas  # Importa sua nova ferramenta
 from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
@@ -202,11 +201,6 @@ def carregar_dados():
         return None, None, None, pd.DataFrame(columns=["USUARIO", "SENHA"])
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
-
-for col in ["LATITUDE", "LONGITUDE"]:
-    if col not in df_agenda.columns:
-        df_agenda[col] = ""
-
 
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
@@ -406,17 +400,13 @@ if menu == "📅 Agendamentos do Dia":
                 with col2:
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
-                    
+
                 if st.button("💾 ATUALIZAR STATUS"):
-                    lat, lon = capturar_coordenadas()
-                    lat = str(lat) if lat is not None else ""
-                    lon = str(lon) if lon is not None else ""
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
-                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'],
-                        ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [n_st, final_j, lat, lon]
+                    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA']] = [n_st, final_j]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     st.cache_data.clear()
-                    st.success(f"Atualizado com sucesso! GPS: {lat}, {lon}")
+                    st.success("Atualizado com sucesso!")
                     time.sleep(1)
                     st.rerun()
         else:
