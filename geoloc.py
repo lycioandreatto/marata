@@ -3,9 +3,10 @@ from streamlit_js_eval import streamlit_js_eval
 
 def capturar_coordenadas():
     """
-    Função modular para capturar Latitude e Longitude via Navegador.
-    Retorna uma tupla (lat, lon) ou (None, None) em caso de erro.
+    Captura Latitude e Longitude via navegador.
+    Retorna (lat, lon) ou (None, None) se não conseguir.
     """
+
     js_code = """
     new Promise((resolve) => {
         navigator.geolocation.getCurrentPosition(
@@ -26,11 +27,15 @@ def capturar_coordenadas():
         );
     });
     """
-    
-    with st.spinner("Buscando sinal de GPS..."):
-        loc = streamlit_js_eval(js_expressions=js_code, key="gps_engine", want_output=True)
-    
-    if loc:
-        return loc.get('lat'), loc.get('lon')
-    else:
-        return None, None
+
+    with st.spinner("📡 Buscando sinal de GPS..."):
+        loc = streamlit_js_eval(
+            js_expressions=js_code,
+            key="gps_engine_unique",
+            want_output=True
+        )
+
+    if isinstance(loc, dict) and "lat" in loc and "lon" in loc:
+        return loc["lat"], loc["lon"]
+
+    return None, None
