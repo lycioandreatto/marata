@@ -734,6 +734,7 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda Completa")
     
@@ -747,19 +748,29 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_user = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
         if not df_user.empty:
-            # --- CÁLCULO DO CONTADOR ---
+            # --- CÁLCULO DOS CONTADORES ---
             def extrair_dist(val):
                 try:
                     s = str(val).replace('m', '').replace('Erro GPS', '0')
                     return float(s) if (s != 'nan' and s.strip() != "") else 0
                 except: return 0
             
-            # Criamos a coluna de cálculo
             df_user['dist_val_calc'] = df_user['DISTANCIA_LOG'].apply(extrair_dist)
 
+            # --- EXIBIÇÃO DOS CARDS (EXCLUSIVO GESTÃO) ---
             if is_admin or is_diretoria or is_analista:
-                qtd_fora = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
-                st.metric("Visitas Fora do Raio (>500m)", qtd_fora, delta="Alerta" if qtd_fora > 0 else None, delta_color="inverse")
+                total_agendado = len(df_user)
+                total_pendente = len(df_user[df_user['STATUS'] == "Planejado"])
+                total_realizado = len(df_user[df_user['STATUS'] == "Realizado"])
+                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("📅 Total Agendado", total_agendado)
+                c2.metric("⏳ Total Pendente", total_pendente)
+                c3.metric("✅ Total Realizado", total_realizado)
+                c4.metric("📍 Fora do Raio (>500m)", fora_raio, 
+                          delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
+                          delta_color="inverse")
                 st.markdown("---")
 
             # Trazer a Cidade da base se não existir
@@ -775,13 +786,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             def style_agenda_completa(row):
                 styles = [''] * len(row)
                 if row['STATUS'] == "Realizado":
-                    # Usamos a coluna de cálculo que agora estará presente no df_display
                     if row['dist_val_calc'] > 500:
                         return ['color: #E67E22; font-weight: bold'] * len(row)
                     return ['color: green; font-weight: bold'] * len(row)
                 return styles
 
-            # COLUNAS: IMPORTANTE - 'dist_val_calc' precisa estar aqui para o style funcionar
+            # Colunas Visíveis (dist_val_calc deve estar aqui para o style funcionar)
             cols_v = ['EXCLUIR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR', 'dist_val_calc']
             if 'DISTANCIA_LOG' in df_user.columns:
                 cols_v.append('DISTANCIA_LOG')
@@ -797,7 +807,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 column_config={
                     "EXCLUIR": st.column_config.CheckboxColumn("🗑️"),
                     "DISTANCIA_LOG": st.column_config.TextColumn("📍 Dist. GPS"),
-                    "dist_val_calc": None # <--- ISSO ESCONDE A COLUNA DO USUÁRIO MAS MANTÉM NO PANDAS
+                    "dist_val_calc": None # Oculta a coluna técnica de cálculo
                 },
                 disabled=[c for c in cols_v if c != "EXCLUIR"]
             )
@@ -806,12 +816,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             marcados = edicao_user[edicao_user["EXCLUIR"] == True]
             if not marcados.empty:
                 idx_selecionado = marcados.index[0]
-                # Pegamos o dado direto do df_display para evitar erro de índice desalinhado
-                sel_row = df_display.iloc[idx_selecionado]
-                # Como o ID não está em cols_v, usamos o index para buscar no df_user original
                 id_real = df_user.iloc[idx_selecionado]['ID']
+                cliente_sel = df_user.iloc[idx_selecionado]['CLIENTE']
                 
-                st.warning(f"Confirma a exclusão de **{sel_row['CLIENTE']}**?")
+                st.warning(f"Confirma a exclusão de **{cliente_sel}**?")
                 if st.button("❌ CONFIRMAR EXCLUSÃO"):
                     df_agenda_novo = df_agenda[df_agenda['ID'].astype(str) != str(id_real)].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda_novo)
