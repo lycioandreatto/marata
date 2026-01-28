@@ -57,17 +57,17 @@ def carregar_dados():
         df_a = conn.read(spreadsheet=url_planilha, worksheet="AGENDA")
         df_u = conn.read(spreadsheet=url_planilha, worksheet="USUARIOS")
         
-        # Normalização rigorosa de colunas (Remove espaços e coloca em maiúsculo para comparar)
+        # Normalização de colunas
         df_u.columns = [str(c).strip().upper() for c in df_u.columns]
-        df_b.columns = [str(c).strip() for c in df_b.columns]
-        df_j.columns = [str(c).strip() for c in df_j.columns]
-        df_a.columns = [str(c).strip() for c in df_a.columns]
+        df_b.columns = [str(c).strip().upper() for c in df_b.columns] # BASE agora toda em MAIÚSCULO
+        df_j.columns = [str(c).strip().upper() for c in df_j.columns]
+        df_a.columns = [str(c).strip().upper() for c in df_a.columns]
             
         if 'REGISTRO' not in df_a.columns: df_a['REGISTRO'] = "-"
         df_a['LINHA'] = df_a.index + 2
         
         for df in [df_b, df_a]:
-            cols_cod = [c for c in df.columns if 'Cliente' in c or 'CÓDIGO' in c]
+            cols_cod = [c for c in df.columns if 'CLIENTE' in c or 'CÓDIGO' in c]
             for col in cols_cod:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int).astype(str)
                 df[col] = df[col].replace('0', '')
@@ -180,46 +180,40 @@ with st.sidebar:
 if menu == "Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        # Verifica se a coluna 'Analista' existe para evitar o KeyError
-        tem_coluna_analista = 'Analista' in df_base.columns
+        # Colunas esperadas na base em MAIÚSCULO devido à normalização
+        col_ana = "ANALISTA"
+        col_reg = "REGIÃO DE VENDAS"
         
         if is_admin or is_diretoria:
-            if tem_coluna_analista:
-                lista_analistas = ["Todos"] + sorted([a for a in df_base['Analista'].unique() if str(a).strip() and str(a) != 'nan'])
-                ana_sel = st.selectbox("Filtrar por Analista:", lista_analistas)
-                
-                if ana_sel == "Todos":
-                    sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
-                else:
-                    sups = sorted([s for s in df_base[df_base['Analista'] == ana_sel]['Região de vendas'].unique() if str(s).strip()])
+            lista_analistas = ["Todos"] + sorted([a for a in df_base[col_ana].unique() if str(a).strip() and str(a).upper() != 'NAN'])
+            ana_sel = st.selectbox("Filtrar por Analista:", lista_analistas)
+            
+            if ana_sel == "Todos":
+                sups = sorted([s for s in df_base[col_reg].unique() if str(s).strip() and str(s).upper() != 'NAN'])
             else:
-                st.warning("Coluna 'Analista' não encontrada na aba BASE.")
-                sups = sorted([s for s in df_base['Região de vendas'].unique() if str(s).strip() and str(s) != 'nan'])
+                sups = sorted([s for s in df_base[df_base[col_ana] == ana_sel][col_reg].unique() if str(s).strip()])
             
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         
         elif is_analista:
-            if tem_coluna_analista:
-                sups = sorted([s for s in df_base[df_base['Analista'].str.upper() == user_atual]['Região de vendas'].unique() if str(s).strip()])
-            else:
-                sups = []
+            sups = sorted([s for s in df_base[df_base[col_ana].str.upper() == user_atual][col_reg].unique() if str(s).strip()])
             sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
         else:
             sup_sel = user_atual
             st.info(f"Agendando para: {user_atual}")
 
         if sup_sel != "Selecione...":
-            clientes_f = df_base[df_base['Região de vendas'] == sup_sel]
-            qtd_clientes_base = len(clientes_f['Cliente'].unique())
+            clientes_f = df_base[df_base[col_reg] == sup_sel]
+            qtd_clientes_base = len(clientes_f['CLIENTE'].unique())
             st.metric("Total de Clientes na Base", qtd_clientes_base)
             
             analista_vinc = NOME_ANALISTA
-            if tem_coluna_analista:
-                val_analista = clientes_f['Analista'].iloc[0]
-                if str(val_analista).strip() and str(val_analista) != 'nan':
+            if col_ana in clientes_f.columns:
+                val_analista = clientes_f[col_ana].iloc[0]
+                if str(val_analista).strip() and str(val_analista).upper() != 'NAN':
                     analista_vinc = str(val_analista).upper()
 
-            lista_c = sorted(clientes_f.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
+            lista_c = sorted(clientes_f.apply(lambda x: f"{x['CLIENTE']} - {x['NOME 1']}", axis=1).tolist())
             cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
             
             if cliente_sel != "Selecione...":
@@ -254,9 +248,6 @@ if menu == "Novo Agendamento":
 elif menu == "Ver/Editar Minha Agenda":
     st.header("🔍 Gerenciar Agenda")
     if df_agenda is not None and not df_agenda.empty:
-        # Garante que a coluna ANALISTA exista na agenda para os filtros funcionarem
-        if 'ANALISTA' not in df_agenda.columns: df_agenda['ANALISTA'] = "-"
-            
         if is_admin or is_diretoria:
             lista_analistas_agenda = ["Todos"] + sorted(list(df_agenda['ANALISTA'].unique()))
             ana_filtro = st.selectbox("Filtrar por Analista:", lista_analistas_agenda, key="f_ana_ver")
