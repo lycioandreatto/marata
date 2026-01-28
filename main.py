@@ -17,6 +17,27 @@ if not cookies.ready():
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
+import streamlit.components.v1 as components
+components.html(
+    """
+    <script>
+    // Adicionamos o nome e 100 espaços invisíveis para empurrar o "Streamlit" para fora
+    const novoTitulo = "MARATÁ - SCA" + "\u00A0".repeat(100);
+    window.parent.document.title = novoTitulo;
+    
+    // Esse observador garante que o Streamlit não recoloque o nome dele depois
+    const observer = new MutationObserver(function(mutations) {
+        if (window.parent.document.title !== novoTitulo) {
+            window.parent.document.title = novoTitulo;
+        }
+    });
+    
+    const target = window.parent.document.querySelector('title');
+    if (target) { observer.observe(target, { childList: true }); }
+    </script>
+    """,
+    height=0,
+)
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
