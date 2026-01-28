@@ -6,3 +6,5 @@ fpdf
 pytz
 streamlit-cookies-manager
 streamlit-js-eval
+folium
+streamlit-folium
