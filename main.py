@@ -432,11 +432,11 @@ if menu == "📅 Agendamentos do Dia":
                 if st.button("💾 ATUALIZAR STATUS"):
                     # 1. Captura localização via navegador
                     location = streamlit_js_eval(
-                        st.write("DEBUG localização:", location)
                         js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
                         key="get_location",
                         want_output=True
                     )
+                    st.write("DEBUG localização:", location)
 
                     if location is None:
                         st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
