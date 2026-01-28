@@ -404,11 +404,14 @@ if menu == "📅 Agendamentos do Dia":
                     n_ju = st.selectbox("Justificativa/Observação:", ju_list, index=ju_list.index(sel_row['JUSTIFICATIVA']) if sel_row['JUSTIFICATIVA'] in ju_list else 0)
                     mot_outro = st.text_input("Especifique:") if n_ju == "OUTRO" else ""
 
-                if st.button("💾 ATUALIZAR STATUS"):
-    # 1. Capturar localização via navegador
-    location = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)", 
-                                 key="get_location", 
-                                 want_output=True)
+  if st.button("💾 ATUALIZAR STATUS"):
+
+    # Captura a localização via navegador
+    location = streamlit_js_eval(
+        js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
+        key="get_location",
+        want_output=True
+    )
 
     if location is None:
         st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
@@ -417,16 +420,15 @@ if menu == "📅 Agendamentos do Dia":
     latitude = location.get("latitude", None)
     longitude = location.get("longitude", None)
 
-    # 2. Montar justificativa final
+    # Monta justificativa final
     final_j = mot_outro if n_ju == "OUTRO" else n_ju
 
-    # 3. Atualizar no dataframe
-    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 
-                  ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [
-                      n_st, final_j, latitude, longitude
-                  ]
+    # Atualiza no DataFrame
+    df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['STATUS', 'JUSTIFICATIVA', 'LATITUDE', 'LONGITUDE']] = [
+        n_st, final_j, latitude, longitude
+    ]
 
-    # 4. Salvar no Google Sheets
+    # Salva no Google Sheets
     conn.update(
         spreadsheet=url_planilha,
         worksheet="AGENDA",
@@ -437,6 +439,7 @@ if menu == "📅 Agendamentos do Dia":
     st.success("Atualizado com sucesso!")
     time.sleep(1)
     st.rerun()
+
         else:
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
     else:
