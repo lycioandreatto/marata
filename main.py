@@ -17,6 +17,8 @@ if not cookies.ready():
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
+from streamlit_js_eval import streamlit_js_eval
+streamlit_js_eval(js_expressions="window.parent.document.title = 'Maratá - SCA'", want_output=False)
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
