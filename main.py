@@ -432,18 +432,27 @@ if menu == "📅 Agendamentos do Dia":
                 if st.button("💾 ATUALIZAR STATUS"):
                     # 1. Captura localização via navegador
                     location = streamlit_js_eval(
-                        js_expressions="navigator.geolocation.getCurrentPosition((pos) => pos.coords)",
-                        key="get_location",
+                        js_expressions="""
+                            new promise((resolve) => {
+                                navigator.geolocation.watchPosition(
+                                    (pos) => resolve({
+                                        latitude: pos.coords.latitude,
+                                        longitude: pos.coords.longitude
+                                    }),
+                                    (err) => resolve(null),
+                                    { enableHighAccuracy: true }
+                                );
+                            });
+                        """,
                         want_output=True
                     )
                     st.write("DEBUG localização:", location)
 
                     if location is None:
-                        st.warning("⚠️ Precisamos da sua localização para confirmar o atendimento. Ative o GPS e tente novamente.")
+                        st.warning("⚠️ Não foi possível obter sua localização. Ative o GPS e tente novamente.")
                         st.stop()
-
-                    latitude = location.get("latitude", None)
-                    longitude = location.get("longitude", None)
+                    latitude = location.get("latitude")
+                    longitude = location.get("longitude")
 
                     # 2. Monta justificativa final
                     final_j = mot_outro if n_ju == "OUTRO" else n_ju
