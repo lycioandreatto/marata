@@ -257,16 +257,24 @@ if menu == "📊 Dashboard de Controle":
             if sup_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_rv_base] == sup_sel_dash]
 
-        # --- PROCESSAMENTO DOS DADOS FILTRADOS ---
-        codigos_agendados_global = df_agenda['CÓDIGO CLIENTE'].unique()
+        # --- PROCESSAMENTO DOS DADOS FILTRADOS (COM DATA DE INSERÇÃO) ---
+        # Mapeamos a data de registro da aba AGENDA para cruzar com a BASE
+        df_agenda_registro = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].drop_duplicates(subset=['CÓDIGO CLIENTE'], keep='first')
+        
         df_base_detalhe = df_base_filtrada.copy()
-        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['Cliente'].apply(
-            lambda x: 'AGENDADO' if str(x) in codigos_agendados_global else 'PENDENTE'
+        df_base_detalhe = pd.merge(df_base_detalhe, df_agenda_registro, left_on='Cliente', right_on='CÓDIGO CLIENTE', how='left')
+        
+        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['CÓDIGO CLIENTE'].apply(
+            lambda x: 'AGENDADO' if pd.notnull(x) else 'PENDENTE'
         )
         
-        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO']]
-        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS']
-        # --- ORDENAÇÃO ALFABÉTICA PELO STATUS (AGENDADO antes de PENDENTE) ---
+        # Coluna da data de inserção formatada
+        df_base_detalhe['DATA INSERÇÃO'] = df_base_detalhe['REGISTRO'].fillna("-")
+
+        df_relatorio_completo = df_base_detalhe[[col_rv_base, 'Cliente', 'Nome 1', col_local_base, 'STATUS AGENDAMENTO', 'DATA INSERÇÃO']]
+        df_relatorio_completo.columns = ['SUPERVISOR', 'CÓDIGO', 'CLIENTE', 'CIDADE', 'STATUS', 'DATA INSERÇÃO']
+        
+        # Ordenação: Agendados primeiro
         df_relatorio_completo = df_relatorio_completo.sort_values(by='STATUS')
 
         resumo_base = df_base_filtrada.groupby(col_rv_base).size().reset_index(name='Total na Base')
