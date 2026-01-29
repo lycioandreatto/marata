@@ -669,47 +669,71 @@ elif menu == "📊 Dashboard de Controle":
                 edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True, key="editor_gap")
                 sel_cods = [str(x) for x in edited_df[edited_df['Selecionar'] == True]['CÓDIGO'].tolist()]
 
+                # ... (dentro do if sel_cods:)
                 if sel_cods:
                     output_ex = io.BytesIO()
+                    
+                    # Lista para consolidar os dados de todos os clientes selecionados
+                    dados_consolidados = []
+
+                    for cod in sel_cods:
+                        c_l = limpar_cod(cod)
+                        # Localiza info do cliente na base filtrada
+                        info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == c_l].iloc[0]
+                        
+                        # Identifica o que ele já comprou
+                        ja_comprou_cods = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
+                        
+                        # Itera sobre a referência total de SKUs para classificar cada um
+                        for _, row_ref in df_skus_ref.iterrows():
+                            sku_id = row_ref[col_sku_ref]
+                            status = "COMPRADO" if sku_id in ja_comprou_cods else "FALTANTE"
+                            
+                            dados_consolidados.append({
+                                "ANALISTA": info_cli[col_ana_base],
+                                "SUPERVISOR": info_cli[col_sup_base],
+                                "VENDEDOR": info_cli[col_vend_base],
+                                "CÓD. CLIENTE": cod,
+                                "CLIENTE": info_cli[col_nome_base],
+                                "HIERARQUIA": row_ref['H_AGRUPADA'],
+                                "SKU": sku_id,
+                                "DESCRIÇÃO": row_ref[col_desc_ref],
+                                "STATUS": status
+                            })
+
+                    # Cria o DataFrame final para exportação
+                    df_export = pd.DataFrame(dados_consolidados)
+
+                    # Exportação para Excel
+                    with pd.ExcelWriter(output_ex, engine='xlsxwriter') as writer:
+                        df_export.to_excel(writer, sheet_name='Relatorio_Mix', index=False)
+                        # Ajuste automático de colunas
+                        worksheet = writer.sheets['Relatorio_Mix']
+                        for i, col in enumerate(df_export.columns):
+                            column_len = max(df_export[col].astype(str).map(len).max(), len(col)) + 2
+                            worksheet.set_column(i, i, column_len)
+
+                    # --- GERAÇÃO DO PDF (Mantida como sugestão de compra rápido) ---
                     from fpdf import FPDF
                     pdf = FPDF()
-                    
-                    with pd.ExcelWriter(output_ex, engine='xlsxwriter') as writer:
-                        for cod in sel_cods:
-                            c_l = limpar_cod(cod)
-                            info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == c_l].iloc[0]
-                            ja_comprou_cods = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
-                            
-                            cols_sel = ['H_AGRUPADA', col_sku_ref, col_desc_ref]
-                            df_falta = df_skus_ref[~df_skus_ref[col_sku_ref].isin(ja_comprou_cods)][cols_sel].copy()
-                            df_tem = df_skus_ref[df_skus_ref[col_sku_ref].isin(ja_comprou_cods)][cols_sel].copy()
-                            
-                            # EXCEL: Estrutura por abas
-                            aba = f"CLI_{c_l}"[:31]
-                            pd.DataFrame([["CLIENTE:", info_cli[col_nome_base], "CÓDIGO:", cod]]).to_excel(writer, aba, index=False, header=False, startrow=0)
-                            pd.DataFrame([["--- PRODUTOS QUE FALTAM (GAP) ---"]]).to_excel(writer, aba, index=False, header=False, startrow=2)
-                            df_falta.to_excel(writer, aba, index=False, startrow=3)
-                            
-                            row_tem = len(df_falta) + 6
-                            pd.DataFrame([["--- PRODUTOS JÁ COMPRADOS ---"]]).to_excel(writer, aba, index=False, header=False, startrow=row_tem)
-                            df_tem.to_excel(writer, aba, index=False, startrow=row_tem + 1)
-
-                            # PDF: Relatório simples
-                            pdf.add_page()
-                            pdf.set_font("Arial", 'B', 14)
-                            pdf.cell(0, 10, f"Mix: {info_cli[col_nome_base]}", ln=True, align='C')
-                            pdf.set_font("Arial", 'B', 11); pdf.ln(5)
-                            pdf.cell(0, 10, "SKUS FALTANTES NO MIX:", ln=True)
-                            pdf.set_font("Arial", '', 9)
-                            for _, r in df_falta.head(45).iterrows():
-                                pdf.cell(0, 7, f"- {r['H_AGRUPADA']} | {r[col_sku_ref]} | {str(r[col_desc_ref])[:40]}", ln=True)
+                    for cod in sel_cods:
+                        c_l = limpar_cod(cod)
+                        info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == c_l].iloc[0]
+                        pdf.add_page()
+                        pdf.set_font("Arial", 'B', 12)
+                        pdf.cell(0, 10, f"Sugestão de Mix - {info_cli[col_nome_base]} ({cod})", ln=True)
+                        pdf.set_font("Arial", '', 8)
+                        # Mostra apenas os faltantes no PDF para o vendedor focar no Gap
+                        ja_comprou = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
+                        faltantes = df_skus_ref[~df_skus_ref[col_sku_ref].isin(ja_comprou)]
+                        for _, r in faltantes.head(50).iterrows():
+                            pdf.cell(0, 6, f"[GAP] {r['H_AGRUPADA']} - {r[col_sku_ref]} - {str(r[col_desc_ref])[:45]}", ln=True)
 
                     c_btn1, c_btn2 = st.columns(2)
                     with c_btn1:
-                        st.download_button("📊 Baixar Excel", output_ex.getvalue(), "Gap_Mix.xlsx", "application/vnd.ms-excel")
+                        st.download_button("📊 Baixar Excel Consolidado", output_ex.getvalue(), "Relatorio_Mix_Completo.xlsx", "application/vnd.ms-excel")
                     with c_btn2:
-                        pdf_output = pdf.output(dest='S').encode('latin-1', 'replace')
-                        st.download_button("📄 Baixar PDF", pdf_output, "Sugestao_Mix.pdf", "application/pdf")
+                        st.download_button("📄 Baixar PDFs de Sugestão", pdf.output(dest='S').encode('latin-1', 'replace'), "Sugestao_Mix_Clientes.pdf", "application/pdf")
 
                 st.info(f"📊 Meta do Mix: {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
 
