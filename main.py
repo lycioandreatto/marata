@@ -421,9 +421,9 @@ if menu == "📅 Agendamentos do Dia":
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
     
     if df_agenda is not None and not df_agenda.empty:
-        # Colunas de Controle (Ajuste os nomes conforme sua planilha)
+        # Colunas de Controle
         col_aprov_plan = next((c for c in df_agenda.columns if "APROVA" in c.upper() and "PLAN" in c.upper() or c.upper() == "APROVACAO"), "APROVACAO")
-        col_aprov_exec = "VALIDACAO_GESTAO" # Nova coluna para a gestão aprovar o realizado
+        col_aprov_exec = "VALIDACAO_GESTAO"
         
         if col_aprov_exec not in df_agenda.columns:
             df_agenda[col_aprov_exec] = "PENDENTE"
@@ -431,12 +431,10 @@ if menu == "📅 Agendamentos do Dia":
         # 1. Filtro por Data
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
         
-        # 2. Lógica de Visibilidade por Perfil
-        if not (is_admin or is_diretoria or is_analista):
-            # VENDEDOR/SUPERVISOR só vê o que já foi pré-aprovado no planejamento
-            df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
+        # 2. RESTRIÇÃO DE TABELA: Só aparece o que o Analista aprovou na sexta-feira
+        df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
         
-        # 3. Filtro Hierárquico
+        # 3. Filtro Hierárquico (Quem vê o quê)
         if not (is_admin or is_diretoria):
             if is_analista:
                 df_dia = df_dia[df_dia['ANALISTA'].str.upper() == user_atual]
@@ -452,13 +450,25 @@ if menu == "📅 Agendamentos do Dia":
         t_reprovado = len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"])
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Total Agenda", t_hoje)
+        m1.metric("Aprovados p/ Hoje", t_hoje)
         m2.metric("Realizados", t_realizado)
         m3.metric("Validados (Gestão)", t_validado)
         m4.metric("Reprovados", t_reprovado, delta_color="inverse")
 
+        # --- BOTÃO APROVAR TODOS (GESTÃO) ---
+        if eh_gestao and t_realizado > t_validado:
+            if st.button("✅ APROVAR TODA EXECUÇÃO DO DIA (DAR OK)"):
+                # Filtra os IDs do que está na tela, é Realizado e está Pendente
+                ids_para_aprovar = df_dia[(df_dia['STATUS'] == "Realizado") & (df_dia[col_aprov_exec] == "PENDENTE")]['ID'].tolist()
+                if ids_para_aprovar:
+                    df_agenda.loc[df_agenda['ID'].isin(ids_para_aprovar), col_aprov_exec] = "OK"
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                    st.success(f"{len(ids_para_aprovar)} atendimentos validados com sucesso!")
+                    time.sleep(1)
+                    st.rerun()
+
         if not df_dia.empty:
-            # Merge com base para Cidade (Mantido sua lógica original)
+            # Merge com base para Cidade
             if df_base is not None:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 col_cod_cliente = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
@@ -486,51 +496,43 @@ if menu == "📅 Agendamentos do Dia":
                 use_container_width=True,
                 column_config={
                     "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"])
+                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA GESTÃO", options=["PENDENTE", "OK", "REPROVADO"])
                 },
                 disabled=[c for c in df_display.columns if c not in ["EDITAR", col_aprov_exec]]
             )
 
-            # --- LÓGICA DE SALVAMENTO ---
+            # --- LÓGICA DE SALVAMENTO INDIVIDUAL ---
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
-            
             if not marcados.empty:
                 idx = marcados.index[0]
                 sel_row = df_dia.loc[idx]
                 
                 st.divider()
-                st.subheader(f"⚙️ Gestão de Atendimento: {sel_row['CLIENTE']}")
+                st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
                 
                 c1, c2 = st.columns(2)
-                
-                # Se for Vendedor, ele só altera o STATUS
                 with c1:
-                    st.info(f"Status Atual: {sel_row['STATUS']}")
-                    novo_status = st.selectbox("Atualizar Execução:", ["Planejado", "Realizado", "Reagendado"], 
+                    novo_status = st.selectbox("Status de Execução:", ["Planejado", "Realizado", "Reagendado"], 
                                              index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
                 
-                # Se for GESTÃO (Analista/Admin), ele aprova ou reprova o que o vendedor fez
                 with c2:
                     if eh_gestao:
-                        st.warning("Área da Gestão")
-                        nova_validacao = st.radio("Validar Atendimento:", ["PENDENTE", "OK", "REPROVADO"], 
+                        nova_validacao = st.radio("Validar este item:", ["PENDENTE", "OK", "REPROVADO"], 
                                                 index=["PENDENTE", "OK", "REPROVADO"].index(sel_row[col_aprov_exec]), horizontal=True)
                     else:
+                        st.info(f"Validação: {sel_row[col_aprov_exec]}")
                         nova_validacao = sel_row[col_aprov_exec]
 
-                if st.button("💾 CONFIRMAR ALTERAÇÕES"):
-                    # Captura coordenadas se for realizado
+                if st.button("💾 SALVAR ALTERAÇÃO"):
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
-                    
-                    # Atualiza o DataFrame principal
-                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), 
-                                 ['STATUS', col_aprov_exec, 'COORDENADAS']] = [novo_status, nova_validacao, f"{lat_v}, {lon_v}"]
-                    
+                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', col_aprov_exec, 'COORDENADAS']] = [novo_status, nova_validacao, f"{lat_v}, {lon_v}"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.success("Dados Gravados!")
+                    st.success("Salvo!")
                     time.sleep(1)
                     st.rerun()
+        else:
+            st.warning("⚠️ Nenhuma agenda aprovada pelo Analista para a data de hoje.")
                     
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
