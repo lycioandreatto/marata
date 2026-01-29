@@ -946,7 +946,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             import io
             from fpdf import FPDF
             
-            # Adicionada a coluna REGISTRO na lista de colunas visíveis
             cols_v = ['DATA', 'REGISTRO', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             if 'DISTANCIA_LOG' in df_user.columns:
                 cols_v.append('DISTANCIA_LOG')
@@ -956,11 +955,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             exp_col1, exp_col2, exp_col3 = st.columns([1, 1, 8])
             
             with exp_col1:
-                # Exportar para Excel
                 buffer_ex = io.BytesIO()
                 with pd.ExcelWriter(buffer_ex, engine='xlsxwriter') as writer:
                     df_export.to_excel(writer, index=False, sheet_name='Agenda')
-                
                 st.download_button(
                     label="📥 Excel",
                     data=buffer_ex.getvalue(),
@@ -969,26 +966,20 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 )
 
             with exp_col2:
-                # Exportar para PDF
                 try:
                     pdf = FPDF(orientation='L', unit='mm', format='A4')
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 12)
                     pdf.cell(0, 10, f"Relatorio de Agenda - {user_atual}", ln=True, align='C')
                     pdf.set_font("Arial", size=8)
-                    
-                    # Cabeçalho do PDF
                     col_width = pdf.w / (len(cols_v) + 1)
                     for col in cols_v:
                         pdf.cell(col_width, 10, str(col), border=1)
                     pdf.ln()
-                    
-                    # Dados do PDF
                     for _, row in df_export.iterrows():
                         for item in row:
                             pdf.cell(col_width, 10, str(item)[:15], border=1)
                         pdf.ln()
-                    
                     pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
                     st.download_button(
                         label="📥 PDF",
@@ -998,17 +989,18 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     )
                 except Exception as e:
                     st.error("Erro PDF")
-            # ---------------------------------------
 
-            # Lógica da Tabela com Checkbox
+            # --- LÓGICA DA TABELA ---
             df_user["AÇÃO"] = False
             
             def style_agenda_completa(row):
                 styles = [''] * len(row)
-                if row['STATUS'] == "Realizado":
-                    if row['dist_val_calc'] > 50:
-                        return ['color: #E67E22; font-weight: bold'] * len(row)
-                    return ['color: green; font-weight: bold'] * len(row)
+                # Só aplica cores para Admin, Diretoria ou Analista
+                if is_admin or is_diretoria or is_analista:
+                    if row['STATUS'] == "Realizado":
+                        if row['dist_val_calc'] > 50:
+                            return ['color: #E67E22; font-weight: bold'] * len(row)
+                        return ['color: green; font-weight: bold'] * len(row)
                 return styles
 
             cols_display = ['AÇÃO'] + cols_v + ['dist_val_calc']
@@ -1020,6 +1012,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 "REGISTRO": st.column_config.TextColumn("🕒 Data Registro"),
                 "dist_val_calc": None
             }
+            
+            # Oculta a coluna de distância para supervisores
             if not (is_admin or is_diretoria or is_analista):
                 config_col["DISTANCIA_LOG"] = None
             else:
@@ -1047,14 +1041,14 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     st.write("Crie uma nova data para este cliente mantendo o histórico atual.")
                     n_data = st.date_input("Nova Data:", value=datetime.now())
                     if st.button("Confirmar Novo Agendamento"):
-                        # Captura hora Brasília
+                        import pytz
                         fuso = pytz.timezone('America/Sao_Paulo')
                         agora_br = datetime.now(fuso).strftime('%d/%m/%Y %H:%M:%S')
                         
                         nova_v = sel_row.copy()
                         nova_v['ID'] = str(uuid.uuid4())
                         nova_v['DATA'] = n_data.strftime('%d/%m/%Y')
-                        nova_v['REGISTRO'] = agora_br  # Grava data/hora Brasília
+                        nova_v['REGISTRO'] = agora_br
                         nova_v['STATUS'] = "Planejado"
                         nova_v['JUSTIFICATIVA'] = ""
                         nova_v['DISTANCIA_LOG'] = ""
