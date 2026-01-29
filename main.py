@@ -586,13 +586,43 @@ if menu == "📅 Agendamentos do Dia":
 
             # --- BOTÃO ROTA FINALIZADA ---
             st.markdown("---")
-            if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                resumo_dados = {
-                    'total': len(df_dia),
-                    'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
-                    'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
-                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
-                }
+            if st.button("💾 SALVAR ATUALIZAÇÃO"):
+                    lat_v = st.session_state.get('lat', 0)
+                    lon_v = st.session_state.get('lon', 0)
+                    
+                    # Tenta pegar as coordenadas do cliente da base fixa
+                    distancia_final = ""
+                    if lat_v != 0:
+                        try:
+                            # Supondo que na sua df_base as colunas sejam 'LATITUDE' e 'LONGITUDE'
+                            # Se os nomes forem diferentes, ajuste aqui:
+                            lat_c = sel_row.get('LATITUDE', 0) 
+                            lon_c = sel_row.get('LONGITUDE', 0)
+                            
+                            if lat_c and lon_c:
+                                dist_m = calcular_distancia_metros(lat_v, lon_v, lat_c, lon_c)
+                                distancia_final = f"{dist_m}m"
+                            else:
+                                distancia_final = "Sem GPS Cliente"
+                        except:
+                            distancia_final = "Erro Calc"
+
+                    # APLICANDO A MUDANÇA NO DF_AGENDA PRINCIPAL
+                    idx_original = df_agenda.index[df_agenda['ID'].astype(str) == sel_id].tolist()
+                    
+                    if idx_original:
+                        df_agenda.loc[idx_original[0], 'STATUS'] = novo_status
+                        df_agenda.loc[idx_original[0], col_aprov_exec] = nova_val
+                        df_agenda.loc[idx_original[0], col_just] = nova_just
+                        df_agenda.loc[idx_original[0], 'COORDENADAS'] = f"{lat_v}, {lon_v}"
+                        df_agenda.loc[idx_original[0], 'DISTANCIA_LOG'] = distancia_final # <--- AGORA SALVA A DISTÂNCIA!
+                        
+                        # Salvar na Planilha
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
+                        st.cache_data.clear()
+                        st.success(f"Status atualizado! Distância: {distancia_final}")
+                        time.sleep(1)
+                        st.rerun()
                 
                 with st.spinner("Enviando resumo por e-mail..."):
                     sucesso = enviar_resumo_rota(
