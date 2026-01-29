@@ -53,7 +53,7 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo):
         - Visitas com Pedido: {dados_resumo['pedidos']}
         - Pendentes: {dados_resumo['pendentes']}
         
-        E-mail enviado automaticamente pelo Sistema GVP.
+        E-mail enviado automaticamente pelo Sistema Marata.
         """
         msg.attach(MIMEText(corpo, 'plain'))
 
