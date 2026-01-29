@@ -637,86 +637,67 @@ elif menu == "📊 Dashboard de Controle":
         
         st.table(df_ranking_view)
 
-        # --- SEÇÃO: COMPARAÇÃO AGENDA VS FATURAMENTO ---
+        # --- SEÇÃO: COMPARAÇÃO AGENDA VS FATURAMENTO (FOCO EM CLIENTES) ---
         st.markdown("---")
-        st.subheader("💰 Performance Comercial (Faturado)")
+        st.subheader("🎯 Conversão de Agendamentos em Vendas")
 
         try:
             # 1. Leitura dos dados de faturamento
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
             
-            # 2. Identificação das Colunas
-            # Forçamos todos os nomes de colunas a serem strings para evitar erro de 'int' com 'str'
+            # 2. Identificação das Colunas (Coluna K é o índice 10)
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
-            
-            col_cod_cliente_fat = df_fat.columns[10] # Coluna K
-            col_data_fat = "Data fat."
+            col_cod_cliente_fat = df_fat.columns[10] 
             col_pedidos = "OrdCliente"
-            col_valor_fat = next((c for c in df_fat.columns if "VALOR" in c.upper() or "TOTAL" in c.upper()), df_fat.columns[-1])
 
-            # --- INICIO DO TRECHO QUE VOCÊ PERGUNTOU (3 e 4) ---
-            
-            # 3. Tratamento de Dados - Forçando conversão para evitar o erro de concatenação
-            # Garante que o conteúdo da coluna de código seja string e remove espaços
+            # 3. Tratamento: Garante que o código seja texto para o cruzamento
             df_fat[col_cod_cliente_fat] = df_fat[col_cod_cliente_fat].astype(str).str.strip()
             
-            # Limpeza da data
-            df_fat[col_data_fat] = pd.to_datetime(df_fat[col_data_fat], errors='coerce')
-
-            # 4. Agrupamento
-            # Garantimos que os valores numéricos sejam float para a soma
-            df_fat[col_valor_fat] = pd.to_numeric(df_fat[col_valor_fat], errors='coerce').fillna(0)
-            
+            # 4. Agrupamento: Contamos apenas quantos pedidos cada código de cliente teve
             df_fat_resumo = df_fat.groupby(col_cod_cliente_fat).agg({
-                col_valor_fat: 'sum',
-                col_pedidos: 'nunique'
+                col_pedidos: 'nunique' 
             }).reset_index()
-            
-            # --- FIM DO TRECHO ---
+            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos']
 
-            df_fat_resumo.columns = ['Cod_Cliente', 'Valor_Total', 'Qtd_Pedidos']
-
-            # 5. Cruzamento com a Agenda
-            # IMPORTANTE: Garantir que a coluna 'Cliente' da base também seja string
+            # 5. Cruzamento com a Agenda (df_base_detalhe)
             df_base_detalhe['Cliente'] = df_base_detalhe['Cliente'].astype(str).str.strip()
+            df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente', right_on='Cod_Cliente', how='left').fillna(0)
 
-            df_comp = pd.merge(
-                df_base_detalhe, 
-                df_fat_resumo, 
-                left_on='Cliente', 
-                right_on='Cod_Cliente', 
-                how='left'
-            ).fillna(0)
-
-            # 6. Métricas de Comparação
-            m1, m2, m3, m4 = st.columns(4)
+            # --- 6. CÁLCULO DOS INDICADORES DE QUANTIDADE ---
             
-            vendas_agendadas = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO']
-            total_venda_agendada = vendas_agendadas['Valor_Total'].sum()
-            total_geral_fat = df_fat_resumo['Valor_Total'].sum()
-            total_pedidos_geral = df_fat_resumo['Qtd_Pedidos'].sum()
+            # Clientes que estavam na agenda
+            total_na_agenda = len(df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'])
+            
+            # Clientes que estavam na agenda E compraram (Qtd_Pedidos > 0)
+            agendados_que_compraram = len(df_comp[(df_comp['STATUS AGENDAMENTO'] == 'AGENDADO') & (df_comp['Qtd_Pedidos'] > 0)])
+            
+            # Total de pedidos gerados pelos clientes agendados
+            total_pedidos_agenda = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO']['Qtd_Pedidos'].sum()
+            
+            # Taxa de conversão (Clientes)
+            taxa_conversao = (agendados_que_compraram / total_na_agenda * 100) if total_na_agenda > 0 else 0
 
-            m1.metric("Faturado Total", f"R$ {total_geral_fat:,.2f}")
-            m2.metric("Faturado via Agenda", f"R$ {total_venda_agendada:,.2f}")
-            m3.metric("Conversão Agenda", f"{(len(vendas_agendadas[vendas_agendadas['Valor_Total'] > 0]) / len(vendas_agendadas) * 100) if len(vendas_agendadas) > 0 else 0:.1f}%")
-            m4.metric("Total de Pedidos", int(total_pedidos_geral))
+            # 7. EXIBIÇÃO NOS CARDS
+            c1, c2, c3, c4 = st.columns(4)
+            
+            c1.metric("Clientes Agendados", total_na_agenda)
+            c2.metric("Agendados que Compraram", agendados_que_compraram)
+            c3.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
+            c4.metric("Total de Pedidos (Agenda)", int(total_pedidos_agenda))
 
-            # 7. Tabela de Clientes "Esquecidos"
+            # 8. Lista de quem comprou e não foi agendado
             st.markdown("#### 🚀 Clientes que faturaram SEM agendamento")
-            df_esquecidos = df_comp[(df_comp['STATUS AGENDAMENTO'] == 'PENDENTE') & (df_comp['Valor_Total'] > 0)]
+            df_esquecidos = df_comp[(df_comp['STATUS AGENDAMENTO'] == 'PENDENTE') & (df_comp['Qtd_Pedidos'] > 0)]
+            
             if not df_esquecidos.empty:
                 st.dataframe(
-                    df_esquecidos[['Cliente', 'Nome 1', 'Valor_Total', 'Qtd_Pedidos']].sort_values(by='Valor_Total', ascending=False),
+                    df_esquecidos[['Cliente', 'Nome 1', 'Qtd_Pedidos']].sort_values(by='Qtd_Pedidos', ascending=False),
                     use_container_width=True,
                     hide_index=True
                 )
-            else:
-                st.success("Ótimo! Todos os clientes que compraram estavam na agenda.")
 
         except Exception as e:
-            st.error(f"Erro ao processar aba FATURADO: {e}")
-            st.info("Verifique se a coluna K contém o código do cliente e se o nome da aba é 'FATURADO'.")
-
+            st.error(f"Erro ao processar: {e}")
 
         
         # --- MAPA DE CALOR: DISTRIBUIÇÃO GEOGRÁFICA ---
