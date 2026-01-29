@@ -1295,28 +1295,40 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
             sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
 
+        # Aplicação dos filtros no DF de faturado
         if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
         if sel_analista: df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
         if not df_f.empty:
-            # 1. Positivação (Regra SMX/STR)
+            # 1. Positivação (SMX/STR só contam se Supervisor ou Vendedor selecionado)
             if sel_supervisor or sel_vendedor:
                 positivacao = df_f[col_k].nunique()
             else:
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
 
-            # 2. Busca de Metas
-            # Se filtrou Analista e NÃO filtrou Supervisor/Vendedor -> Pega a linha do nome do Analista
-            if sel_analista and not (sel_supervisor or sel_vendedor):
-                nomes_analistas = [str(x).upper() for x in sel_analista]
-                dados_meta = df_metas_cob[df_metas_cob['RG'].isin(nomes_analistas)]
-                base_total = dados_meta['BASE'].sum()
-                meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
+            # 2. LÓGICA DE METAS - O PONTO CHAVE
+            # Se NÃO detalhou por Supervisor ou Vendedor -> Busca o Nome do Analista
+            if not (sel_supervisor or sel_vendedor):
+                # Identifica qual analista estamos olhando (o selecionado ou o que restou no DF)
+                analistas_na_tela = sel_analista if sel_analista else df_f['ANALISTA'].dropna().unique().tolist()
+                nomes_para_busca = [str(x).upper() for x in analistas_na_tela]
+                
+                dados_meta = df_metas_cob[df_metas_cob['RG'].isin(nomes_para_busca)]
+                
+                # Se achou a linha com o nome do analista, usa ela. Se não (fallback), soma RGs.
+                if not dados_meta.empty:
+                    base_total = dados_meta['BASE'].sum()
+                    meta_val = dados_meta['META'].mean()
+                else:
+                    vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
+                    dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+                    base_total = dados_meta['BASE'].sum()
+                    meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
             else:
-                # Caso Geral ou Seleção de Vendedor/Supervisor -> Soma por RG numérico
+                # Se detalhou por Supervisor ou Vendedor -> Soma RGs individuais
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
                 dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
                 base_total = dados_meta['BASE'].sum()
@@ -1325,14 +1337,15 @@ elif menu_interna == "📊 Desempenho de Vendas":
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
+            # Renderização dos Cards
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
             m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}")
             m2.metric("🏪 Positivados", positivacao)
             with m3:
                 st.markdown(f"""<div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small>COBERTURA (META vs REAL)</small><br>
-                    <span>Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
+                    <small style="color: #666;">COBERTURA (META vs REAL)</small><br>
+                    <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
                     Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>""", unsafe_allow_html=True)
 
