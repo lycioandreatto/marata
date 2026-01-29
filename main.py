@@ -873,11 +873,31 @@ elif menu == "📋 Novo Agendamento":
                                     "DATA": dt.strftime("%d/%m/%Y"),
                                     "ANALISTA": analista_vinc, 
                                     "SUPERVISOR": sup_sel, 
+                                    "CÓDIGO CLIENTE": cod_c, 
+                                    "CLIENTE": nom_c, 
+                                    "JUSTIFICATIVA": "-", 
+                                    "STATUS": "Planejado",
+                                    "AGENDADO POR": user_atual 
+                                })
+                            df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
+                            st.cache_data.clear()
+                            st.success(f"✅ {qtd_visitas} visita(s) salva(s)!")
+                            time.sleep(1)
+                            st.rerun()
+
+# --- PÁGINA: VER/EDITAR ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+# --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
     st.header("🔍 Minha Agenda Completa")
     
     if df_agenda is not None and not df_agenda.empty:
-        # --- PREPARAÇÃO DE DATAS ---
+        # --- PREPARAÇÃO PARA PREVISIBILIDADE (Datas e Dias) ---
         df_agenda['DT_COMPLETA'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
         dias_traducao = {
             'Monday': 'Segunda', 'Tuesday': 'Terça', 'Wednesday': 'Quarta',
@@ -885,35 +905,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         }
         df_agenda['DIA_SEMANA'] = df_agenda['DT_COMPLETA'].dt.day_name().map(dias_traducao)
 
-        # --- SEÇÃO DE FILTROS (SLICERS) ---
-        st.markdown("### フィルター Filtros de Visualização")
-        f_col1, f_col2 = st.columns(2)
-        
-        # Inicializa o dataframe de trabalho
-        df_filtered = df_agenda.copy()
-
+        # Filtro de visibilidade por perfil
         if is_admin or is_diretoria:
-            lista_analistas = sorted(df_agenda['ANALISTA'].unique().tolist())
-            lista_supervisores = sorted(df_agenda['SUPERVISOR'].unique().tolist())
-            
-            sel_an = f_col1.multiselect("Filtrar Analista:", lista_analistas)
-            sel_sup = f_col2.multiselect("Filtrar Supervisor:", lista_supervisores)
-            
-            if sel_an: df_filtered = df_filtered[df_filtered['ANALISTA'].isin(sel_an)]
-            if sel_sup: df_filtered = df_filtered[df_filtered['SUPERVISOR'].isin(sel_sup)]
-            df_user = df_filtered.copy()
-
+            df_user = df_agenda.copy()
         elif is_analista:
-            # Analista vê o dele, mas pode filtrar qual supervisor quer olhar
-            df_filtered = df_filtered[df_filtered['ANALISTA'].str.upper() == user_atual]
-            lista_supervisores = sorted(df_filtered['SUPERVISOR'].unique().tolist())
-            
-            sel_sup = f_col1.multiselect("Ver Supervisor Específico:", lista_supervisores)
-            if sel_sup: df_filtered = df_filtered[df_filtered['SUPERVISOR'].isin(sel_sup)]
-            df_user = df_filtered.copy()
-            
+            df_user = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual].copy()
         else:
-            # Supervisor só vê o dele
             df_user = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
         if not df_user.empty:
@@ -948,36 +945,41 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             st.markdown("---")
 
-            # --- SEÇÃO DE PREVISIBILIDADE (IA INSIGHTS) ---
+            # --- SEÇÃO DE PREVISIBILIDADE (IA INSIGHTS) - RESTRITO: ADMIN, DIRETORIA E ANALISTAS ---
             if is_admin or is_diretoria or is_analista:
                 st.subheader("🧠 Insights de Previsibilidade")
+                
                 df_hist = df_user.copy()
                 df_hist['sucesso'] = df_hist['STATUS'].apply(lambda x: 1 if x == "Realizado" else 0)
                 
+                # Agrupamento por Supervisor e Dia da Semana
                 analise_prev = df_hist.groupby(['SUPERVISOR', 'DIA_SEMANA'])['sucesso'].agg(['count', 'mean']).reset_index()
                 analise_prev.columns = ['Supervisor', 'Dia', 'Total Agendado', 'Taxa de Realização']
                 
+                # Filtro de gargalos (Menos de 70% de realização)
                 gargalos = analise_prev[analise_prev['Taxa de Realização'] < 0.70].sort_values(by='Taxa de Realização')
 
                 if not gargalos.empty:
-                    st.warning(f"⚠️ Padrões de baixa adesão detectados no filtro atual:")
+                    st.warning(f"⚠️ Identificamos padrões de baixa adesão à agenda:")
                     for _, row in gargalos.iterrows():
                         quebra = (1 - row['Taxa de Realização']) * 100
-                        st.write(f"👉 **{row['Supervisor']}**: Às **{row['Dia']}s**, quebra de **{quebra:.0f}%**.")
+                        st.write(f"👉 **{row['Supervisor']}**: Às **{row['Dia']}s**, costuma deixar de visitar **{quebra:.0f}%** da base.")
                     
+                    # Gráfico apenas para Admin e Diretoria (Controle estratégico)
                     if is_admin or is_diretoria:
                         import plotly.express as px
                         fig = px.bar(analise_prev, x='Dia', y='Taxa de Realização', color='Supervisor',
-                                     barmode='group', title="Performance por Dia (Filtro Ativo)",
+                                     barmode='group', title="Performance Prevista por Dia da Semana",
                                      labels={'Taxa de Realização': '% Realizado'},
                                      category_orders={"Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]})
                         fig.add_hline(y=0.8, line_dash="dash", line_color="red", annotation_text="Meta 80%")
                         st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.success("✅ Nenhum padrão de quebra detectado neste filtro.")
+                    st.success("✅ Nenhum padrão de quebra sistemática detectado.")
+
                 st.markdown("---")
 
-            # Trazer Cidade para o DF
+            # Trazer Cidade
             if df_base is not None and 'CIDADE' not in df_user.columns:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
@@ -987,6 +989,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- BLOCO DE EXPORTAÇÃO ---
             import io
             from fpdf import FPDF
+            
             cols_desejadas = ['DATA', 'REGISTRO', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             if (is_admin or is_diretoria or is_analista) and 'DISTANCIA_LOG' in df_user.columns:
                 cols_desejadas.append('DISTANCIA_LOG')
@@ -995,17 +998,19 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_export = df_user[cols_v].copy()
             
             exp_col1, exp_col2, _ = st.columns([1, 1, 8])
+            
             with exp_col1:
                 buffer_ex = io.BytesIO()
                 with pd.ExcelWriter(buffer_ex, engine='xlsxwriter') as writer:
                     df_export.to_excel(writer, index=False, sheet_name='Agenda')
                 st.download_button(label="📥 Excel", data=buffer_ex.getvalue(), 
-                                   file_name=f"Agenda_Filtro_{datetime.now().strftime('%d_%m')}.xlsx", mime="application/vnd.ms-excel")
+                                   file_name=f"Agenda_{user_atual}_{datetime.now().strftime('%d_%m')}.xlsx", mime="application/vnd.ms-excel")
+
             with exp_col2:
                 try:
                     pdf = FPDF(orientation='L', unit='mm', format='A4')
                     pdf.add_page(); pdf.set_font("Arial", 'B', 12)
-                    pdf.cell(0, 10, f"Relatorio de Agenda - Filtro Ativo", ln=True, align='C')
+                    pdf.cell(0, 10, f"Relatorio de Agenda - {user_atual}", ln=True, align='C')
                     pdf.set_font("Arial", size=8)
                     col_width = (pdf.w - 20) / len(cols_v)
                     for col in cols_v: pdf.cell(col_width, 10, str(col), border=1)
@@ -1015,15 +1020,17 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         pdf.ln()
                     pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
                     st.download_button(label="📥 PDF", data=pdf_output, 
-                                       file_name=f"Agenda_Filtro_{datetime.now().strftime('%d_%m')}.pdf", mime="application/pdf")
+                                       file_name=f"Agenda_{user_atual}_{datetime.now().strftime('%d_%m')}.pdf", mime="application/pdf")
                 except Exception as e: st.error(f"Erro PDF: {e}")
 
-            # --- TABELA INTERATIVA ---
+            # --- LÓGICA DA TABELA ---
             df_user["AÇÃO"] = False
+            
             def style_agenda_completa(row):
                 if is_admin or is_diretoria or is_analista:
                     if row['STATUS'] == "Realizado":
-                        if row['dist_val_calc'] > 50: return ['color: #E67E22; font-weight: bold'] * len(row)
+                        if row['dist_val_calc'] > 50:
+                            return ['color: #E67E22; font-weight: bold'] * len(row)
                         return ['color: green; font-weight: bold'] * len(row)
                 return [''] * len(row)
 
@@ -1036,6 +1043,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 "REGISTRO": st.column_config.TextColumn("🕒 Data Registro"),
                 "dist_val_calc": None 
             }
+            
             if not (is_admin or is_diretoria or is_analista):
                 if "DISTANCIA_LOG" in df_display.columns: config_col["DISTANCIA_LOG"] = None
             else:
@@ -1047,36 +1055,49 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 disabled=[c for c in cols_display if c != "AÇÃO"]
             )
 
-            # --- GERENCIAMENTO (REAGENDAR/EXCLUIR) ---
+            # --- LÓGICA DE GERENCIAMENTO (REAGENDAR OU EXCLUIR) ---
             marcados = edicao_user[edicao_user["AÇÃO"] == True]
             if not marcados.empty:
                 idx = marcados.index[0]
                 sel_row = df_user.iloc[idx]
+                
                 st.markdown(f"### ⚙️ Gerenciar: {sel_row['CLIENTE']}")
                 t_re, t_ex = st.tabs(["🔄 Reagendar Visita", "🗑️ Excluir Registro"])
                 
                 with t_re:
+                    st.write("Crie uma nova data para este cliente.")
                     n_data = st.date_input("Nova Data:", value=datetime.now())
                     if st.button("Confirmar Novo Agendamento"):
                         import pytz
-                        agora_br = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
+                        fuso = pytz.timezone('America/Sao_Paulo')
+                        agora_br = datetime.now(fuso).strftime('%d/%m/%Y %H:%M:%S')
+                        
                         nova_v = sel_row.copy()
-                        nova_v['ID'] = str(uuid.uuid4()); nova_v['DATA'] = n_data.strftime('%d/%m/%Y')
-                        nova_v['REGISTRO'] = agora_br; nova_v['STATUS'] = "Planejado"
+                        nova_v['ID'] = str(uuid.uuid4())
+                        nova_v['DATA'] = n_data.strftime('%d/%m/%Y')
+                        nova_v['REGISTRO'] = agora_br
+                        nova_v['STATUS'] = "Planejado"
                         nova_v['JUSTIFICATIVA'] = ""; nova_v['DISTANCIA_LOG'] = ""; nova_v['COORDENADAS'] = ""
                         nova_v['AGENDADO POR'] = user_atual
+                        
                         cols_to_drop = ['AÇÃO', 'dist_val_calc', 'CIDADE', 'LINHA', 'DT_COMPLETA', 'DIA_SEMANA']
                         nova_v_dict = nova_v.drop(labels=cols_to_drop, errors='ignore').to_frame().T
+                        
                         df_final = pd.concat([df_agenda, nova_v_dict], ignore_index=True)
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final.drop(columns=['LINHA'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
+                        st.cache_data.clear()
+                        st.success("Nova visita agendada!")
+                        time.sleep(1); st.rerun()
 
                 with t_ex:
+                    st.error("Isso apagará este registro permanentemente.")
                     if st.button("Confirmar Exclusão Definitiva"):
                         df_new = df_agenda[df_agenda['ID'].astype(str) != str(sel_row['ID'])].drop(columns=['LINHA'], errors='ignore')
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_new)
-                        st.cache_data.clear(); st.success("Removido!"); time.sleep(1); st.rerun()
+                        st.cache_data.clear()
+                        st.success("Removido!")
+                        time.sleep(1); st.rerun()
         else:
-            st.info("Nenhum agendamento encontrado para este filtro.")
+            st.info("Nenhum agendamento encontrado.")
     else:
         st.warning("Agenda vazia.")
