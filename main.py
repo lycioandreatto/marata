@@ -945,37 +945,39 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             st.markdown("---")
 
-            # --- SEÇÃO DE PREVISIBILIDADE (IA INSIGHTS) ---
-            st.subheader("🧠 Insights de Previsibilidade")
-            # Criamos a métrica de sucesso (1 se realizado, 0 se planejado/pendente)
-            df_hist = df_user.copy()
-            df_hist['sucesso'] = df_hist['STATUS'].apply(lambda x: 1 if x == "Realizado" else 0)
-            
-            # Agrupamento por Supervisor e Dia da Semana
-            analise_prev = df_hist.groupby(['SUPERVISOR', 'DIA_SEMANA'])['sucesso'].agg(['count', 'mean']).reset_index()
-            analise_prev.columns = ['Supervisor', 'Dia', 'Total Agendado', 'Taxa de Realização']
-            
-            # Filtro de gargalos (Menos de 70% de realização)
-            gargalos = analise_prev[analise_prev['Taxa de Realização'] < 0.70].sort_values(by='Taxa de Realização')
-
-            if not gargalos.empty:
-                st.warning(f"⚠️ Identificamos padrões de baixa adesão à agenda:")
-                for _, row in gargalos.iterrows():
-                    quebra = (1 - row['Taxa de Realização']) * 100
-                    st.write(f"👉 **{row['Supervisor']}**: Às **{row['Dia']}s**, costuma deixar de visitar **{quebra:.0f}%** da base.")
+            # --- SEÇÃO DE PREVISIBILIDADE (IA INSIGHTS) - RESTRITO: ADMIN, DIRETORIA E ANALISTAS ---
+            if is_admin or is_diretoria or is_analista:
+                st.subheader("🧠 Insights de Previsibilidade")
                 
-                if is_admin or is_diretoria:
-                    import plotly.express as px
-                    fig = px.bar(analise_prev, x='Dia', y='Taxa de Realização', color='Supervisor',
-                                 barmode='group', title="Performance Prevista por Dia da Semana",
-                                 labels={'Taxa de Realização': '% Realizado'},
-                                 category_orders={"Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]})
-                    fig.add_hline(y=0.8, line_dash="dash", line_color="red", annotation_text="Meta 80%")
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.success("✅ Nenhum padrão de quebra sistemática detectado.")
+                df_hist = df_user.copy()
+                df_hist['sucesso'] = df_hist['STATUS'].apply(lambda x: 1 if x == "Realizado" else 0)
+                
+                # Agrupamento por Supervisor e Dia da Semana
+                analise_prev = df_hist.groupby(['SUPERVISOR', 'DIA_SEMANA'])['sucesso'].agg(['count', 'mean']).reset_index()
+                analise_prev.columns = ['Supervisor', 'Dia', 'Total Agendado', 'Taxa de Realização']
+                
+                # Filtro de gargalos (Menos de 70% de realização)
+                gargalos = analise_prev[analise_prev['Taxa de Realização'] < 0.70].sort_values(by='Taxa de Realização')
 
-            st.markdown("---")
+                if not gargalos.empty:
+                    st.warning(f"⚠️ Identificamos padrões de baixa adesão à agenda:")
+                    for _, row in gargalos.iterrows():
+                        quebra = (1 - row['Taxa de Realização']) * 100
+                        st.write(f"👉 **{row['Supervisor']}**: Às **{row['Dia']}s**, costuma deixar de visitar **{quebra:.0f}%** da base.")
+                    
+                    # Gráfico apenas para Admin e Diretoria (Controle estratégico)
+                    if is_admin or is_diretoria:
+                        import plotly.express as px
+                        fig = px.bar(analise_prev, x='Dia', y='Taxa de Realização', color='Supervisor',
+                                     barmode='group', title="Performance Prevista por Dia da Semana",
+                                     labels={'Taxa de Realização': '% Realizado'},
+                                     category_orders={"Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]})
+                        fig.add_hline(y=0.8, line_dash="dash", line_color="red", annotation_text="Meta 80%")
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.success("✅ Nenhum padrão de quebra sistemática detectado.")
+
+                st.markdown("---")
 
             # Trazer Cidade
             if df_base is not None and 'CIDADE' not in df_user.columns:
