@@ -615,12 +615,27 @@ elif menu == "📊 Dashboard de Controle":
 
             # --- FUNÇÃO DE AGRUPAMENTO DE HIERARQUIAS ---
             def agrupar_hierarquia(nome):
-                n = str(nome).upper().strip()
-                if "DESCARTAVEIS" in n: return "DESCARTAVEIS"
-                if "MILHO" in n: return "MILHO"
-                if "MOLHOS ALHO" in n: return "MOLHOS ALHO"
-                if "PIMENTA CONSERVA" in n: return "PIMENTA CONSERVA"
-                return n
+    # Padroniza para maiúsculo e remove espaços extras para não dar erro de digitação
+    n = str(nome).upper().strip()
+    
+    # 1. Grupo Descartáveis
+    if n in ["DESCARTAVEIS COPOS", "DESCARTAVEIS POTES", "DESCARTAVEIS PRATOS", "DESCARTAVEIS TAMPAS"]:
+        return "DESCARTAVEIS"
+    
+    # 2. Grupo Milho
+    if n in ["MILHO", "MILHO CANJICA", "MILHO CANJIQUINHA", "MILHO CREME MILHO", "MILHO FUBA"]:
+        return "MILHO"
+    
+    # 3. Grupo Molhos Alho
+    if n in ["MOLHOS ALHO", "MOLHOS ALHO PICANTE"]:
+        return "MOLHOS ALHO"
+    
+    # 4. Grupo Pimenta Conserva
+    if n in ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]:
+        return "PIMENTA CONSERVA"
+    
+    # Se não estiver em nenhuma das listas, retorna o nome original (as outras 49 famílias)
+    return n
 
             # 1. Processar Meta (Aba SKUS)
             col_h_ref = 'Hierarquia de produtos'
