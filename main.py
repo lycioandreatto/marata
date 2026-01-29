@@ -1032,6 +1032,47 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
+
+    # 1. DEFINA A FUNÇÃO DE ESTILO AQUI (Antes de usar na tabela)
+            def style_agenda(row):
+                if row.get('APROVACAO') == "Reprovado": 
+                    return ['background-color: #fadbd8'] * len(row)
+                if row.get('APROVACAO') == "Aprovado": 
+                    return ['background-color: #d4efdf'] * len(row)
+                return [''] * len(row)
+
+            # 2. MONTAGEM DAS COLUNAS COM TRAVA DE PRIVACIDADE
+            df_user["AÇÃO"] = False
+            cols_display = [
+                'AÇÃO', 'DATA', 'REGISTRO', 'VENDEDOR', 'CLIENTE', 'CIDADE', 
+                'STATUS', 'DISTANCIA_LOG', 'COORDENADAS', 'APROVACAO', 'OBS_GESTAO'
+            ]
+            
+            # Trava para Vendedor e Supervisor
+            if not (is_admin or is_diretoria or is_analista):
+                if 'DISTANCIA_LOG' in cols_display: cols_display.remove('DISTANCIA_LOG')
+                if 'COORDENADAS' in cols_display: cols_display.remove('COORDENADAS')
+
+            cols_presentes = [c for c in cols_display if c in df_user.columns]
+            df_display = df_user[cols_presentes].copy()
+
+            # 3. EXIBIÇÃO DA TABELA (Agora o Python já conhece a style_agenda)
+            edicao_user = st.data_editor(
+                df_display.style.apply(style_agenda, axis=1), 
+                key="edit_agenda_final", 
+                hide_index=True, 
+                use_container_width=True, 
+                column_config={
+                    "AÇÃO": st.column_config.CheckboxColumn("📌"),
+                    "REGISTRO": st.column_config.TextColumn("📅 Criado em"),
+                    "DISTANCIA_LOG": st.column_config.TextColumn("Metros"),
+                    "COORDENADAS": st.column_config.TextColumn("Localização (GPS)")
+                },
+                disabled=[c for c in cols_presentes if c != "AÇÃO"]
+            )
+
+
+    
     # --- CABEÇALHO COM BOTÃO DE ATUALIZAR ---
     col_titulo, col_btn = st.columns([0.8, 0.2])
     with col_titulo:
