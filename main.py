@@ -222,11 +222,11 @@ def carregar_dados():
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
 # --- CONFIGURAÇÃO DE ACESSOS (EDITE AQUI) ---
-NOME_ADMIN = "SEU_NOME"         # Você
+NOME_ADMIN = "SEU_NOME"         # Você (Admin)
 NOME_DIRETORIA = "ALDO"         # Aldo
 LISTA_ANALISTA = ["ANALISTA1", "ANALISTA2"] 
-LISTA_SUPERVISORES = ["SUPERVISOR1", "SUPERVISOR2"] # Adicione aqui os supervisores
-LISTA_VENDEDORES = ["VENDEDOR1", "VENDEDOR2"]     # Adicione aqui os vendedores
+LISTA_SUPERVISORES = ["SUPERVISOR1", "SUPERVISOR2"] 
+LISTA_VENDEDORES = ["VENDEDOR1", "VENDEDOR2"]     
 
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
@@ -305,14 +305,12 @@ is_analista = (user_atual in [n.upper() for n in LISTA_ANALISTA])
 is_supervisor = (user_atual in [n.upper() for n in LISTA_SUPERVISORES])
 is_vendedor = (user_atual in [n.upper() for n in LISTA_VENDEDORES])
 
-# Booleano para quem pode ver ferramentas de gestão (Dashboard, Aprovação em Massa)
 eh_gestao = is_admin or is_analista or is_diretoria
 
 # --- VALIDAÇÃO DE GPS ---
 if "lat" not in st.session_state:
     with st.container():
         lat, lon = capturar_coordenadas()
-        
         if lat and lon:
             st.session_state.lat = lat
             st.session_state.lon = lon
@@ -320,37 +318,30 @@ if "lat" not in st.session_state:
             time.sleep(1)
             st.rerun()
         else:
-            # Gestão não precisa de GPS para entrar
             if eh_gestao:
                 st.session_state.lat = 0.0
                 st.session_state.lon = 0.0
                 st.info("ℹ️ Perfil Gestão: GPS ignorado.")
                 st.rerun()
             else:
-                # Supervisores e Vendedores são bloqueados sem GPS
-                st.warning("⚠️ **Acesso Negado.** Geocalização obrigatória para este perfil.")
-                if st.button("🔄 Tentar novamente"):
+                st.warning("⚠️ **Acesso Negado.** Geolocalização obrigatória.")
+                if st.button("🔄 Tentar novamente", key="retry_gps"):
                     st.rerun()
                 st.stop()
 
 # --- CONFIGURAÇÃO VISUAL DO PERFIL ---
 if is_admin:
-    label_display = "ADMINISTRADOR"
-    user_icon = "👑"; border_color = "#FFD700"
+    label_display = "ADMINISTRADOR"; user_icon = "👑"; border_color = "#FFD700"
 elif is_diretoria:
-    label_display = f"{user_atual} | DIRETORIA"
-    user_icon = "📈"; border_color = "#1E90FF"
+    label_display = f"{user_atual} | DIRETORIA"; user_icon = "📈"; border_color = "#1E90FF"
 elif is_analista:
-    label_display = f"{user_atual} | ANALISTA"
-    user_icon = "🔬"; border_color = "#9370DB"
+    label_display = f"{user_atual} | ANALISTA"; user_icon = "🔬"; border_color = "#9370DB"
 elif is_supervisor:
-    label_display = f"{user_atual} | SUPERVISOR"
-    user_icon = "👔"; border_color = "#2ECC71"
+    label_display = f"{user_atual} | SUPERVISOR"; user_icon = "👔"; border_color = "#2ECC71"
 else:
-    label_display = f"{user_atual} | VENDEDOR"
-    user_icon = "👤"; border_color = "#ff4b4b"
+    label_display = f"{user_atual} | VENDEDOR"; user_icon = "👤"; border_color = "#ff4b4b"
 
-# --- BARRA LATERAL ---
+# --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
     st.markdown(f"""
         <div class="user-card" style="border-left: 5px solid {border_color};">
@@ -359,112 +350,61 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # Texto dinâmico da agenda
+    # Texto dinâmico do menu conforme perfil
     if eh_gestao:
-        texto_ver_agenda = "🔍 Agenda Geral de Atendimentos"
+        texto_ver_agenda = "🔍 Agenda Geral"
     elif is_supervisor:
-        texto_ver_agenda = "🔍 Agenda da Equipe"
+        texto_ver_agenda = "🔍 Agenda da Minha Equipe"
     else:
-        texto_ver_agenda = "🔍 Minha Agenda"
+        texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
-    # Opções básicas
     opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
     
-    # Adiciona Dashboard apenas para Gestão
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
-    # Padronização da escolha para a lógica do código
+    # Padronização interna para o código
     if menu == texto_ver_agenda:
-        menu = "🔍 Ver/Editar Minha Agenda"
+        menu_interna = "🔍 Ver/Editar Minha Agenda"
+    else:
+        menu_interna = menu
 
-    if st.button("Sair"):
+    # Botão Sair com KEY exclusiva para evitar DuplicateElementId
+    if st.button("Sair", key="btn_logout_sidebar"):
         if "user_marata" in cookies:
             del cookies["user_marata"]
             cookies.save()
         st.session_state.logado = False
         st.session_state.usuario = ""
+        st.cache_data.clear()
         st.rerun()
         
+    for _ in range(5): st.sidebar.write("")
+
     # --- SEÇÃO DE LIMPEZA (SÓ ADMIN) ---
     if is_admin:
         st.markdown("---")
         st.subheader("🗑️ Limpeza em Massa")
         if df_agenda is not None and not df_agenda.empty:
             lista_sups_limpar = sorted(df_agenda['SUPERVISOR'].unique())
-            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups_limpar)
+            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups_limpar, key="sel_limpeza_admin")
 
             if sup_limpar != "Selecione...":
                 confirma = st.popover(f"⚠️ APAGAR: {sup_limpar}")
-                if confirma.button(f"Confirmar Exclusão de {sup_limpar}"):
+                if confirma.button(f"Confirmar Exclusão de {sup_limpar}", key="btn_conf_limpeza"):
                     df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
                     st.cache_data.clear()
-                    st.success("Limpo!"); time.sleep(1); st.rerun()
-# --- BARRA LATERAL ---
-with st.sidebar:
-    # CARD DO USUÁRIO NO MENU LATERAL
-    st.markdown(f"""
-        <div class="user-card" style="border-left: 5px solid {border_color};">
-            <div class="user-card-icon">{user_icon}</div>
-            <div class="user-card-text">{label_display}</div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Ajuste dinâmico do nome da opção de ver agenda
-    if is_admin or is_analista or is_diretoria:
-        texto_ver_agenda = "🔍 Agenda de Atendimentos"
-    else:
-        texto_ver_agenda = "🔍 Ver/Editar Minha Agenda"
+                    st.success("Agenda limpa!"); time.sleep(1); st.rerun()
 
-    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
-    
-    if is_admin or is_analista or is_diretoria:
-        opcoes_menu.append("📊 Dashboard de Controle")
-        
-    menu = st.selectbox("Menu Principal", opcoes_menu)
-    
-    # Tratamento para que a lógica da página identifique o menu independente do nome exibido
-    if menu == texto_ver_agenda:
-        menu = "🔍 Ver/Editar Minha Agenda"
-
-    if st.button("Sair"):
-        if "user_marata" in cookies:
-            del cookies["user_marata"]
-            cookies.save()
-        st.session_state.logado = False
-        st.session_state.usuario = ""
-        st.rerun()
-        
-    for _ in range(8):
-        st.sidebar.write("")
-    
-    # --- SEÇÃO DE LIMPEZA EM MASSA (EXCLUSIVO APENAS PARA ADMIN - VOCÊ) ---
-    if is_admin:
-        st.markdown("---")
-        st.subheader("🗑️ Limpeza em Massa")
-        
-        if df_agenda is not None and not df_agenda.empty:
-            # Você (Admin) vê todos os supervisores para limpar
-            lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
-            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
-
-            # Lógica do Botão de Deletar com Confirmação
-            if sup_limpar != "Selecione...":
-                confirma = st.popover(f"⚠️ APAGAR TUDO: {sup_limpar}")
-                confirma.warning(f"Isso apagará permanentemente todos os registros de {sup_limpar}. Confirma?")
-                if confirma.button(f"Sim, deletar agenda de {sup_limpar}", key="conf_del_adm"):
-                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
-                    st.cache_data.clear()
-                    st.success(f"Agenda de {sup_limpar} removida!")
-                    time.sleep(1)
-                    st.rerun()
 # --- TÍTULO CENTRAL NO TOPO ---
 st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
+
+# Mapeia menu_interna de volta para menu para o restante do código
+menu = menu_interna
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
