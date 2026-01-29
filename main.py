@@ -645,27 +645,41 @@ elif menu == "📊 Dashboard de Controle":
             # 1. Leitura dos dados de faturamento
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
             
-            # 2. Identificação das Colunas (Baseado na sua descrição)
-            # Coluna K é o índice 10 no Python (começa em 0)
-            col_cod_cliente_fat = df_fat.columns[10] 
+            # 2. Identificação das Colunas
+            # Forçamos todos os nomes de colunas a serem strings para evitar erro de 'int' com 'str'
+            df_fat.columns = [str(c).strip() for c in df_fat.columns]
+            
+            col_cod_cliente_fat = df_fat.columns[10] # Coluna K
             col_data_fat = "Data fat."
             col_pedidos = "OrdCliente"
-            # Vamos assumir que o Valor faturado está em uma coluna chamada "Valor" ou similar
             col_valor_fat = next((c for c in df_fat.columns if "VALOR" in c.upper() or "TOTAL" in c.upper()), df_fat.columns[-1])
 
-            # 3. Tratamento de Dados
-            df_fat[col_cod_cliente_fat] = df_fat[col_cod_cliente_fat].astype(str)
+            # --- INICIO DO TRECHO QUE VOCÊ PERGUNTOU (3 e 4) ---
+            
+            # 3. Tratamento de Dados - Forçando conversão para evitar o erro de concatenação
+            # Garante que o conteúdo da coluna de código seja string e remove espaços
+            df_fat[col_cod_cliente_fat] = df_fat[col_cod_cliente_fat].astype(str).str.strip()
+            
+            # Limpeza da data
             df_fat[col_data_fat] = pd.to_datetime(df_fat[col_data_fat], errors='coerce')
 
-            # 4. Agrupamento: Faturamento Total e Qtd de Pedidos por Cliente
+            # 4. Agrupamento
+            # Garantimos que os valores numéricos sejam float para a soma
+            df_fat[col_valor_fat] = pd.to_numeric(df_fat[col_valor_fat], errors='coerce').fillna(0)
+            
             df_fat_resumo = df_fat.groupby(col_cod_cliente_fat).agg({
                 col_valor_fat: 'sum',
-                col_pedidos: 'nunique' # Conta quantos pedidos diferentes o cliente teve
+                col_pedidos: 'nunique'
             }).reset_index()
             
+            # --- FIM DO TRECHO ---
+
             df_fat_resumo.columns = ['Cod_Cliente', 'Valor_Total', 'Qtd_Pedidos']
 
-            # 5. Cruzamento com a Agenda (df_base_detalhe que você já tem no código)
+            # 5. Cruzamento com a Agenda
+            # IMPORTANTE: Garantir que a coluna 'Cliente' da base também seja string
+            df_base_detalhe['Cliente'] = df_base_detalhe['Cliente'].astype(str).str.strip()
+
             df_comp = pd.merge(
                 df_base_detalhe, 
                 df_fat_resumo, 
@@ -687,7 +701,7 @@ elif menu == "📊 Dashboard de Controle":
             m3.metric("Conversão Agenda", f"{(len(vendas_agendadas[vendas_agendadas['Valor_Total'] > 0]) / len(vendas_agendadas) * 100) if len(vendas_agendadas) > 0 else 0:.1f}%")
             m4.metric("Total de Pedidos", int(total_pedidos_geral))
 
-            # 7. Tabela de Clientes "Esquecidos" (Faturaram mas não foram agendados)
+            # 7. Tabela de Clientes "Esquecidos"
             st.markdown("#### 🚀 Clientes que faturaram SEM agendamento")
             df_esquecidos = df_comp[(df_comp['STATUS AGENDAMENTO'] == 'PENDENTE') & (df_comp['Valor_Total'] > 0)]
             if not df_esquecidos.empty:
