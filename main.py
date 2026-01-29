@@ -221,6 +221,13 @@ def carregar_dados():
 
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
+# --- CONFIGURAÇÃO DE ACESSOS (EDITE AQUI) ---
+NOME_ADMIN = "SEU_NOME"         # Você
+NOME_DIRETORIA = "ALDO"         # Aldo
+LISTA_ANALISTA = ["ANALISTA1", "ANALISTA2"] 
+LISTA_SUPERVISORES = ["SUPERVISOR1", "SUPERVISOR2"] # Adicione aqui os supervisores
+LISTA_VENDEDORES = ["VENDEDOR1", "VENDEDOR2"]     # Adicione aqui os vendedores
+
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
     if "user_marata" in cookies:
@@ -273,7 +280,7 @@ if not st.session_state.logado:
             if st.form_submit_button("Finalizar Cadastro"):
                 if u_cad and p_cad and p_cad_conf:
                     if p_cad != p_cad_conf:
-                        st.error("As senhas não coincidem. Por favor, verifique.")
+                        st.error("As senhas não coincidem.")
                     else:
                         existente = False
                         if "USUARIO" in df_usuarios.columns:
@@ -283,45 +290,46 @@ if not st.session_state.logado:
                             novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
                             df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
                             conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
-                            st.success("Cadastro realizado!")
                             st.cache_data.clear()
+                            st.success("Cadastro realizado!")
                         else:
                             st.error("Este usuário já está cadastrado.")
-                else:
-                    st.warning("Preencha todos os campos.")
     st.stop()
 
-# --- DEFINIÇÃO DE PERFIS (Movido para antes do GPS para validar a regra) ---
-user_atual = st.session_state.usuario
+# --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
+user_atual = st.session_state.usuario.upper()
+
 is_admin = (user_atual == NOME_ADMIN.upper())
-is_analista = (user_atual in LISTA_ANALISTA)
 is_diretoria = (user_atual == NOME_DIRETORIA.upper())
+is_analista = (user_atual in [n.upper() for n in LISTA_ANALISTA])
+is_supervisor = (user_atual in [n.upper() for n in LISTA_SUPERVISORES])
+is_vendedor = (user_atual in [n.upper() for n in LISTA_VENDEDORES])
+
+# Booleano para quem pode ver ferramentas de gestão (Dashboard, Aprovação em Massa)
 eh_gestao = is_admin or is_analista or is_diretoria
 
 # --- VALIDAÇÃO DE GPS ---
 if "lat" not in st.session_state:
     with st.container():
-        # Captura as coordenadas
         lat, lon = capturar_coordenadas()
         
         if lat and lon:
             st.session_state.lat = lat
             st.session_state.lon = lon
-            st.success(f"📍 GPS Ativo: {lat:.4f}, {lon:.4f}")
-            time.sleep(1) 
+            st.success(f"📍 GPS Ativo")
+            time.sleep(1)
             st.rerun()
         else:
-            # SE NÃO TIVER GPS:
+            # Gestão não precisa de GPS para entrar
             if eh_gestao:
-                # Se for você, Aldo ou Analista, define coordenadas fakes e libera
                 st.session_state.lat = 0.0
                 st.session_state.lon = 0.0
-                st.info("ℹ️ Gestão logada: GPS ignorado.")
+                st.info("ℹ️ Perfil Gestão: GPS ignorado.")
                 st.rerun()
             else:
-                # Se for supervisor, bloqueia de verdade
-                st.warning("⚠️ **Acesso Negado.** O sistema Maratá exige geolocalização para Supervisores.")
-                if st.button("🔄 Tentar capturar novamente"):
+                # Supervisores e Vendedores são bloqueados sem GPS
+                st.warning("⚠️ **Acesso Negado.** Geocalização obrigatória para este perfil.")
+                if st.button("🔄 Tentar novamente"):
                     st.rerun()
                 st.stop()
 
@@ -335,10 +343,66 @@ elif is_diretoria:
 elif is_analista:
     label_display = f"{user_atual} | ANALISTA"
     user_icon = "🔬"; border_color = "#9370DB"
-else:
+elif is_supervisor:
     label_display = f"{user_atual} | SUPERVISOR"
+    user_icon = "👔"; border_color = "#2ECC71"
+else:
+    label_display = f"{user_atual} | VENDEDOR"
     user_icon = "👤"; border_color = "#ff4b4b"
 
+# --- BARRA LATERAL ---
+with st.sidebar:
+    st.markdown(f"""
+        <div class="user-card" style="border-left: 5px solid {border_color};">
+            <div class="user-card-icon">{user_icon}</div>
+            <div class="user-card-text">{label_display}</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Texto dinâmico da agenda
+    if eh_gestao:
+        texto_ver_agenda = "🔍 Agenda Geral de Atendimentos"
+    elif is_supervisor:
+        texto_ver_agenda = "🔍 Agenda da Equipe"
+    else:
+        texto_ver_agenda = "🔍 Minha Agenda"
+
+    # Opções básicas
+    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
+    
+    # Adiciona Dashboard apenas para Gestão
+    if eh_gestao:
+        opcoes_menu.append("📊 Dashboard de Controle")
+        
+    menu = st.selectbox("Menu Principal", opcoes_menu)
+    
+    # Padronização da escolha para a lógica do código
+    if menu == texto_ver_agenda:
+        menu = "🔍 Ver/Editar Minha Agenda"
+
+    if st.button("Sair"):
+        if "user_marata" in cookies:
+            del cookies["user_marata"]
+            cookies.save()
+        st.session_state.logado = False
+        st.session_state.usuario = ""
+        st.rerun()
+        
+    # --- SEÇÃO DE LIMPEZA (SÓ ADMIN) ---
+    if is_admin:
+        st.markdown("---")
+        st.subheader("🗑️ Limpeza em Massa")
+        if df_agenda is not None and not df_agenda.empty:
+            lista_sups_limpar = sorted(df_agenda['SUPERVISOR'].unique())
+            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups_limpar)
+
+            if sup_limpar != "Selecione...":
+                confirma = st.popover(f"⚠️ APAGAR: {sup_limpar}")
+                if confirma.button(f"Confirmar Exclusão de {sup_limpar}"):
+                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
+                    st.cache_data.clear()
+                    st.success("Limpo!"); time.sleep(1); st.rerun()
 # --- BARRA LATERAL ---
 with st.sidebar:
     # CARD DO USUÁRIO NO MENU LATERAL
