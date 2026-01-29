@@ -1234,6 +1234,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         
         # --- PROCESSAMENTO FATURADO ---
         if df_faturado is not None and not df_faturado.empty:
+            # Normaliza nomes de colunas do faturado
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
@@ -1242,66 +1243,50 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # Limpeza do Código RG no Faturado
+            # Limpeza e conversão de dados
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
+            # Identifica a coluna de clientes (Coluna K ou index 10)
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
+            # Merge com a base para trazer Analista e Supervisor
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
-       # --- PROCESSAMENTO METAS (USANDO POSIÇÃO CASO O NOME FALHE) ---
+        # --- PROCESSAMENTO METAS ---
         if df_metas_cob is not None and not df_metas_cob.empty:
-            # 1. Limpeza inicial de nomes de colunas
+            # Força colunas em MAIÚSCULO e sem espaços
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
             
-            # 2. MAPEAMENTO POR SEGURANÇA (Se não achar pelo nome, pega pela ordem)
-            # Coluna A costuma ser o Código (RG)
+            # Mapeamento de segurança por posição se os nomes falharem
             if 'RG' not in df_metas_cob.columns:
                 df_metas_cob.rename(columns={df_metas_cob.columns[0]: 'RG'}, inplace=True)
-            
-            # Coluna B costuma ser a Base
             if 'BASE' not in df_metas_cob.columns:
-                if len(df_metas_cob.columns) > 1:
-                    df_metas_cob.rename(columns={df_metas_cob.columns[1]: 'BASE'}, inplace=True)
-                else:
-                    df_metas_cob['BASE'] = 0
-
-            # Coluna C costuma ser a Meta
+                df_metas_cob.rename(columns={df_metas_cob.columns[1]: 'BASE'}, inplace=True) if len(df_metas_cob.columns) > 1 else None
             if 'META' not in df_metas_cob.columns:
-                if len(df_metas_cob.columns) > 2:
-                    df_metas_cob.rename(columns={df_metas_cob.columns[2]: 'META'}, inplace=True)
+                df_metas_cob.rename(columns={df_metas_cob.columns[2]: 'META'}, inplace=True) if len(df_metas_cob.columns) > 2 else None
 
-            # --- LIMPEZA DOS DADOS ---
-            # RG
+            # Limpeza de tipos de dados das Metas
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            
-            # BASE (Garante que seja número)
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             
-            # META (Tratamento especial para o símbolo de % e vírgula)
             if 'META' in df_metas_cob.columns:
                 df_metas_cob['META'] = (
                     df_metas_cob['META'].astype(str)
                     .str.replace('%', '', regex=False)
-                    .str.replace(',', '.', regex=False)
-                    .str.strip()
+                    .str.replace(',', '.', regex=False).str.strip()
                 )
                 df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
-            else:
-                df_metas_cob['META'] = 0
         else:
             df_metas_cob = pd.DataFrame(columns=['RG', 'BASE', 'META'])
 
     except Exception as e:
-        st.error(f"Erro crítico no processamento: {e}")
+        st.error(f"Erro ao processar dados: {e}")
         st.stop()
 
-    # --- RENDERIZAÇÃO ---
-    if not df_faturado.empty:
-        # --- RENDERIZAÇÃO ---
-    if not df_faturado.empty:
+    # --- RENDERIZAÇÃO DA INTERFACE ---
+    if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
         
         # --- 🔍 FILTROS (SLICERS) ---
@@ -1309,22 +1294,20 @@ elif menu_interna == "📊 Desempenho de Vendas":
         c1, c2, c3 = st.columns(3)
         
         with c1:
-            lista_analistas = sorted(df_f['ANALISTA'].dropna().unique())
+            lista_analistas = sorted(df_f['ANALISTA'].dropna().unique()) if 'ANALISTA' in df_f.columns else []
             sel_analista = st.multiselect("Filtrar Analista", lista_analistas)
         
         with c2:
-            # Filtro dinâmico: se selecionar analista, filtra os supervisores dele
             df_temp = df_f[df_f['ANALISTA'].isin(sel_analista)] if sel_analista else df_f
-            lista_supervisores = sorted(df_temp['SUPERVISOR'].dropna().unique())
+            lista_supervisores = sorted(df_temp['SUPERVISOR'].dropna().unique()) if 'SUPERVISOR' in df_temp.columns else []
             sel_supervisor = st.multiselect("Filtrar Supervisor", lista_supervisores)
             
         with c3:
-            # Filtro dinâmico: se selecionar supervisor, filtra os vendedores dele
             df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
-            lista_vendedores = sorted(df_temp['VENDEDOR_NOME'].dropna().unique())
+            lista_vendedores = sorted(df_temp['VENDEDOR_NOME'].dropna().unique()) if 'VENDEDOR_NOME' in df_temp.columns else []
             sel_vendedor = st.multiselect("Filtrar Vendedor", lista_vendedores)
 
-        # Aplicando os filtros no DataFrame final
+        # Aplicar Filtros ao DataFrame
         if sel_analista:
             df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
         if sel_supervisor:
@@ -1332,12 +1315,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if sel_vendedor:
             df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
-        # --- CÁLCULO FINAL ---
+        # --- CÁLCULOS E DASHBOARD ---
         if not df_f.empty:
             total_vol = df_f['QTD_VENDAS'].sum()
             positivacao = df_f[col_k].nunique()
 
-            # Cruzamento por RG para pegar a Meta e Base corretas
+            # Relacionar com Metas via RG
             vendedores_ids = df_f['VENDEDOR_COD'].unique().tolist()
             dados_meta_filtrados = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
             
@@ -1345,9 +1328,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
             meta_val = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
             
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
-            cor = "#28a745" if real_perc >= meta_val else "#e67e22"
+            cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-            # --- DASHBOARD DE MÉTRICAS ---
+            # Cards de Resumo
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
             m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
@@ -1357,19 +1340,21 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
                     <small style="color: #666;">COBERTURA (META vs REAL)</small><br>
-                    <span style="font-size: 1.2em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
-                    Atingido: <span style="color:{cor}; font-size: 1.5em; font-weight: bold;">{real_perc:.1f}%</span>
+                    <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
+                    Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # --- 📊 TABELA DE HIERARQUIAS (POR PRODUTO) ---
+            # --- 📊 TABELA POR HIERARQUIA ---
             st.markdown("### 📈 Desempenho por Hierarquia")
-            df_hierarquia = df_f.groupby('HIERARQUIA').agg({
-                'QTD_VENDAS': 'sum',
-                col_k: 'nunique'
-            }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).sort_values(by='Volume', ascending=False)
+            if 'HIERARQUIA' in df_f.columns:
+                df_h = df_f.groupby('HIERARQUIA').agg({
+                    'QTD_VENDAS': 'sum',
+                    col_k: 'nunique'
+                }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).sort_values(by='Volume', ascending=False)
+                st.dataframe(df_h, use_container_width=True)
             
-            st.dataframe(df_hierarquia, use_container_width=True)
-
         else:
             st.warning("Nenhum dado encontrado para os filtros selecionados.")
+    else:
+        st.info("Aguardando carregamento dos dados da aba FATURADO...")
