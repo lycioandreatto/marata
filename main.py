@@ -1228,7 +1228,10 @@ elif menu_interna == "📊 Desempenho de Vendas":
     st.header("📊 Desempenho de Vendas (Faturado)")
     
     try:
+        # Carregamento do Faturado
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+        # Carregamento da Nova Aba de Metas
+        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
         
         if df_faturado is not None and not df_faturado.empty:
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
@@ -1239,13 +1242,22 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
+            # Limpeza de dados faturado
             df_faturado = df_faturado.dropna(subset=['VENDEDOR_NOME', 'HIERARQUIA'])
             df_faturado = df_faturado[df_faturado['VENDEDOR_NOME'].astype(str).str.strip() != ""]
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
-            col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
-            col_eqvs = 'EqVs' # Nome exato da coluna na sua aba FATURADO
+            
+            # Padronização da aba de Metas
+            df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
+            # Garantir que as colunas numéricas da meta sejam tratadas
+            df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+            df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
+            df_metas_cob['COD'] = df_metas_cob['COD'].astype(str).str.strip()
 
-            # Cruzamento com a base
+            col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
+            col_eqvs = 'EqVs'
+
+            # Cruzamento com a base (Relacional Analista/Supervisor)
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
@@ -1257,17 +1269,14 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("### 🔍 Filtros de Visualização")
         c1, c2, c3 = st.columns(3)
         df_f = df_faturado.copy()
-        
-        # Variáveis para controle da regra de positivação
         filtro_vendedor_ativo = False
 
+        # --- LÓGICA DE FILTROS ---
         if is_admin or is_diretoria:
             ana_sel = c1.multiselect("Analista:", sorted([str(x) for x in df_f['ANALISTA'].unique() if x and str(x) != 'nan']))
             if ana_sel: df_f = df_f[df_f['ANALISTA'].isin(ana_sel)]
-            
             sup_sel = c2.multiselect("Supervisor:", sorted([str(x) for x in df_f['SUPERVISOR'].unique() if x and str(x) != 'nan']))
             if sup_sel: df_f = df_f[df_f['SUPERVISOR'].isin(sup_sel)]
-            
             vend_sel = c3.multiselect("Vendedor:", sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x]))
             if vend_sel: 
                 df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
@@ -1277,7 +1286,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_f = df_f[df_f['ANALISTA'].str.upper() == user_atual]
             sup_sel = c1.multiselect("Supervisor:", sorted([str(x) for x in df_f['SUPERVISOR'].unique() if x]))
             if sup_sel: df_f = df_f[df_f['SUPERVISOR'].isin(sup_sel)]
-            
             vend_sel = c2.multiselect("Vendedor:", sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x]))
             if vend_sel: 
                 df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
@@ -1289,15 +1297,64 @@ elif menu_interna == "📊 Desempenho de Vendas":
             if vend_sel: 
                 df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
                 filtro_vendedor_ativo = True
-        
         else:
-            # Vendedor logado: a regra de STR/SMX não se aplica a ele
             df_f = df_f[df_f['VENDEDOR_NOME'].str.upper() == user_atual]
             filtro_vendedor_ativo = True
 
-        # --- PROCESSAMENTO ---
         if not df_f.empty:
-            # Agrupamento de Hierarquia
+            # --- CÁLCULO DE POSITIVAÇÃO ---
+            total_vol = df_f['QTD_VENDAS'].sum()
+            
+            # Regra SMX/STR
+            if filtro_vendedor_ativo:
+                positivacao = df_f[col_k].nunique()
+            else:
+                df_pos_regra = df_f[~df_f[col_eqvs].isin(['SMX', 'STR'])] if col_eqvs in df_f.columns else df_f
+                positivacao = df_pos_regra[col_k].nunique()
+
+            # --- NOVO: LÓGICA DE COBERTURA (META COBXPOSIT) ---
+            # Pegamos os códigos dos vendedores que estão filtrados no momento
+            vendedores_filtrados = df_f['VENDEDOR_COD'].unique()
+            dados_meta = df_metas_cob[df_metas_cob['COD'].isin(vendedores_filtrados)]
+            
+            base_total = dados_meta['BASE'].sum()
+            # A meta na sua aba é porcentagem (ex: 30), então calculamos a média ponderada ou simples
+            meta_media_perc = dados_meta['META'].mean() if not dados_meta.empty else 0
+            clientes_meta_objetivo = (base_total * (meta_media_perc / 100))
+
+            # --- UI: CARDS E MINI TABELA DE METAS ---
+            st.markdown("---")
+            m1, m2, m3 = st.columns([1, 1, 2])
+            
+            m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
+            m2.metric("🏪 Posit. Atual", positivacao)
+            
+            # Painel Visual de Cobertura
+            with m3:
+                perc_atingido = (positivacao / base_total * 100) if base_total > 0 else 0
+                cor_status = "green" if perc_atingido >= meta_media_perc else "orange"
+                
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 10px; background-color: #f9f9f9;">
+                    <p style="margin:0; font-size: 14px; color: #666;">📊 <b>Painel de Cobertura (Meta vs Real)</b></p>
+                    <table style="width:100%; border-collapse: collapse; margin-top: 5px;">
+                        <tr style="font-size: 13px; text-align: left; border-bottom: 1px solid #eee;">
+                            <th>Clientes Base</th>
+                            <th>Meta Estipulada</th>
+                            <th>Objetivo (Clientes)</th>
+                            <th>Atingido (%)</th>
+                        </tr>
+                        <tr style="font-size: 15px; font-weight: bold; color: #333;">
+                            <td>{base_total:,.0f}</td>
+                            <td>{meta_media_perc:.1f}%</td>
+                            <td>{clientes_meta_objetivo:,.0f}</td>
+                            <td style="color: {cor_status};">{perc_atingido:.1f}%</td>
+                        </tr>
+                    </table>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # --- GRÁFICO ---
             def agrupar_hierarquia_marata(valor):
                 valor = str(valor).strip()
                 grupos = {
@@ -1311,32 +1368,11 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 return valor
 
             df_f['CATEGORIA_FINAL'] = df_f['HIERARQUIA'].apply(agrupar_hierarquia_marata)
-
-            # --- LÓGICA DE POSITIVAÇÃO CONDICIONAL ---
-            total_vol = df_f['QTD_VENDAS'].sum()
-            
-            if filtro_vendedor_ativo:
-                # Se tem vendedor selecionado ou logado, conta TUDO
-                positivacao = df_f[col_k].nunique()
-                label_pos = "🏪 Clientes Positivados (Total Vendedor)"
-            else:
-                # Se é visão de Analista/Supervisor (sem vendedor específico), remove SMX/STR
-                if col_eqvs in df_f.columns:
-                    df_pos = df_f[~df_f[col_eqvs].isin(['SMX', 'STR'])]
-                    positivacao = df_pos[col_k].nunique()
-                else:
-                    positivacao = df_f[col_k].nunique()
-                label_pos = "🏪 Clientes Positivados (Estado/Geral - Exceto SMX/STR)"
-            
-            st.markdown("---")
-            m1, m2 = st.columns(2)
-            m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
-            m2.metric(label_pos, positivacao)
-
-            # Gráfico e Tabela
             resumo = df_f.groupby('CATEGORIA_FINAL')['QTD_VENDAS'].sum().sort_values(ascending=False).reset_index()
             resumo = resumo[resumo['CATEGORIA_FINAL'] != ""]
 
-            st.subheader("📊 Vendas por Hierarquia")
+            st.subheader("📈 Vendas por Categoria")
             st.bar_chart(resumo, x='CATEGORIA_FINAL', y='QTD_VENDAS', color="#8B0000")
+            
+            st.subheader("📋 Detalhamento")
             st.dataframe(resumo, use_container_width=True, hide_index=True)
