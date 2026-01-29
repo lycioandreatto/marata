@@ -784,68 +784,92 @@ elif menu == "📊 Dashboard de Controle":
 elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
     if df_base is not None:
-        col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), None)
-        col_rv_base = next((c for c in df_base.columns if c.upper() == 'REGIÃO DE VENDAS'), 'Região de vendas')
+        # Mapeamento das colunas da BASE conforme nova estrutura
+        col_ana_base = 'ANALISTA'
+        col_sup_base = 'SUPERVISOR'
+        col_ven_base = 'VENDEDOR' # Antiga Região de Vendas
 
+        # --- LÓGICA DE FILTROS CASCATA (SLICERS) ---
         if is_admin or is_diretoria:
-            if col_ana_base:
-                lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
-                ana_sel = st.selectbox("Filtrar por Analista:", ["Todos"] + lista_analistas)
-                if ana_sel == "Todos":
-                    sups = sorted([s for s in df_base[col_rv_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
-                else:
-                    sups = sorted([s for s in df_base[df_base[col_ana_base] == ana_sel][col_rv_base].unique() if str(s).strip()])
-            else:
-                st.error("Coluna 'Analista' não encontrada na aba BASE.")
-                sups = []
-            sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
-        elif is_analista:
-            if col_ana_base:
-                sups = sorted([s for s in df_base[df_base[col_ana_base].str.upper() == user_atual][col_rv_base].unique() if str(s).strip()])
-            else:
-                sups = []
-            sup_sel = st.selectbox("Selecione o Supervisor:", ["Selecione..."] + sups)
-        else:
-            sup_sel = user_atual
-            st.info(f"Agendando para: {user_atual}")
-
-        if sup_sel != "Selecione...":
-            clientes_f = df_base[df_base[col_rv_base] == sup_sel]
+            # Filtro 1: Analista
+            lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
+            ana_sel = st.selectbox("1. Filtrar por Analista:", ["Todos"] + lista_analistas)
             
-            # AJUSTE AQUI: Considerar apenas clientes que possuem agendamentos ativos (Planejado ou Realizado)
-            # Clientes com status 'Reprovado' são ignorados nesta lista e voltam a ficar disponíveis.
+            # Filtro 2: Supervisor
+            df_sup_f = df_base if ana_sel == "Todos" else df_base[df_base[col_ana_base] == ana_sel]
+            lista_sups = sorted([str(s) for s in df_sup_f[col_sup_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
+            sup_sel = st.selectbox("2. Filtrar por Supervisor:", ["Todos"] + lista_sups)
+            
+            # Filtro 3: Vendedor
+            df_ven_f = df_sup_f if sup_sel == "Todos" else df_sup_f[df_sup_f[col_sup_base] == sup_sel]
+            vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
+            ven_sel = st.selectbox("3. Selecione o Vendedor:", ["Selecione..."] + vends)
+
+        elif is_analista:
+            # Analista logado: Filtra seus Supervisores e depois seus Vendedores
+            df_ana_f = df_base[df_base[col_ana_base].str.upper() == user_atual]
+            lista_sups = sorted([str(s) for s in df_ana_f[col_sup_base].unique() if str(s).strip()])
+            sup_sel = st.selectbox("1. Filtrar seu Supervisor:", ["Todos"] + lista_sups)
+            
+            df_ven_f = df_ana_f if sup_sel == "Todos" else df_ana_f[df_ana_f[col_sup_base] == sup_sel]
+            vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
+            ven_sel = st.selectbox("2. Selecione o Vendedor:", ["Selecione..."] + vends)
+
+        elif any(df_base[col_sup_base].str.upper() == user_atual):
+            # Supervisor logado: Filtra apenas seus Vendedores
+            df_ven_f = df_base[df_base[col_sup_base].str.upper() == user_atual]
+            vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
+            ven_sel = st.selectbox("Selecione o Vendedor:", ["Selecione..."] + vends)
+        
+        else:
+            # Vendedor logado: Agendamento direto para ele
+            ven_sel = user_atual
+            st.info(f"Agendando para sua própria base: {user_atual}")
+
+        # --- PROCESSAMENTO DO AGENDAMENTO PARA O VENDEDOR SELECIONADO ---
+        if ven_sel != "Selecione...":
+            # Filtra clientes da base do vendedor escolhido
+            clientes_f = df_base[df_base[col_ven_base] == ven_sel]
+            
+            # Clientes já agendados (considerando apenas ativos: Planejado ou Realizado)
+            # Isso permite que se for Reprovado, ele saia desta lista e volte para pendentes
             codigos_agendados = df_agenda[
-                (df_agenda['SUPERVISOR'] == sup_sel) & 
+                (df_agenda['VENDEDOR'] == ven_sel) & 
                 (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
             ]['CÓDIGO CLIENTE'].unique()
             
             clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
             
+            # Métricas da base do vendedor
             m1, m2, m3, m4 = st.columns(4)
             n_total = len(clientes_f)
             n_agendados = len(codigos_agendados)
             n_pendentes = len(clientes_pendentes)
             perc_sup = (n_agendados / n_total * 100) if n_total > 0 else 0
             
-            m1.metric("Total na Base", n_total)
+            m1.metric("Clientes na Base", n_total)
             m2.metric("Já Agendados", n_agendados)
             m3.metric("Faltando", n_pendentes)
             m4.metric("% Adesão", f"{perc_sup:.1f}%")
             
-            analista_vinc = user_atual if is_analista else "ADMIN"
-            if col_ana_base in clientes_f.columns:
-                val_analista = clientes_f[col_ana_base].iloc[0]
-                if str(val_analista).strip() and str(val_analista).lower() != 'nan':
-                    analista_vinc = str(val_analista).upper()
+            # Identificação dos vínculos para salvar na Agenda
+            try:
+                amostra = clientes_f.iloc[0]
+                analista_vinc = str(amostra[col_ana_base]).upper()
+                supervisor_vinc = str(amostra[col_sup_base]).upper()
+            except:
+                analista_vinc = "N/I"
+                supervisor_vinc = "N/I"
 
             lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             
             if not lista_c:
-                st.success("✅ Todos os clientes desta base já foram agendados!")
+                st.success(f"✅ Todos os clientes de {ven_sel} já foram agendados!")
             else:
                 cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
                 if cliente_sel != "Selecione...":
                     qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
+                    
                     with st.form("form_novo_v"):
                         cols_datas = st.columns(qtd_visitas)
                         datas_sel = []
@@ -853,10 +877,12 @@ elif menu == "📋 Novo Agendamento":
                             with cols_datas[i]:
                                 d = st.date_input(f"Data {i+1}:", datetime.now(fuso_br), key=f"d_{i}")
                                 datas_sel.append(d)
+                        
                         if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
                             cod_c, nom_c = cliente_sel.split(" - ", 1)
                             agora = datetime.now(fuso_br)
                             novas_linhas = []
+                            
                             for i, dt in enumerate(datas_sel):
                                 nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
                                 novas_linhas.append({
@@ -864,17 +890,19 @@ elif menu == "📋 Novo Agendamento":
                                     "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
                                     "DATA": dt.strftime("%d/%m/%Y"),
                                     "ANALISTA": analista_vinc, 
-                                    "SUPERVISOR": sup_sel, 
+                                    "SUPERVISOR": supervisor_vinc, 
+                                    "VENDEDOR": ven_sel,
                                     "CÓDIGO CLIENTE": cod_c, 
                                     "CLIENTE": nom_c, 
                                     "JUSTIFICATIVA": "-", 
                                     "STATUS": "Planejado",
                                     "AGENDADO POR": user_atual 
                                 })
+                                
                             df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
                             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
                             st.cache_data.clear()
-                            st.success(f"✅ {qtd_visitas} visita(s) salva(s)!")
+                            st.success(f"✅ {qtd_visitas} visita(s) agendada(s) para {ven_sel}!")
                             time.sleep(1)
                             st.rerun()
 # --- PÁGINA: VER/EDITAR ---
