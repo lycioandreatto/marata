@@ -637,67 +637,67 @@ elif menu == "📊 Dashboard de Controle":
         
         st.table(df_ranking_view)
 
-        # --- SEÇÃO: COMPARAÇÃO AGENDA VS FATURAMENTO (FOCO EM CLIENTES) ---
+       # --- SEÇÃO: COMPARAÇÃO AGENDA VS FATURAMENTO ---
         st.markdown("---")
         st.subheader("🎯 Conversão de Agendamentos em Vendas")
 
         try:
-            # 1. Leitura dos dados de faturamento
+            # 1. Leitura
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
             
-            # 2. Identificação das Colunas (Coluna K é o índice 10)
+            # 2. Limpeza de colunas e identificação
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
-            col_cod_cliente_fat = df_fat.columns[10] 
+            col_cod_cliente_fat = df_fat.columns[10] # Coluna K
             col_pedidos = "OrdCliente"
 
-            # 3. Tratamento: Garante que o código seja texto para o cruzamento
-            df_fat[col_cod_cliente_fat] = df_fat[col_cod_cliente_fat].astype(str).str.strip()
+            # --- TRATAMENTO BLINDADO (O segredo está aqui) ---
+            def limpar_codigo(id_cliente):
+                if pd.isna(id_cliente): return ""
+                # Remove o .0 se o Excel leu como número, remove espaços e converte para string
+                return str(id_cliente).split('.')[0].strip()
+
+            df_fat['Cod_Limpo'] = df_fat[col_cod_cliente_fat].apply(limpar_codigo)
             
-            # 4. Agrupamento: Contamos apenas quantos pedidos cada código de cliente teve
-            df_fat_resumo = df_fat.groupby(col_cod_cliente_fat).agg({
+            # 4. Agrupamento por código limpo
+            df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
                 col_pedidos: 'nunique' 
             }).reset_index()
             df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos']
 
-            # 5. Cruzamento com a Agenda (df_base_detalhe)
-            df_base_detalhe['Cliente'] = df_base_detalhe['Cliente'].astype(str).str.strip()
-            df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente', right_on='Cod_Cliente', how='left').fillna(0)
+            # 5. Cruzamento com a Agenda (também limpando o código da base)
+            df_base_detalhe['Cliente_Limpo'] = df_base_detalhe['Cliente'].apply(limpar_codigo)
+            
+            df_comp = pd.merge(
+                df_base_detalhe, 
+                df_fat_resumo, 
+                left_on='Cliente_Limpo', 
+                right_on='Cod_Cliente', 
+                how='left'
+            ).fillna(0)
 
-            # --- 6. CÁLCULO DOS INDICADORES DE QUANTIDADE ---
+            # --- 6. CÁLCULO DOS INDICADORES ---
+            # Filtramos apenas o que o usuário selecionou no dashboard (Analista/Supervisor)
+            df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO']
             
-            # Clientes que estavam na agenda
-            total_na_agenda = len(df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'])
+            total_na_agenda = len(df_agendados_ativos)
+            agendados_que_compraram = len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
+            total_pedidos_agenda = df_agendados_ativos['Qtd_Pedidos'].sum()
             
-            # Clientes que estavam na agenda E compraram (Qtd_Pedidos > 0)
-            agendados_que_compraram = len(df_comp[(df_comp['STATUS AGENDAMENTO'] == 'AGENDADO') & (df_comp['Qtd_Pedidos'] > 0)])
-            
-            # Total de pedidos gerados pelos clientes agendados
-            total_pedidos_agenda = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO']['Qtd_Pedidos'].sum()
-            
-            # Taxa de conversão (Clientes)
             taxa_conversao = (agendados_que_compraram / total_na_agenda * 100) if total_na_agenda > 0 else 0
 
-            # 7. EXIBIÇÃO NOS CARDS
+            # 7. EXIBIÇÃO
             c1, c2, c3, c4 = st.columns(4)
-            
             c1.metric("Clientes Agendados", total_na_agenda)
             c2.metric("Agendados que Compraram", agendados_que_compraram)
             c3.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
             c4.metric("Total de Pedidos (Agenda)", int(total_pedidos_agenda))
 
-            # 8. Lista de quem comprou e não foi agendado
-            st.markdown("#### 🚀 Clientes que faturaram SEM agendamento")
-            df_esquecidos = df_comp[(df_comp['STATUS AGENDAMENTO'] == 'PENDENTE') & (df_comp['Qtd_Pedidos'] > 0)]
-            
-            if not df_esquecidos.empty:
-                st.dataframe(
-                    df_esquecidos[['Cliente', 'Nome 1', 'Qtd_Pedidos']].sort_values(by='Qtd_Pedidos', ascending=False),
-                    use_container_width=True,
-                    hide_index=True
-                )
+            # 8. Tabela de Apoio para conferência
+            with st.expander("Ver detalhes da conversão"):
+                st.dataframe(df_agendados_ativos[['Cliente', 'Nome 1', 'Qtd_Pedidos', 'STATUS AGENDAMENTO']])
 
         except Exception as e:
-            st.error(f"Erro ao processar: {e}")
+            st.error(f"Erro no processamento: {e}")
 
         
         # --- MAPA DE CALOR: DISTRIBUIÇÃO GEOGRÁFICA ---
