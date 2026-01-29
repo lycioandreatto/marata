@@ -355,12 +355,23 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", "🔍 Ver/Editar Minha Agenda"]
+    # Ajuste dinâmico do nome da opção de ver agenda
+    if is_admin or is_analista or is_diretoria:
+        texto_ver_agenda = "🔍 Agenda de Atendimentos"
+    else:
+        texto_ver_agenda = "🔍 Ver/Editar Minha Agenda"
+
+    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
+    
     if is_admin or is_analista or is_diretoria:
         opcoes_menu.append("📊 Dashboard de Controle")
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
+    # Tratamento para que a lógica da página identifique o menu independente do nome exibido
+    if menu == texto_ver_agenda:
+        menu = "🔍 Ver/Editar Minha Agenda"
+
     if st.button("Sair"):
         if "user_marata" in cookies:
             del cookies["user_marata"]
@@ -371,48 +382,34 @@ with st.sidebar:
         
     for _ in range(8):
         st.sidebar.write("")
-    st.markdown("---")
-    st.subheader("🗑️ Limpeza em Massa")
-    if df_agenda is not None and not df_agenda.empty:
-        if is_admin or is_diretoria:
-            # Adm e Diretoria vêem todos
-            lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
-            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
-        elif is_analista:
-            # O SEGREDO ESTÁ AQUI: Filtra a agenda apenas para os supervisores da THAIS (ou analista logado)
-            df_agenda_analista = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual]
-            lista_sups = sorted(df_agenda_analista['SUPERVISOR'].unique())
-            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
-        else:
-            # Supervisor comum não tem selectbox, só botão para ele mesmo
-            sup_limpar = "Selecione..."
+    
+    # --- SEÇÃO DE LIMPEZA EM MASSA (Restrito: Admin, Diretoria e Analista) ---
+    if is_admin or is_diretoria or is_analista:
+        st.markdown("---")
+        st.subheader("🗑️ Limpeza em Massa")
+        
+        if df_agenda is not None and not df_agenda.empty:
+            if is_admin or is_diretoria:
+                # Adm e Diretoria veem todos os supervisores
+                lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
+                sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
+            elif is_analista:
+                # Analista filtra apenas os supervisores dele
+                df_agenda_analista = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual]
+                lista_sups = sorted(df_agenda_analista['SUPERVISOR'].unique())
+                sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
 
-        # Lógica do Botão de Deletar com Confirmação
-        if is_admin or is_analista or is_diretoria:
+            # Lógica do Botão de Deletar com Confirmação
             if sup_limpar != "Selecione...":
-                # Criamos um popover para confirmação
                 confirma = st.popover(f"⚠️ APAGAR TUDO: {sup_limpar}")
                 confirma.warning(f"Isso apagará permanentemente todos os registros de {sup_limpar}. Confirma?")
                 if confirma.button(f"Sim, deletar agenda de {sup_limpar}", key="conf_del_adm"):
-                    # Remove apenas o supervisor selecionado da planilha toda
                     df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
                     st.cache_data.clear()
                     st.success(f"Agenda de {sup_limpar} removida!")
                     time.sleep(1)
                     st.rerun()
-        else:
-            # Popover de confirmação para o próprio supervisor
-            confirma_proprio = st.popover("⚠️ APAGAR TODA MINHA AGENDA")
-            confirma_proprio.warning("Você tem certeza que deseja limpar toda a sua agenda?")
-            if confirma_proprio.button("Sim, apagar tudo", key="conf_del_self"):
-                df_rest = df_agenda[df_agenda['SUPERVISOR'] != user_atual].drop(columns=['LINHA'], errors='ignore')
-                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
-                st.cache_data.clear()
-                st.success("Sua agenda foi limpa!")
-                time.sleep(1)
-                st.rerun()
-
 # --- TÍTULO CENTRAL NO TOPO ---
 st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
