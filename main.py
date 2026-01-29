@@ -1246,6 +1246,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado = df_faturado[df_faturado['VENDEDOR_NOME'].astype(str).str.strip() != ""]
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
+            # Forçar VENDEDOR_COD como string limpa para bater com a meta
+            df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.strip().str.replace('.0', '', regex=False)
+            
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
             col_eqvs = 'EqVs' 
 
@@ -1256,10 +1259,18 @@ elif menu_interna == "📊 Desempenho de Vendas":
             # Padronização Segura da aba de Metas
             if df_metas_cob is not None and not df_metas_cob.empty:
                 df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
-                # Garantir tipos de dados
-                if 'BASE' in df_metas_cob.columns: df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
-                if 'META' in df_metas_cob.columns: df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
-                if 'COD' in df_metas_cob.columns: df_metas_cob['COD'] = df_metas_cob['COD'].astype(str).str.strip()
+                
+                # Remover linhas onde o COD está vazio (evita erro de cálculo)
+                if 'COD' in df_metas_cob.columns:
+                    df_metas_cob = df_metas_cob.dropna(subset=['COD'])
+                    df_metas_cob['COD'] = df_metas_cob['COD'].astype(str).str.strip().str.replace('.0', '', regex=False)
+                
+                if 'BASE' in df_metas_cob.columns: 
+                    df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+                if 'META' in df_metas_cob.columns: 
+                    df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
+            else:
+                df_metas_cob = pd.DataFrame(columns=['COD', 'BASE', 'META'])
 
     except Exception as e:
         st.error(f"Erro ao processar dados: {e}")
@@ -1312,13 +1323,15 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 positivacao = df_pos[col_k].nunique()
                 label_pos = "🏪 Clientes Positivados (Exceto SMX/STR)"
 
-            # --- CÁLCULO DA MINI TABELA DE COBERTURA ---
-            vendedores_filtrados = [str(x) for x in df_f['VENDEDOR_COD'].unique()]
+            # --- CÁLCULO DA MINI TABELA DE COBERTURA (COM CORREÇÃO DE IDS) ---
+            vendedores_filtrados = df_f['VENDEDOR_COD'].unique()
             dados_meta = df_metas_cob[df_metas_cob['COD'].isin(vendedores_filtrados)] if 'COD' in df_metas_cob.columns else pd.DataFrame()
             
             base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 0
+            # Média ponderada ou simples da meta dos vendedores filtrados
             meta_media_perc = dados_meta['META'].mean() if not dados_meta.empty else 0
             clientes_meta_objetivo = (base_total * (meta_media_perc / 100))
+            
             perc_atingido = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_status = "#28a745" if perc_atingido >= meta_media_perc else "#e67e22"
 
@@ -1350,7 +1363,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 </div>
                 """, unsafe_allow_html=True)
 
-            # Tabela de Detalhamento (Sem Gráfico)
+            # Tabela de Detalhamento
             def agrupar_hierarquia_marata(valor):
                 v = str(valor).strip()
                 grupos = {
