@@ -946,7 +946,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             import io
             from fpdf import FPDF
             
-            cols_v = ['DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            # Adicionada a coluna REGISTRO na lista de colunas visíveis
+            cols_v = ['DATA', 'REGISTRO', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             if 'DISTANCIA_LOG' in df_user.columns:
                 cols_v.append('DISTANCIA_LOG')
             
@@ -1016,6 +1017,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
             config_col = {
                 "AÇÃO": st.column_config.CheckboxColumn("📌"),
+                "REGISTRO": st.column_config.TextColumn("🕒 Data Registro"),
                 "dist_val_calc": None
             }
             if not (is_admin or is_diretoria or is_analista):
@@ -1045,9 +1047,14 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     st.write("Crie uma nova data para este cliente mantendo o histórico atual.")
                     n_data = st.date_input("Nova Data:", value=datetime.now())
                     if st.button("Confirmar Novo Agendamento"):
+                        # Captura hora Brasília
+                        fuso = pytz.timezone('America/Sao_Paulo')
+                        agora_br = datetime.now(fuso).strftime('%d/%m/%Y %H:%M:%S')
+                        
                         nova_v = sel_row.copy()
                         nova_v['ID'] = str(uuid.uuid4())
                         nova_v['DATA'] = n_data.strftime('%d/%m/%Y')
+                        nova_v['REGISTRO'] = agora_br  # Grava data/hora Brasília
                         nova_v['STATUS'] = "Planejado"
                         nova_v['JUSTIFICATIVA'] = ""
                         nova_v['DISTANCIA_LOG'] = ""
