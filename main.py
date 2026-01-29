@@ -19,9 +19,11 @@ def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     try:
-        # Puxa dos Secrets (Certifique-se que o GSheets e o [email] estão lá)
-        email_origem = st.secrets["email"]["user"]
-        senha_origem = st.secrets["email"]["password"]
+        # AJUSTADO PARA OS SEUS SECRETS:
+        email_origem = st.secrets["email"]["sender_email"]
+        senha_origem = st.secrets["email"]["sender_password"]
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
         
         msg = MIMEMultipart()
         msg['From'] = email_origem
@@ -31,27 +33,24 @@ def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
         corpo = f"""
         Olá, Gestão Maratá,
         
-        O vendedor {vendedor} acaba de finalizar a rota do dia.
+        O vendedor {vendedor} finalizou a rota.
         
-        RESUMO DA OPERAÇÃO:
-        -------------------------
-        - Total de Clientes Planejados: {dados_resumo['total']}
-        - Visitas Realizadas: {dados_resumo['realizados']}
-        - Pedidos Efetuados: {dados_resumo['pedidos']}
-        - Pendências/Não Visitados: {dados_resumo['pendentes']}
-        
-        Gerado automaticamente pelo Sistema GVP.
+        RESUMO:
+        - Clientes: {dados_resumo['total']}
+        - Realizados: {dados_resumo['realizados']}
+        - Pedidos: {dados_resumo['pedidos']}
+        - Pendentes: {dados_resumo['pendentes']}
         """
         msg.attach(MIMEText(corpo, 'plain'))
 
-        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
         server.login(email_origem, senha_origem)
         server.sendmail(email_origem, destinatario, msg.as_string())
         server.quit()
         return True
     except Exception as e:
-        print(f"Erro no e-mail: {e}")
+        st.error(f"Erro detalhado: {e}") # Isso vai mostrar o erro real na tela
         return False
 
 # --- CONTINUAÇÃO DO SEU CÓDIGO (calcular_distancia, etc) ---
