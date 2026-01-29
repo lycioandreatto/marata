@@ -413,23 +413,40 @@ if menu == "📅 Agendamentos do Dia":
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
     
     if df_agenda is not None and not df_agenda.empty:
+        # 1. Primeiro filtro por Data (Hoje)
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
         
+        # 2. Filtro por Perfil (Hierarquia de Visualização)
         if is_admin or is_diretoria:
+            # Vê tudo de todo mundo
             pass 
         elif is_analista:
+            # Analista vê tudo vinculado ao seu nome
             df_dia = df_dia[df_dia['ANALISTA'].str.upper() == user_atual]
+        elif is_supervisor:
+            # Supervisor vê o que ele agendou E o que é da equipe dele
+            df_dia = df_dia[df_dia['SUPERVISOR'].str.upper() == user_atual]
         else:
-            df_dia = df_dia[df_dia['SUPERVISOR'] == user_atual]
+            # Vendedor vê apenas o que está no nome dele como VENDEDOR
+            # Garantimos que a coluna existe para evitar erro
+            if 'VENDEDOR' in df_dia.columns:
+                df_dia = df_dia[df_dia['VENDEDOR'].str.upper() == user_atual]
+            else:
+                df_dia = pd.DataFrame() # Se não tem a coluna, não tem nada pra ele
 
+        # Métricas iniciais
         total_visitas = len(df_dia)
         visitas_realizadas = len(df_dia[df_dia['STATUS'] == "Realizado"])
 
         m_col1, m_col2, m_col3 = st.columns([1, 1, 2])
         m_col1.metric("Visitas Hoje", total_visitas)
-        m_col2.metric("Realizadas", visitas_realizadas, delta=f"{visitas_realizadas/total_visitas*100:.0f}%" if total_visitas > 0 else None)
+        if total_visitas > 0:
+            m_col2.metric("Realizadas", visitas_realizadas, delta=f"{visitas_realizadas/total_visitas*100:.0f}%")
+        else:
+            m_col2.metric("Realizadas", 0)
         
         if not df_dia.empty:
+            # Tenta buscar a cidade na base de clientes para exibir na tabela
             if df_base is not None:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
@@ -438,32 +455,33 @@ if menu == "📅 Agendamentos do Dia":
 
             df_dia["EDITAR"] = False
             
-            # --- CORREÇÃO DO ALERTA VISUAL ---
+            # Formatação visual (Verde para realizado, Laranja para GPS longe)
             def style_status(row):
                 styles = [''] * len(row)
                 if row['STATUS'] == "Realizado":
-                    # Se houver distância salva e for maior que 50m
                     dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
                     try:
                         dist_val = float(dist_str) if dist_str != 'nan' else 0
                         if dist_val > 50:
-                            # COR LARANJA para alertas de distância
                             return ['color: #E67E22; font-weight: bold'] * len(row)
-                    except:
-                        pass
-                    # COR VERDE para realizado normal
+                    except: pass
                     return ['color: green; font-weight: bold'] * len(row)
                 return styles
 
-            # Definindo colunas visíveis
-            cols_v = ['EDITAR', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-            if is_admin or is_diretoria or is_analista:
+            # Colunas visíveis na tabela
+            cols_v = ['EDITAR', 'DATA', 'SUPERVISOR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS']
+            if eh_gestao: # Admin, Aldo e Analistas veem mais detalhes
                 if 'DISTANCIA_LOG' in df_dia.columns:
                     cols_v.append('DISTANCIA_LOG')
+                cols_v.append('AGENDADO POR')
+            
+            # Garantir que todas as colunas existem antes de exibir
+            cols_v = [c for c in cols_v if c in df_dia.columns or c == 'EDITAR' or c == 'CIDADE']
             
             df_display = df_dia[cols_v].copy()
             df_styled = df_display.style.apply(style_status, axis=1)
 
+            # Editor de Dados
             edicao_dia = st.data_editor(
                 df_styled, 
                 key="edit_dia", 
@@ -476,9 +494,9 @@ if menu == "📅 Agendamentos do Dia":
                 disabled=[c for c in cols_v if c != "EDITAR"]
             )
 
+            # Lógica de Atualização
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
-                # Recupera o índice original para pegar os dados corretos
                 idx_selecionado = marcados.index[0]
                 sel_row = df_dia.iloc[idx_selecionado]
                 
@@ -500,6 +518,7 @@ if menu == "📅 Agendamentos do Dia":
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
                     
+                    # Cálculo de distância para o log
                     cliente_info = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
                     log_distancia_valor = ""
                     alerta_distancia = False
@@ -515,7 +534,7 @@ if menu == "📅 Agendamentos do Dia":
                                     alerta_distancia = True
                             except: log_distancia_valor = "Erro GPS"
 
-                    # Gravação na Planilha
+                    # Salva na planilha
                     df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     
