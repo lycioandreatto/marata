@@ -1239,14 +1239,13 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # Limpeza de brancos
             df_faturado = df_faturado.dropna(subset=['VENDEDOR_NOME', 'HIERARQUIA'])
             df_faturado = df_faturado[df_faturado['VENDEDOR_NOME'].astype(str).str.strip() != ""]
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
+            col_eqvs = 'EqVs' # Nome exato da coluna na sua aba FATURADO
 
-            # --- CRUZAMENTO COM A BASE PARA OBTER ANALISTA E SUPERVISOR ---
-            # Pegamos a relação de Vendedor x Supervisor x Analista da sua df_base
+            # Cruzamento com a base
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
@@ -1255,52 +1254,50 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.stop()
 
     if not df_faturado.empty:
-        # --- ÁREA DE FILTROS (SLICERS) ---
         st.markdown("### 🔍 Filtros de Visualização")
         c1, c2, c3 = st.columns(3)
-        
         df_f = df_faturado.copy()
+        
+        # Variáveis para controle da regra de positivação
+        filtro_vendedor_ativo = False
 
-        # Lógica de Permissão nos Filtros
         if is_admin or is_diretoria:
-            analistas_disp = sorted([str(x) for x in df_f['ANALISTA'].unique() if x and str(x) != 'nan'])
-            ana_sel = c1.multiselect("Analista:", analistas_disp)
+            ana_sel = c1.multiselect("Analista:", sorted([str(x) for x in df_f['ANALISTA'].unique() if x and str(x) != 'nan']))
             if ana_sel: df_f = df_f[df_f['ANALISTA'].isin(ana_sel)]
-
-            sups_disp = sorted([str(x) for x in df_f['SUPERVISOR'].unique() if x and str(x) != 'nan'])
-            sup_sel = c2.multiselect("Supervisor:", sups_disp)
+            
+            sup_sel = c2.multiselect("Supervisor:", sorted([str(x) for x in df_f['SUPERVISOR'].unique() if x and str(x) != 'nan']))
             if sup_sel: df_f = df_f[df_f['SUPERVISOR'].isin(sup_sel)]
-
-            vends_disp = sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x])
-            vend_sel = c3.multiselect("Vendedor:", vends_disp)
-            if vend_sel: df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
+            
+            vend_sel = c3.multiselect("Vendedor:", sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x]))
+            if vend_sel: 
+                df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
+                filtro_vendedor_ativo = True
 
         elif is_analista:
-            # Analista logado só vê o dele, mas pode filtrar seus supervisores e vendedores
             df_f = df_f[df_f['ANALISTA'].str.upper() == user_atual]
-            st.info(f"Filtros limitados ao Analista: {user_atual}")
-            
-            sups_disp = sorted([str(x) for x in df_f['SUPERVISOR'].unique() if x])
-            sup_sel = c1.multiselect("Supervisor:", sups_disp)
+            sup_sel = c1.multiselect("Supervisor:", sorted([str(x) for x in df_f['SUPERVISOR'].unique() if x]))
             if sup_sel: df_f = df_f[df_f['SUPERVISOR'].isin(sup_sel)]
-
-            vends_disp = sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x])
-            vend_sel = c2.multiselect("Vendedor:", vends_disp)
-            if vend_sel: df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
+            
+            vend_sel = c2.multiselect("Vendedor:", sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x]))
+            if vend_sel: 
+                df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
+                filtro_vendedor_ativo = True
 
         elif is_supervisor:
-            # Supervisor só vê a sua equipe
             df_f = df_f[df_f['SUPERVISOR'].str.upper() == user_atual]
-            vends_disp = sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x])
-            vend_sel = c1.multiselect("Meus Vendedores:", vends_disp)
-            if vend_sel: df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
+            vend_sel = c1.multiselect("Meus Vendedores:", sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x]))
+            if vend_sel: 
+                df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
+                filtro_vendedor_ativo = True
         
         else:
-            # Vendedor só vê o seu
+            # Vendedor logado: a regra de STR/SMX não se aplica a ele
             df_f = df_f[df_f['VENDEDOR_NOME'].str.upper() == user_atual]
+            filtro_vendedor_ativo = True
 
-        # --- PROCESSAMENTO DOS RESULTADOS FILTRADOS ---
+        # --- PROCESSAMENTO ---
         if not df_f.empty:
+            # Agrupamento de Hierarquia
             def agrupar_hierarquia_marata(valor):
                 valor = str(valor).strip()
                 grupos = {
@@ -1315,14 +1312,26 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
             df_f['CATEGORIA_FINAL'] = df_f['HIERARQUIA'].apply(agrupar_hierarquia_marata)
 
-            # Métricas
+            # --- LÓGICA DE POSITIVAÇÃO CONDICIONAL ---
             total_vol = df_f['QTD_VENDAS'].sum()
-            positivacao = df_f[col_k].nunique()
+            
+            if filtro_vendedor_ativo:
+                # Se tem vendedor selecionado ou logado, conta TUDO
+                positivacao = df_f[col_k].nunique()
+                label_pos = "🏪 Clientes Positivados (Total Vendedor)"
+            else:
+                # Se é visão de Analista/Supervisor (sem vendedor específico), remove SMX/STR
+                if col_eqvs in df_f.columns:
+                    df_pos = df_f[~df_f[col_eqvs].isin(['SMX', 'STR'])]
+                    positivacao = df_pos[col_k].nunique()
+                else:
+                    positivacao = df_f[col_k].nunique()
+                label_pos = "🏪 Clientes Positivados (Estado/Geral - Exceto SMX/STR)"
             
             st.markdown("---")
             m1, m2 = st.columns(2)
             m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
-            m2.metric("🏪 Clientes Positivados", positivacao)
+            m2.metric(label_pos, positivacao)
 
             # Gráfico e Tabela
             resumo = df_f.groupby('CATEGORIA_FINAL')['QTD_VENDAS'].sum().sort_values(ascending=False).reset_index()
@@ -1330,8 +1339,4 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
             st.subheader("📊 Vendas por Hierarquia")
             st.bar_chart(resumo, x='CATEGORIA_FINAL', y='QTD_VENDAS', color="#8B0000")
-            
-            st.subheader("📋 Detalhamento")
             st.dataframe(resumo, use_container_width=True, hide_index=True)
-        else:
-            st.warning("Nenhum dado encontrado para esta seleção.")
