@@ -1251,31 +1251,42 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
-        # --- PROCESSAMENTO METAS (USANDO RG) ---
+       # --- PROCESSAMENTO METAS (USANDO POSIÇÃO CASO O NOME FALHE) ---
         if df_metas_cob is not None and not df_metas_cob.empty:
-            # Normaliza colunas: remove espaços e coloca em MAIÚSCULO
+            # 1. Limpeza inicial de nomes de colunas
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
             
-            # 1. Garante a coluna RG (Chave de ligação)
+            # 2. MAPEAMENTO POR SEGURANÇA (Se não achar pelo nome, pega pela ordem)
+            # Coluna A costuma ser o Código (RG)
             if 'RG' not in df_metas_cob.columns:
-                # Se você mudou na planilha mas o Pandas não leu como RG, tentamos a primeira coluna
                 df_metas_cob.rename(columns={df_metas_cob.columns[0]: 'RG'}, inplace=True)
-
-            # 2. Garante a coluna BASE
-            if 'BASE' not in df_metas_cob.columns:
-                st.error("⚠️ A coluna 'BASE' não foi encontrada na aba META COBXPOSIT. Verifique o nome na planilha.")
-                df_metas_cob['BASE'] = 0
             
-            # Limpeza dos dados
+            # Coluna B costuma ser a Base
+            if 'BASE' not in df_metas_cob.columns:
+                if len(df_metas_cob.columns) > 1:
+                    df_metas_cob.rename(columns={df_metas_cob.columns[1]: 'BASE'}, inplace=True)
+                else:
+                    df_metas_cob['BASE'] = 0
+
+            # Coluna C costuma ser a Meta
+            if 'META' not in df_metas_cob.columns:
+                if len(df_metas_cob.columns) > 2:
+                    df_metas_cob.rename(columns={df_metas_cob.columns[2]: 'META'}, inplace=True)
+
+            # --- LIMPEZA DOS DADOS ---
+            # RG
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            
+            # BASE (Garante que seja número)
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             
-            # Limpeza da META (trata o % da imagem)
+            # META (Tratamento especial para o símbolo de % e vírgula)
             if 'META' in df_metas_cob.columns:
                 df_metas_cob['META'] = (
                     df_metas_cob['META'].astype(str)
                     .str.replace('%', '', regex=False)
-                    .str.replace(',', '.', regex=False).str.strip()
+                    .str.replace(',', '.', regex=False)
+                    .str.strip()
                 )
                 df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
             else:
