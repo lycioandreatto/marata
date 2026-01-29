@@ -1254,12 +1254,27 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
+            # --- LÓGICA DE AGRUPAMENTO DE HIERARQUIAS SOLICITADA ---
+            def aplicar_agrupamento_custom(item):
+                item = str(item).strip()
+                # Dicionário de De/Para
+                mapeamento = {
+                    'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
+                    'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
+                    'MILHO': 'MILHO', 'MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO', 
+                    'MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO',
+                    'MOLHOS ALHO': 'MOLHOS ALHO', 'MOLHOS ALHO PICANTE': 'MOLHOS ALHO',
+                    'PIMENTA CONSERVA': 'PIMENTA CONSERVA', 'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA', 
+                    'PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'
+                }
+                return mapeamento.get(item, item) # Se não estiver no mapa, mantém o original
+
+            df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
+
         # --- PROCESSAMENTO METAS ---
         if df_metas_cob is not None and not df_metas_cob.empty:
-            # Força colunas em MAIÚSCULO e sem espaços
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
             
-            # Mapeamento de segurança por posição se os nomes falharem
             if 'RG' not in df_metas_cob.columns:
                 df_metas_cob.rename(columns={df_metas_cob.columns[0]: 'RG'}, inplace=True)
             if 'BASE' not in df_metas_cob.columns:
@@ -1267,7 +1282,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             if 'META' not in df_metas_cob.columns:
                 df_metas_cob.rename(columns={df_metas_cob.columns[2]: 'META'}, inplace=True) if len(df_metas_cob.columns) > 2 else None
 
-            # Limpeza de tipos de dados das Metas
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             
@@ -1320,7 +1334,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             total_vol = df_f['QTD_VENDAS'].sum()
             positivacao = df_f[col_k].nunique()
 
-            # Relacionar com Metas via RG
             vendedores_ids = df_f['VENDEDOR_COD'].unique().tolist()
             dados_meta_filtrados = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
             
@@ -1345,13 +1358,15 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 </div>
                 """, unsafe_allow_html=True)
 
-            # --- 📊 TABELA POR HIERARQUIA ---
+            # --- 📊 TABELA POR HIERARQUIA (AGRUPADA) ---
             st.markdown("### 📈 Desempenho por Hierarquia")
             if 'HIERARQUIA' in df_f.columns:
+                # O agrupamento já foi processado acima, aqui apenas somamos os resultados
                 df_h = df_f.groupby('HIERARQUIA').agg({
                     'QTD_VENDAS': 'sum',
                     col_k: 'nunique'
                 }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).sort_values(by='Volume', ascending=False)
+                
                 st.dataframe(df_h, use_container_width=True)
             
         else:
