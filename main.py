@@ -1241,9 +1241,15 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
+            # Limpeza radical de códigos para garantir o match
+            df_faturado['VENDEDOR_COD'] = (
+                df_faturado['VENDEDOR_COD']
+                .astype(str)
+                .str.replace(r'\.0$', '', regex=True)
+                .str.strip()
+            )
+            
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
-            # Normalização do código do vendedor (RG)
-            df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
             
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
             col_eqvs = 'EqVs' 
@@ -1255,12 +1261,18 @@ elif menu_interna == "📊 Desempenho de Vendas":
             if df_metas_cob is not None and not df_metas_cob.empty:
                 df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
                 
-                # CORREÇÃO AQUI: 'in' em vez de 'em'
+                # Garante que as colunas COD, BASE e META existem
                 for col in ['COD', 'BASE', 'META']:
                     if col not in df_metas_cob.columns:
-                        df_metas_cob[col] = 0 if col != 'COD' else ""
-
-                df_metas_cob['COD'] = df_metas_cob['COD'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+                        df_metas_cob[col] = 0
+                
+                # Limpeza radical dos códigos na aba de metas também
+                df_metas_cob['COD'] = (
+                    df_metas_cob['COD']
+                    .astype(str)
+                    .str.replace(r'\.0$', '', regex=True)
+                    .str.strip()
+                )
                 df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
                 df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
             else:
@@ -1316,22 +1328,20 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 positivacao = df_pos[col_k].nunique()
                 label_pos = "🏪 Clientes Posit. (Exceto SMX/STR)"
 
-            # --- CÁLCULO DA COBERTURA ---
-            vendedores_ids = df_f['VENDEDOR_COD'].unique()
+            # --- CÁLCULO DA COBERTURA (CRUZAMENTO DINÂMICO) ---
+            vendedores_ids = df_f['VENDEDOR_COD'].unique().tolist()
             
-            if 'COD' in df_metas_cob.columns:
-                dados_meta_filtrados = df_metas_cob[df_metas_cob['COD'].isin(vendedores_ids)]
-            else:
-                dados_meta_filtrados = pd.DataFrame(columns=['BASE', 'META'])
+            # Buscamos as metas apenas para os IDs que estão nos filtros aplicados
+            dados_meta_filtrados = df_metas_cob[df_metas_cob['COD'].isin(vendedores_ids)]
             
-            base_total = dados_meta_filtrados['BASE'].sum() if not dados_meta_filtrados.empty else 0
+            base_total = dados_meta_filtrados['BASE'].sum()
             meta_media_perc = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
             
             clientes_meta_objetivo = (base_total * (meta_media_perc / 100))
             perc_atingido = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_status = "#28a745" if perc_atingido >= meta_media_perc else "#e67e22"
 
-            # --- INTERFACE ---
+            # --- EXIBIÇÃO ---
             st.markdown("---")
             col_m1, col_m2, col_m3 = st.columns([1, 1, 2.5])
             col_m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
