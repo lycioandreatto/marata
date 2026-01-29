@@ -26,7 +26,7 @@ MAPA_EMAILS = {
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["aldo@marata.com.br", "lycio.oliveira@marata.com.br"]
 
-def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo):
+def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista):
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -38,29 +38,30 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo):
         
         msg = MIMEMultipart()
         msg['From'] = email_origem
-        # Aqui o 'destinatarios_lista' será algo como "email1@... , email2@..."
         msg['To'] = destinatarios_lista 
         msg['Subject'] = f"Resumo de Rota Finalizada - {vendedor}"
 
+        # Tratamento para o nome não vir "NÃO LOCALIZADO" ou "TODOS" de forma feia
+        saudacao = nome_analista.title() if nome_analista != "NÃO LOCALIZADO" else "Gestão Maratá"
+
         corpo = f"""
-        Olá, Gestão Maratá,
+        Olá, {saudacao},
         
         O vendedor {vendedor} acaba de finalizar a rota do dia.
         
-        RESUMO:
-        - Total de Clientes: {dados_resumo['total']}
+        RESUMO DA OPERAÇÃO:
+        - Total de Clientes Planejados: {dados_resumo['total']}
         - Visitas Realizadas: {dados_resumo['realizados']}
         - Visitas com Pedido: {dados_resumo['pedidos']}
-        - Pendentes: {dados_resumo['pendentes']}
+        - Pendências (Não Visitados): {dados_resumo['pendentes']}
         
-        E-mail enviado automaticamente pelo Sistema Marata.
+        E-mail enviado automaticamente pelo Sistema Maratá GVP.
         """
         msg.attach(MIMEText(corpo, 'plain'))
 
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
         server.login(email_origem, senha_origem)
-        # O sendmail precisa de uma lista real, o split(',') resolve isso
         server.sendmail(email_origem, destinatarios_lista.split(','), msg.as_string())
         server.quit()
         return True
