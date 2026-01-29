@@ -546,7 +546,7 @@ elif menu == "📊 Dashboard de Controle":
         st.header("📊 Resumo de Engajamento por Vendedor")
     
     with col_btn:
-        st.write("") # Alinhamento vertical
+        st.write("") 
         if st.button("🔄 Atualizar Tudo"):
             st.cache_data.clear()
             st.success("Dados Atualizados!")
@@ -558,16 +558,14 @@ elif menu == "📊 Dashboard de Controle":
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'ANALISTA')
         col_sup_base = next((c for c in df_base.columns if c.upper() == 'SUPERVISOR'), 'SUPERVISOR')
         col_vend_base = next((c for c in df_base.columns if c.upper() == 'VENDEDOR'), 'VENDEDOR')
-        col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
         col_cliente_base = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
         col_nome_base = next((c for c in df_base.columns if c.upper() == 'NOME 1'), 'Nome 1')
 
         st.subheader("Filtros de Visualização")
         f_c1, f_c2, f_c3 = st.columns(3)
-        
         df_base_filtrada = df_base.copy()
         
-        # Filtro 1: Analista
+        # Filtros (Lógica Admin/Diretoria vs Usuário)
         with f_c1:
             if is_admin or is_diretoria:
                 lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if pd.notnull(a) and str(a).strip() and str(a).lower() != 'nan'])
@@ -578,178 +576,120 @@ elif menu == "📊 Dashboard de Controle":
                 ana_sel_dash = user_atual
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base].astype(str).str.upper() == user_atual]
 
-        # Filtro 2: Supervisor
         with f_c2:
             lista_sups_dash = sorted([str(s) for s in df_base_filtrada[col_sup_base].unique() if pd.notnull(s) and str(s).strip() and str(s).lower() != 'nan'])
             sup_sel_dash = st.selectbox("Escolher Supervisor:", ["Todos"] + lista_sups_dash, key="sup_dash")
             if sup_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_sup_base] == sup_sel_dash]
 
-        # Filtro 3: Vendedor
         with f_c3:
             lista_vends_dash = sorted([str(v) for v in df_base_filtrada[col_vend_base].unique() if pd.notnull(v) and str(v).strip() and str(v).lower() != 'nan'])
             vend_sel_dash = st.selectbox("Escolher Vendedor:", ["Todos"] + lista_vends_dash, key="vend_dash")
             if vend_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_vend_base] == vend_sel_dash]
 
-        # --- PROCESSAMENTO DE DADOS ---
+        # --- PROCESSAMENTO DE AGENDAMENTOS ---
         df_reg_agenda = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy().drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
         df_base_detalhe = pd.merge(df_base_filtrada, df_reg_agenda, left_on=col_cliente_base, right_on='CÓDIGO CLIENTE', how='left')
-        
-        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['REGISTRO'].apply(
-            lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" and str(x) != "-" else 'PENDENTE'
-        )
+        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['REGISTRO'].apply(lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" and str(x) != "-" else 'PENDENTE')
         df_base_detalhe['REGISTRO'] = df_base_detalhe['REGISTRO'].fillna("-")
 
-        # --- TABELA RESUMO (ANALISTA + SUPERVISOR + VENDEDOR) ---
-        if col_vend_base in df_base_filtrada.columns:
-            resumo_base = df_base_filtrada.groupby([col_ana_base, col_sup_base, col_vend_base]).size().reset_index(name='Total na Base')
-            
-            agenda_no_filtro = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada[col_cliente_base])]
-            resumo_agenda = agenda_no_filtro.groupby('VENDEDOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
-            
-            df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_vend_base, right_on='VENDEDOR', how='left').fillna(0)
-            df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
-            df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
-            df_dash['% Conclusão'] = df_dash.apply(lambda r: f"{(r['Já Agendados']/r['Total na Base']*100):.1f}%" if r['Total na Base'] > 0 else "0.0%", axis=1)
-            
-            df_dash_view = df_dash[[col_ana_base, col_sup_base, col_vend_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']].copy()
-            df_dash_view.columns = ['ANALISTA', 'SUPERVISOR', 'VENDEDOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
-            
-            st.dataframe(df_dash_view, use_container_width=True, hide_index=True)
-            
-            # Cards Métricas
-            c1, c2, c3, c4 = st.columns(4)
-            t_base = df_dash_view['CLIENTES NA BASE'].sum()
-            t_agend = df_dash_view['CLIENTES AGENDADOS'].sum()
-            c1.metric("Total Clientes Base", t_base)
-            c2.metric("Total Agendados", t_agend)
-            c3.metric("Pendente Total", t_base - t_agend)
-            c4.metric("% Adesão Total", f"{(t_agend/t_base*100 if t_base > 0 else 0):.1f}%")
-        else:
-            st.error("Estrutura de colunas incompleta na aba BASE.")
+        # --- TABELA RESUMO ---
+        resumo_base = df_base_filtrada.groupby([col_ana_base, col_sup_base, col_vend_base]).size().reset_index(name='Total na Base')
+        agenda_no_filtro = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada[col_cliente_base])]
+        resumo_agenda = agenda_no_filtro.groupby('VENDEDOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
+        df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_vend_base, right_on='VENDEDOR', how='left').fillna(0)
+        df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
+        df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
+        df_dash['% Conclusão'] = df_dash.apply(lambda r: f"{(r['Já Agendados']/r['Total na Base']*100):.1f}%" if r['Total na Base'] > 0 else "0.0%", axis=1)
+        st.dataframe(df_dash.drop(columns=['VENDEDOR_y'], errors='ignore'), use_container_width=True, hide_index=True)
 
-        # --- RANKING DE ENGAJAMENTO ---
-        st.markdown("---")
-        st.subheader("🏆 Ranking de Engajamento por Vendedor")
-        if not df_dash.empty:
-            df_ranking = df_dash_view.copy()
-            df_ranking['VALOR_NUM'] = df_ranking['% DE ADESÃO'].str.replace('%', '').astype(float)
-            df_ranking = df_ranking.sort_values(by=['VALOR_NUM', 'CLIENTES AGENDADOS'], ascending=False).reset_index(drop=True)
-            df_ranking.index += 1
-            
-            def medalha(pos):
-                if pos == 1: return "🥇"
-                if pos == 2: return "🥈"
-                if pos == 3: return "🥉"
-                return f"{pos}º"
-            
-            df_ranking['POSIÇÃO'] = [medalha(i) for i in df_ranking.index]
-            st.table(df_ranking[['POSIÇÃO', 'VENDEDOR', 'SUPERVISOR', 'ANALISTA', 'CLIENTES AGENDADOS', '% DE ADESÃO']])
-
-        # --- CONVERSÃO DE VENDAS COM CRUZAMENTO DE SKUS E GAPS ---
+        # --- CONVERSÃO E GAPS COM AGRUPAMENTO DE HIERARQUIAS ---
         st.markdown("---")
         st.subheader("🎯 Conversão e Gap de Mix (SKUS)")
+        
         try:
-            # Lendo a planilha de Faturamento e a nova aba SKUS
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
             df_skus_ref = conn.read(spreadsheet=url_planilha, worksheet="SKUS")
-            
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
             df_skus_ref.columns = [str(c).strip() for c in df_skus_ref.columns]
-            
-            # 1. Referências da aba SKUS (O que deveria ser vendido)
-            total_h_alvo = df_skus_ref['Hierarquia de produtos'].nunique()
-            total_s_alvo = df_skus_ref['SKU'].nunique()
-            
-            # 2. Mapeamento do faturado (O que foi vendido)
-            col_cod_fat = df_fat.columns[10] # Coluna K (Código Cliente)
-            col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
-            col_s_fat = "Nº artigo" # Conforme informado por você
-            
-            def limpar_cod(val):
-                return str(val).split('.')[0].strip() if pd.notnull(val) else ""
 
+            # --- FUNÇÃO DE AGRUPAMENTO (ENXUGAR FAMÍLIAS) ---
+            def agrupar_hierarquia(nome):
+                nome = str(nome).upper().strip()
+                if "DESCARTAVEIS" in nome: return "DESCARTAVEIS"
+                if "MILHO" in nome: return "MILHO"
+                if "MOLHOS ALHO" in nome: return "MOLHOS ALHO"
+                if "PIMENTA CONSERVA" in nome: return "PIMENTA CONSERVA"
+                return nome
+
+            # Aplicar agrupamento na referência e no faturado
+            col_h_ref = 'Hierarquia de produtos'
+            df_skus_ref['H_AGRUPADA'] = df_skus_ref[col_h_ref].apply(agrupar_hierarquia)
+            
+            total_h_alvo = df_skus_ref['H_AGRUPADA'].nunique()
+            total_s_alvo = df_skus_ref['SKU'].nunique()
+
+            col_cod_fat = df_fat.columns[10] 
+            col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), col_h_ref)
+            col_s_fat = "Nº artigo"
+            
+            df_fat['H_AGRUPADA'] = df_fat[col_h_fat].apply(agrupar_hierarquia)
+            
+            def limpar_cod(val): return str(val).split('.')[0].strip() if pd.notnull(val) else ""
             df_fat['Cod_Limpo'] = df_fat[col_cod_fat].apply(limpar_cod)
             
-            # Agrupamento contando Pedidos Únicos, Data Máxima e Mix de Produtos
             df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
                 'OrdCliente': 'nunique', 
                 'Data fat.': 'max',
-                col_h_fat: 'nunique', # Quantas hierarquias ele comprou
-                col_s_fat: 'nunique'  # Quantos SKUs (Nº artigo) ele comprou
+                'H_AGRUPADA': 'nunique',
+                col_s_fat: 'nunique'
             }).reset_index()
             
             df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat', 'H_Vendidas', 'S_Vendidos']
 
             df_base_detalhe['Cliente_Limpo'] = df_base_detalhe[col_cliente_base].apply(limpar_cod)
             df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
-
             df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'].copy()
             
+            # Cards de Métricas
             t_ag = len(df_agendados_ativos)
             v_ag = len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
-            tx = (v_ag / t_ag * 100) if t_ag > 0 else 0
-
-            cv1, cv2, cv3, cv4 = st.columns(4)
-            cv1.metric("Clientes Agendados", t_ag)
-            cv2.metric("Agendados com Venda", v_ag)
-            cv3.metric("Taxa de Conversão", f"{tx:.1f}%")
-            cv4.metric("Total de Pedidos", int(df_agendados_ativos['Qtd_Pedidos'].sum()))
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Agendados", t_ag)
+            c2.metric("Com Venda", v_ag)
+            c3.metric("Conversão", f"{(v_ag/t_ag*100 if t_ag > 0 else 0):.1f}%")
+            c4.metric("Total Pedidos", int(df_agendados_ativos['Qtd_Pedidos'].sum()))
 
             with st.expander("🔍 Detalhes de GAPs por Cliente"):
-                df_convertidos = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
+                df_conv = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
+                df_conv['GAP HIER.'] = (total_h_alvo - df_conv['H_Vendidas']).clip(lower=0).astype(int)
+                df_conv['GAP SKU'] = (total_s_alvo - df_conv['S_Vendidos']).clip(lower=0).astype(int)
+                df_conv['ÚLT. FAT.'] = pd.to_datetime(df_conv['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
-                # CÁLCULO DOS GAPS
-                df_convertidos['GAP HIERARQUIAS'] = (total_h_alvo - df_convertidos['H_Vendidas']).clip(lower=0).astype(int)
-                df_convertidos['GAP SKU'] = (total_s_alvo - df_convertidos['S_Vendidos']).clip(lower=0).astype(int)
-                
-                df_convertidos['Data Agendada'] = pd.to_datetime(df_convertidos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
-                df_convertidos['Últ. Faturamento'] = pd.to_datetime(df_convertidos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
-                
-                # Exibição com GAPs
-                df_view_conv = df_convertidos[[
-                    col_cliente_base, col_nome_base, col_vend_base, 
-                    'H_Vendidas', 'GAP HIERARQUIAS', 'S_Vendidos', 'GAP SKU', 'Últ. Faturamento'
-                ]]
-                
-                df_view_conv.columns = [
-                    'CÓDIGO', 'NOME', 'VENDEDOR', 
-                    'HIERARQUIAS FAT.', 'GAP HIERARQUIAS', 'SKUS FAT.', 'GAP SKU', 'ÚLT. FATURAMENTO'
-                ]
-                
-                st.dataframe(df_view_conv, use_container_width=True, hide_index=True)
-                st.info(f"📋 Meta do Mix (Aba SKUS): {total_h_alvo} Hierarquias e {total_s_alvo} SKUs únicos.")
+                df_view = df_conv[[col_cliente_base, col_nome_base, col_vend_base, 'H_Vendidas', 'GAP HIER.', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']]
+                df_view.columns = ['CÓDIGO', 'NOME', 'VENDEDOR', 'FAMÍLIAS FAT.', 'GAP FAMÍLIA', 'SKUS FAT.', 'GAP SKU', 'ÚLT. FAT.']
+                st.dataframe(df_view, use_container_width=True, hide_index=True)
+                st.info(f"📊 Meta Consolidada: {total_h_alvo} Famílias (após agrupamento) e {total_s_alvo} SKUs únicos.")
 
         except Exception as e:
-            st.warning(f"Atenção: Verifique as abas SKUS e FATURADO. Erro: {e}")
+            st.warning(f"Erro no processamento de SKUS: {e}")
 
         # --- MAPA DE CALOR ---
         st.markdown("---")
-        st.subheader("🔥 Mapa de Calor: Distribuição")
-        tipo_mapa = st.radio("Selecione a camada:", ["Visitas Realizadas", "Faturamento (Pedidos)"], horizontal=True)
-
+        st.subheader("🔥 Mapa de Calor")
+        tipo_mapa = st.radio("Camada:", ["Visitas Realizadas", "Faturamento (Pedidos)"], horizontal=True)
         try:
             import folium
             from folium.plugins import HeatMap
             from streamlit_folium import st_folium
-
-            if tipo_mapa == "Visitas Realizadas":
-                df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-                label_peso = None
-            else:
-                df_mapa = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-                label_peso = 'Qtd_Pedidos'
-
+            df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy() if tipo_mapa == "Visitas Realizadas" else df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
             if not df_mapa.empty:
                 df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
-                centro = [df_mapa['lat'].mean(), df_mapa['lon'].mean()]
-                m = folium.Map(location=centro, zoom_start=7, tiles="cartodbpositron")
-                dados_calor = df_mapa[['lat', 'lon', label_peso]].values.tolist() if label_peso else df_mapa[['lat', 'lon']].values.tolist()
-                HeatMap(dados_calor, radius=15).add_to(m)
+                m = folium.Map(location=[df_mapa['lat'].mean(), df_mapa['lon'].mean()], zoom_start=7, tiles="cartodbpositron")
+                HeatMap(df_mapa[['lat', 'lon', 'Qtd_Pedidos' if tipo_mapa != "Visitas Realizadas" else None]].dropna().values.tolist(), radius=15).add_to(m)
                 st_folium(m, width="100%", height=500, returned_objects=[])
-        except:
-            st.info("Aguardando dados geográficos válidos.")
+        except: st.info("Sem dados geográficos para o mapa.")
 
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
 # --- PÁGINA: NOVO AGENDAMENTO ---
