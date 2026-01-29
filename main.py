@@ -942,8 +942,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            # --- BLOCO DE EXPORTAÇÃO (RESTAURADO) ---
+            # --- BLOCO DE EXPORTAÇÃO (EXCEL E PDF) ---
             import io
+            from fpdf import FPDF
             
             cols_v = ['DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
             if 'DISTANCIA_LOG' in df_user.columns:
@@ -951,19 +952,51 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             df_export = df_user[cols_v].copy()
             
-            exp_col1, exp_col2 = st.columns([1, 5])
+            exp_col1, exp_col2, exp_col3 = st.columns([1, 1, 4])
+            
             with exp_col1:
                 # Exportar para Excel
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                buffer_ex = io.BytesIO()
+                with pd.ExcelWriter(buffer_ex, engine='xlsxwriter') as writer:
                     df_export.to_excel(writer, index=False, sheet_name='Agenda')
                 
                 st.download_button(
                     label="📥 Excel",
-                    data=buffer.getvalue(),
+                    data=buffer_ex.getvalue(),
                     file_name=f"Agenda_{user_atual}_{datetime.now().strftime('%d_%m')}.xlsx",
                     mime="application/vnd.ms-excel"
                 )
+
+            with exp_col2:
+                # Exportar para PDF
+                try:
+                    pdf = FPDF(orientation='L', unit='mm', format='A4')
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 12)
+                    pdf.cell(0, 10, f"Relatorio de Agenda - {user_atual}", ln=True, align='C')
+                    pdf.set_font("Arial", size=8)
+                    
+                    # Cabeçalho do PDF
+                    col_width = pdf.w / (len(cols_v) + 1)
+                    for col in cols_v:
+                        pdf.cell(col_width, 10, str(col), border=1)
+                    pdf.ln()
+                    
+                    # Dados do PDF
+                    for _, row in df_export.iterrows():
+                        for item in row:
+                            pdf.cell(col_width, 10, str(item)[:15], border=1)
+                        pdf.ln()
+                    
+                    pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
+                    st.download_button(
+                        label="📥 PDF",
+                        data=pdf_output,
+                        file_name=f"Agenda_{user_atual}_{datetime.now().strftime('%d_%m')}.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error("Erro PDF")
             # ---------------------------------------
 
             # Lógica da Tabela com Checkbox
