@@ -364,6 +364,26 @@ with st.sidebar:
         opcoes_menu.append("📊 Dashboard de Controle")
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
+
+    # --- CARREGAMENTO E MAPEAMENTO GLOBAL (Coloque isso antes do if menu == ...) ---
+if df_base is not None:
+    col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'ANALISTA')
+    col_sup_base = next((c for c in df_base.columns if c.upper() == 'SUPERVISOR'), 'SUPERVISOR')
+    col_vend_base = next((c for c in df_base.columns if c.upper() == 'VENDEDOR'), 'VENDEDOR')
+    col_cliente_base = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
+    col_nome_base = next((c for c in df_base.columns if c.upper() == 'NOME 1'), 'Nome 1')
+    col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
+
+# --- AGORA AS PÁGINAS ---
+if menu == "📊 Dashboard de Controle":
+    # Aqui você pode remover as linhas de "col_ana_base = ..." pois já estarão globais
+    ...
+
+elif menu == "📅 Agendamentos do Dia":
+    st.header("📅 Agendamentos do Dia")
+    # Agora a linha abaixo não dará erro:
+    df_cidades = df_base[[col_cliente_base, col_local_base]].copy()
+    ...
     
     # Padronização interna para o código
     if menu == texto_ver_agenda:
