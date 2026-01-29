@@ -636,6 +636,49 @@ elif menu == "📊 Dashboard de Controle":
         df_ranking_view = df_ranking[['POSIÇÃO', 'SUPERVISOR', 'CLIENTES AGENDADOS', '% DE ADESÃO']]
         
         st.table(df_ranking_view)
+        # --- MAPA DE CALOR: DISTRIBUIÇÃO GEOGRÁFICA ---
+        st.markdown("---")
+        st.subheader("🔥 Distribuição Geográfica das Visitas (Realizadas)")
+        
+        # Filtramos visitas que tenham status "Realizado" e coordenadas válidas
+        df_mapa = df_agenda[
+            (df_agenda['STATUS'] == "Realizado") & 
+            (df_agenda['COORDENADAS'].str.contains(',', na=False))
+        ].copy()
+
+        # Filtrar o mapa também pelos filtros de Analista/Supervisor do Dashboard
+        if ana_sel_dash != "Todos":
+             df_mapa = df_mapa[df_mapa['ANALISTA'].str.upper() == ana_sel_dash.upper()]
+        if sup_sel_dash != "Todos":
+             df_mapa = df_mapa[df_mapa['SUPERVISOR'] == sup_sel_dash]
+
+        if not df_mapa.empty:
+            try:
+                import folium
+                from folium.plugins import HeatMap
+                from streamlit_folium import st_folium
+
+                # Limpeza e conversão das coordenadas
+                df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
+                
+                # Criar o mapa base centrado na média das coordenadas
+                centro_lat = df_mapa['lat'].mean()
+                centro_lon = df_mapa['lon'].mean()
+                m = folium.Map(location=[centro_lat, centro_lon], zoom_start=7, tiles="cartodbpositron")
+                
+                # Gerar os dados de calor (latitude, longitude)
+                dados_calor = df_mapa[['lat', 'lon']].values.tolist()
+                HeatMap(dados_calor, radius=15, blur=10).add_to(m)
+                
+                # Renderizar no Streamlit
+                st_folium(m, width="100%", height=500, returned_objects=[])
+                
+            except ImportError:
+                st.warning("⚠️ Bibliotecas de mapa (folium/streamlit-folium) não instaladas.")
+            except Exception as e:
+                st.error(f"Erro ao gerar mapa: {e}")
+        else:
+            st.info("ℹ️ Nenhuma visita 'Realizada' com GPS encontrado para os filtros selecionados.")
         
     else:
         st.error("Dados insuficientes para gerar o Dashboard.")
