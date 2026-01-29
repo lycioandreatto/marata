@@ -1228,12 +1228,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
     st.header("📊 Desempenho de Vendas (Faturado)")
     
     try:
-        # Carregamento do Faturado
+        # Carregamento dos dados
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-        # Carregamento da Nova Aba de Metas
         df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
         
         if df_faturado is not None and not df_faturado.empty:
+            # 1. Padronização do Faturado
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
@@ -1242,27 +1242,36 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # Limpeza de dados faturado
+            # Limpeza de linhas em branco no faturado
             df_faturado = df_faturado.dropna(subset=['VENDEDOR_NOME', 'HIERARQUIA'])
             df_faturado = df_faturado[df_faturado['VENDEDOR_NOME'].astype(str).str.strip() != ""]
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
-            # Padronização da aba de Metas
-            df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
-            # Garantir que as colunas numéricas da meta sejam tratadas
-            df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
-            df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
-            df_metas_cob['COD'] = df_metas_cob['COD'].astype(str).str.strip()
+            # 2. Padronização Segura da aba de Metas
+            if df_metas_cob is not None and not df_metas_cob.empty:
+                df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
+                
+                # Forçar conversão e tratar erros para não quebrar o cálculo
+                if 'BASE' in df_metas_cob.columns:
+                    df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+                if 'META' in df_metas_cob.columns:
+                    df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
+                if 'COD' in df_metas_cob.columns:
+                    df_metas_cob['COD'] = df_metas_cob['COD'].astype(str).str.strip()
+            else:
+                st.error("Atenção: Aba 'META COBXPOSIT' não encontrada ou vazia.")
+                st.stop()
 
+            # Definição de colunas dinâmicas
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
             col_eqvs = 'EqVs'
 
-            # Cruzamento com a base (Relacional Analista/Supervisor)
+            # Cruzamento com a base relacional (Analista/Supervisor)
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
     except Exception as e:
-        st.error(f"Erro ao processar dados: {e}")
+        st.error(f"Erro crítico ao processar dados: {e}")
         st.stop()
 
     if not df_faturado.empty:
@@ -1271,7 +1280,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_f = df_faturado.copy()
         filtro_vendedor_ativo = False
 
-        # --- LÓGICA DE FILTROS ---
+        # --- LÓGICA DE FILTROS (ADMIN / ANALISTA / SUPERVISOR) ---
         if is_admin or is_diretoria:
             ana_sel = c1.multiselect("Analista:", sorted([str(x) for x in df_f['ANALISTA'].unique() if x and str(x) != 'nan']))
             if ana_sel: df_f = df_f[df_f['ANALISTA'].isin(ana_sel)]
@@ -1305,56 +1314,52 @@ elif menu_interna == "📊 Desempenho de Vendas":
             # --- CÁLCULO DE POSITIVAÇÃO ---
             total_vol = df_f['QTD_VENDAS'].sum()
             
-            # Regra SMX/STR
             if filtro_vendedor_ativo:
                 positivacao = df_f[col_k].nunique()
             else:
                 df_pos_regra = df_f[~df_f[col_eqvs].isin(['SMX', 'STR'])] if col_eqvs in df_f.columns else df_f
                 positivacao = df_pos_regra[col_k].nunique()
 
-            # --- NOVO: LÓGICA DE COBERTURA (META COBXPOSIT) ---
-            # Pegamos os códigos dos vendedores que estão filtrados no momento
-            vendedores_filtrados = df_f['VENDEDOR_COD'].unique()
-            dados_meta = df_metas_cob[df_metas_cob['COD'].isin(vendedores_filtrados)]
+            # --- LÓGICA DE COBERTURA (META COBXPOSIT) ---
+            vendedores_ids = [str(x) for x in df_f['VENDEDOR_COD'].unique()]
+            dados_meta = df_metas_cob[df_metas_cob['COD'].isin(vendedores_ids)]
             
-            base_total = dados_meta['BASE'].sum()
-            # A meta na sua aba é porcentagem (ex: 30), então calculamos a média ponderada ou simples
+            base_total = dados_meta['BASE'].sum() if 'BASE' in dados_meta.columns else 0
             meta_media_perc = dados_meta['META'].mean() if not dados_meta.empty else 0
             clientes_meta_objetivo = (base_total * (meta_media_perc / 100))
 
-            # --- UI: CARDS E MINI TABELA DE METAS ---
+            # --- UI: CARDS E PAINEL DE METAS ---
             st.markdown("---")
-            m1, m2, m3 = st.columns([1, 1, 2])
+            m1, m2, m3 = st.columns([1, 1, 2.5])
             
             m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
-            m2.metric("🏪 Posit. Atual", positivacao)
+            m2.metric("🏪 Clientes Posit.", positivacao)
             
-            # Painel Visual de Cobertura
             with m3:
                 perc_atingido = (positivacao / base_total * 100) if base_total > 0 else 0
-                cor_status = "green" if perc_atingido >= meta_media_perc else "orange"
+                cor_status = "#28a745" if perc_atingido >= meta_media_perc else "#e67e22" # Verde ou Laranja
                 
                 st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 10px; background-color: #f9f9f9;">
-                    <p style="margin:0; font-size: 14px; color: #666;">📊 <b>Painel de Cobertura (Meta vs Real)</b></p>
-                    <table style="width:100%; border-collapse: collapse; margin-top: 5px;">
-                        <tr style="font-size: 13px; text-align: left; border-bottom: 1px solid #eee;">
-                            <th>Clientes Base</th>
-                            <th>Meta Estipulada</th>
-                            <th>Objetivo (Clientes)</th>
-                            <th>Atingido (%)</th>
+                <div style="border: 1px solid #e0e0e0; padding: 15px; border-radius: 8px; background-color: #ffffff; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                    <p style="margin:0; font-size: 13px; color: #555; text-transform: uppercase; font-weight: bold;">📊 Cobertura de Base</p>
+                    <table style="width:100%; border-collapse: collapse; margin-top: 8px;">
+                        <tr style="font-size: 11px; text-align: left; color: #888; border-bottom: 1px solid #f0f0f0;">
+                            <th style="padding-bottom: 5px;">CLIENTES BASE</th>
+                            <th style="padding-bottom: 5px;">META (%)</th>
+                            <th style="padding-bottom: 5px;">OBJETIVO (QTD)</th>
+                            <th style="padding-bottom: 5px;">REAL (%)</th>
                         </tr>
-                        <tr style="font-size: 15px; font-weight: bold; color: #333;">
-                            <td>{base_total:,.0f}</td>
-                            <td>{meta_media_perc:.1f}%</td>
-                            <td>{clientes_meta_objetivo:,.0f}</td>
-                            <td style="color: {cor_status};">{perc_atingido:.1f}%</td>
+                        <tr style="font-size: 16px; font-weight: bold; color: #2c3e50;">
+                            <td style="padding-top: 5px;">{base_total:,.0f}</td>
+                            <td style="padding-top: 5px;">{meta_media_perc:.1f}%</td>
+                            <td style="padding-top: 5px;">{clientes_meta_objetivo:,.0f}</td>
+                            <td style="padding-top: 5px; color: {cor_status};">{perc_atingido:.1f}%</td>
                         </tr>
                     </table>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # --- GRÁFICO ---
+            # --- PROCESSAMENTO DE HIERARQUIA E GRÁFICOS ---
             def agrupar_hierarquia_marata(valor):
                 valor = str(valor).strip()
                 grupos = {
@@ -1371,8 +1376,10 @@ elif menu_interna == "📊 Desempenho de Vendas":
             resumo = df_f.groupby('CATEGORIA_FINAL')['QTD_VENDAS'].sum().sort_values(ascending=False).reset_index()
             resumo = resumo[resumo['CATEGORIA_FINAL'] != ""]
 
-            st.subheader("📈 Vendas por Categoria")
+            st.subheader("📈 Performance por Categoria")
             st.bar_chart(resumo, x='CATEGORIA_FINAL', y='QTD_VENDAS', color="#8B0000")
             
-            st.subheader("📋 Detalhamento")
+            st.subheader("📋 Detalhamento do Faturamento")
             st.dataframe(resumo, use_container_width=True, hide_index=True)
+        else:
+            st.warning("Nenhum dado encontrado para os filtros selecionados.")
