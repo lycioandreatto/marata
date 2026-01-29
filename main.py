@@ -550,11 +550,10 @@ if menu == "📅 Agendamentos do Dia":
             st.info(f"Não há agendamentos para hoje ({hoje_str}).")
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
-    st.header("📊 Resumo de Engajamento por Supervisor")
+    st.header("📊 Resumo de Engajamento por Vendedor")
     
     if df_base is not None and df_agenda is not None:
-        # --- MAPEAMENTO DINÂMICO DE COLUNAS (BASEADO NA SUA NOVA ESTRUTURA) ---
-        # Tentamos encontrar os nomes exatos ou aproximados para evitar KeyError
+        # --- MAPEAMENTO DINÂMICO DE COLUNAS ---
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'ANALISTA')
         col_sup_base = next((c for c in df_base.columns if c.upper() == 'SUPERVISOR'), 'SUPERVISOR')
         col_vend_base = next((c for c in df_base.columns if c.upper() == 'VENDEDOR'), 'VENDEDOR')
@@ -563,7 +562,7 @@ elif menu == "📊 Dashboard de Controle":
         col_nome_base = next((c for c in df_base.columns if c.upper() == 'NOME 1'), 'Nome 1')
 
         st.subheader("Filtros de Visualização")
-        f_c1, f_c2 = st.columns(2)
+        f_c1, f_c2, f_c3 = st.columns(3) # Adicionado terceira coluna para Vendedor
         
         df_base_filtrada = df_base.copy()
         
@@ -580,20 +579,20 @@ elif menu == "📊 Dashboard de Controle":
 
         # Filtro 2: Supervisor
         with f_c2:
-            if col_sup_base in df_base_filtrada.columns:
-                lista_sups_dash = sorted([str(s) for s in df_base_filtrada[col_sup_base].unique() if pd.notnull(s) and str(s).strip() and str(s).lower() != 'nan'])
-            else:
-                lista_sups_dash = []
-            
+            lista_sups_dash = sorted([str(s) for s in df_base_filtrada[col_sup_base].unique() if pd.notnull(s) and str(s).strip() and str(s).lower() != 'nan'])
             sup_sel_dash = st.selectbox("Escolher Supervisor:", ["Todos"] + lista_sups_dash, key="sup_dash")
             if sup_sel_dash != "Todos":
                 df_base_filtrada = df_base_filtrada[df_base_filtrada[col_sup_base] == sup_sel_dash]
 
+        # Filtro 3: Vendedor (Novo)
+        with f_c3:
+            lista_vends_dash = sorted([str(v) for v in df_base_filtrada[col_vend_base].unique() if pd.notnull(v) and str(v).strip() and str(v).lower() != 'nan'])
+            vend_sel_dash = st.selectbox("Escolher Vendedor:", ["Todos"] + lista_vends_dash, key="vend_dash")
+            if vend_sel_dash != "Todos":
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_vend_base] == vend_sel_dash]
+
         # --- PROCESSAMENTO DE DADOS ---
-        # Pegar o último registro de cada cliente na agenda
         df_reg_agenda = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy().drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
-        
-        # Unir Base com Agenda
         df_base_detalhe = pd.merge(df_base_filtrada, df_reg_agenda, left_on=col_cliente_base, right_on='CÓDIGO CLIENTE', how='left')
         
         df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['REGISTRO'].apply(
@@ -601,23 +600,24 @@ elif menu == "📊 Dashboard de Controle":
         )
         df_base_detalhe['REGISTRO'] = df_base_detalhe['REGISTRO'].fillna("-")
 
-        # Gerar DataFrame para a Tabela Resumo (Dashboard)
-        # Garantimos que a coluna de agrupamento existe
-        if col_sup_base in df_base_filtrada.columns:
-            resumo_base = df_base_filtrada.groupby(col_sup_base).size().reset_index(name='Total na Base')
+        # --- TABELA RESUMO POR VENDEDOR/SUPERVISOR/ANALISTA ---
+        if col_vend_base in df_base_filtrada.columns:
+            # Agrupamento da Base (Hierarquia Completa)
+            resumo_base = df_base_filtrada.groupby([col_ana_base, col_sup_base, col_vend_base]).size().reset_index(name='Total na Base')
             
-            # Filtro da agenda apenas para clientes que estão na base filtrada
+            # Agrupamento da Agenda (Cruzando por Código de Vendedor para garantir precisão)
             agenda_no_filtro = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada[col_cliente_base])]
-            resumo_agenda = agenda_no_filtro.groupby('SUPERVISOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
+            resumo_agenda = agenda_no_filtro.groupby('VENDEDOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
             
-            df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_sup_base, right_on='SUPERVISOR', how='left').fillna(0)
+            # Merge dos dados
+            df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_vend_base, right_on='VENDEDOR', how='left').fillna(0)
             df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
             df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
             df_dash['% Conclusão'] = df_dash.apply(lambda r: f"{(r['Já Agendados']/r['Total na Base']*100):.1f}%" if r['Total na Base'] > 0 else "0.0%", axis=1)
             
-            # Renomear para exibição amigável
-            df_dash_view = df_dash[[col_sup_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']].copy()
-            df_dash_view.columns = ['SUPERVISOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
+            # Exibição com as colunas solicitadas
+            df_dash_view = df_dash[[col_ana_base, col_sup_base, col_vend_base, 'Total na Base', 'Já Agendados', 'Faltando', '% Conclusão']].copy()
+            df_dash_view.columns = ['ANALISTA', 'SUPERVISOR', 'VENDEDOR', 'CLIENTES NA BASE', 'CLIENTES AGENDADOS', 'FALTANDO', '% DE ADESÃO']
             
             st.dataframe(df_dash_view, use_container_width=True, hide_index=True)
             
@@ -630,15 +630,15 @@ elif menu == "📊 Dashboard de Controle":
             c3.metric("Pendente Total", t_base - t_agend)
             c4.metric("% Adesão Total", f"{(t_agend/t_base*100 if t_base > 0 else 0):.1f}%")
         else:
-            st.error(f"Coluna de Supervisor ({col_sup_base}) não encontrada na aba BASE.")
+            st.error("Estrutura de colunas incompleta na aba BASE.")
 
-        # --- RANKING DE ENGAJAMENTO ---
+        # --- RANKING DE ENGAJAMENTO (POR VENDEDOR) ---
         st.markdown("---")
-        st.subheader("🏆 Ranking de Engajamento")
+        st.subheader("🏆 Ranking de Engajamento por Vendedor")
         if not df_dash.empty:
             df_ranking = df_dash_view.copy()
             df_ranking['VALOR_NUM'] = df_ranking['% DE ADESÃO'].str.replace('%', '').astype(float)
-            df_ranking = df_ranking.sort_values(by='VALOR_NUM', ascending=False).reset_index(drop=True)
+            df_ranking = df_ranking.sort_values(by=['VALOR_NUM', 'CLIENTES AGENDADOS'], ascending=False).reset_index(drop=True)
             df_ranking.index += 1
             
             def medalha(pos):
@@ -648,15 +648,16 @@ elif menu == "📊 Dashboard de Controle":
                 return f"{pos}º"
             
             df_ranking['POSIÇÃO'] = [medalha(i) for i in df_ranking.index]
-            st.table(df_ranking[['POSIÇÃO', 'SUPERVISOR', 'CLIENTES AGENDADOS', '% DE ADESÃO']])
+            # Exibindo Ranking com Analista e Supervisor para contexto
+            st.table(df_ranking[['POSIÇÃO', 'VENDEDOR', 'SUPERVISOR', 'ANALISTA', 'CLIENTES AGENDADOS', '% DE ADESÃO']])
 
-        # --- CONVERSÃO DE VENDAS (VOLTANDO A PARTE QUE SUMIU) ---
+        # --- CONVERSÃO DE VENDAS ---
         st.markdown("---")
         st.subheader("🎯 Conversão de Agendamentos em Vendas")
         try:
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
-            col_cod_fat = df_fat.columns[10] # Coluna K
+            col_cod_fat = df_fat.columns[10] 
             
             def limpar_cod(val):
                 return str(val).split('.')[0].strip() if pd.notnull(val) else ""
@@ -685,11 +686,10 @@ elif menu == "📊 Dashboard de Controle":
                 df_convertidos['Data Agendada'] = pd.to_datetime(df_convertidos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
                 df_convertidos['Últ. Faturamento'] = pd.to_datetime(df_convertidos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
-                # Exibição organizada
-                df_view_conv = df_convertidos[[col_cliente_base, col_nome_base, col_ana_base, col_sup_base, 'Data Agendada', 'Últ. Faturamento', 'Qtd_Pedidos']]
+                df_view_conv = df_convertidos[[col_cliente_base, col_nome_base, col_ana_base, col_sup_base, col_vend_base, 'Data Agendada', 'Últ. Faturamento', 'Qtd_Pedidos']]
                 st.dataframe(df_view_conv, use_container_width=True, hide_index=True)
         except Exception as e:
-            st.info("Informações de faturamento indisponíveis para os filtros selecionados.")
+            st.info("Informações de faturamento indisponíveis.")
 
         # --- MAPA DE CALOR ---
         st.markdown("---")
@@ -703,15 +703,14 @@ elif menu == "📊 Dashboard de Controle":
 
             if tipo_mapa == "Visitas Realizadas":
                 df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-                # Aplicar mesmos filtros de Analista/Supervisor na agenda
                 if ana_sel_dash != "Todos":
                     df_mapa = df_mapa[df_mapa['ANALISTA'].astype(str).str.upper() == ana_sel_dash.upper()]
                 if sup_sel_dash != "Todos":
                     df_mapa = df_mapa[df_mapa['SUPERVISOR'] == sup_sel_dash]
-                
+                if vend_sel_dash != "Todos":
+                    df_mapa = df_mapa[df_mapa['VENDEDOR'] == vend_sel_dash]
                 label_peso = None
             else:
-                # Mapa baseado no merge com faturamento (df_comp definido acima)
                 df_mapa = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
                 label_peso = 'Qtd_Pedidos'
 
@@ -719,14 +718,11 @@ elif menu == "📊 Dashboard de Controle":
                 df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
                 centro = [df_mapa['lat'].mean(), df_mapa['lon'].mean()]
                 m = folium.Map(location=centro, zoom_start=7, tiles="cartodbpositron")
-                
                 dados_calor = df_mapa[['lat', 'lon', label_peso]].values.tolist() if label_peso else df_mapa[['lat', 'lon']].values.tolist()
                 HeatMap(dados_calor, radius=15).add_to(m)
                 st_folium(m, width="100%", height=500, returned_objects=[])
-            else:
-                st.info("Sem dados geográficos para exibir com os filtros atuais.")
         except:
-            st.info("Módulo de mapa aguardando dados válidos.")
+            st.info("Aguardando coordenadas válidas.")
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
