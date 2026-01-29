@@ -811,7 +811,14 @@ elif menu == "📋 Novo Agendamento":
 
         if sup_sel != "Selecione...":
             clientes_f = df_base[df_base[col_rv_base] == sup_sel]
-            codigos_agendados = df_agenda[df_agenda['SUPERVISOR'] == sup_sel]['CÓDIGO CLIENTE'].unique()
+            
+            # AJUSTE AQUI: Considerar apenas clientes que possuem agendamentos ativos (Planejado ou Realizado)
+            # Clientes com status 'Reprovado' são ignorados nesta lista e voltam a ficar disponíveis.
+            codigos_agendados = df_agenda[
+                (df_agenda['SUPERVISOR'] == sup_sel) & 
+                (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
+            ]['CÓDIGO CLIENTE'].unique()
+            
             clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
             
             m1, m2, m3, m4 = st.columns(4)
@@ -870,7 +877,6 @@ elif menu == "📋 Novo Agendamento":
                             st.success(f"✅ {qtd_visitas} visita(s) salva(s)!")
                             time.sleep(1)
                             st.rerun()
-
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
