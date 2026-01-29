@@ -608,8 +608,8 @@ if menu == "📅 Agendamentos do Dia":
                     )
                 
                 if sucesso:
-                    st.success(f"Parabéns {user_atual}! Rota finalizada e e-mail enviado para Lycio Oliveira.")
-                    st.balloons()
+                    st.success(f"Parabéns {user_atual}! Rota finalizada e e-mail enviado.")
+                    #st.balloons()
                 else:
                     st.error("Erro ao enviar e-mail. Verifique se as credenciais SMTP estão configuradas nos Secrets.")
 
