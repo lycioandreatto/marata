@@ -613,10 +613,11 @@ elif menu == "📊 Dashboard de Controle":
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
             df_skus_ref.columns = [str(c).strip() for c in df_skus_ref.columns]
 
-            # Mapeamento Inteligente de Colunas (Evita erro de index)
+            # --- MAPEAMENTO INTELIGENTE (CORREÇÃO DO ERRO 'DESCRIÇÃO') ---
             col_h_ref = next((c for c in df_skus_ref.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
             col_sku_ref = next((c for c in df_skus_ref.columns if any(x in c.upper() for x in ["SKU", "ARTIGO"])), "SKU")
-            col_desc_ref = next((c for c in df_skus_ref.columns if any(x in c.upper() for x in ["DESC", "TEXTO", "NOME"])), "DESCRIÇÃO")
+            # Busca dinâmica: Aceita DESCRIÇÃO, DESCRICAO, DESC. ou TEXTO
+            col_desc_ref = next((c for c in df_skus_ref.columns if any(x in c.upper() for x in ["DESC", "TEXTO", "NOME"])), col_sku_ref)
 
             def agrupar_hierarquia(nome):
                 n = str(nome).upper().strip()
@@ -683,6 +684,7 @@ elif menu == "📊 Dashboard de Controle":
                             df_falta = df_skus_ref[~df_skus_ref[col_sku_ref].isin(ja_comprou_cods)][cols_sel].copy()
                             df_tem = df_skus_ref[df_skus_ref[col_sku_ref].isin(ja_comprou_cods)][cols_sel].copy()
                             
+                            # EXCEL: Estrutura por abas
                             aba = f"CLI_{c_l}"[:31]
                             pd.DataFrame([["CLIENTE:", info_cli[col_nome_base], "CÓDIGO:", cod]]).to_excel(writer, aba, index=False, header=False, startrow=0)
                             pd.DataFrame([["--- PRODUTOS QUE FALTAM (GAP) ---"]]).to_excel(writer, aba, index=False, header=False, startrow=2)
@@ -692,7 +694,7 @@ elif menu == "📊 Dashboard de Controle":
                             pd.DataFrame([["--- PRODUTOS JÁ COMPRADOS ---"]]).to_excel(writer, aba, index=False, header=False, startrow=row_tem)
                             df_tem.to_excel(writer, aba, index=False, startrow=row_tem + 1)
 
-                            # PDF
+                            # PDF: Relatório simples
                             pdf.add_page()
                             pdf.set_font("Arial", 'B', 14)
                             pdf.cell(0, 10, f"Mix: {info_cli[col_nome_base]}", ln=True, align='C')
@@ -706,7 +708,8 @@ elif menu == "📊 Dashboard de Controle":
                     with c_btn1:
                         st.download_button("📊 Baixar Excel", output_ex.getvalue(), "Gap_Mix.xlsx", "application/vnd.ms-excel")
                     with c_btn2:
-                        st.download_button("📄 Baixar PDF", pdf.output(dest='S').encode('latin-1', 'replace'), "Sugestao_Mix.pdf", "application/pdf")
+                        pdf_output = pdf.output(dest='S').encode('latin-1', 'replace')
+                        st.download_button("📄 Baixar PDF", pdf_output, "Sugestao_Mix.pdf", "application/pdf")
 
                 st.info(f"📊 Meta do Mix: {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
 
@@ -731,7 +734,8 @@ elif menu == "📊 Dashboard de Controle":
                 m = folium.Map(location=[df_mapa['lat'].mean(), df_mapa['lon'].mean()], zoom_start=7, tiles="cartodbpositron")
                 HeatMap(df_mapa[['lat', 'lon']].dropna().values.tolist(), radius=15).add_to(m)
                 st_folium(m, width="100%", height=500, returned_objects=[])
-        except: st.info("Aguardando coordenadas válidas.")
+        except: 
+            st.info("Aguardando coordenadas válidas.")
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
