@@ -902,29 +902,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         else:
             df_user = df_agenda[df_agenda['SUPERVISOR'] == user_atual].copy()
 
-        # --- PAINEL DE APROVAÇÃO EM MASSA (APENAS GESTÃO) ---
-        if (is_admin or is_diretoria or is_analista) and not df_user.empty:
-            with st.expander("⚖️ Painel de Aprovação de Agendas", expanded=False):
-                col_ap1, col_ap2 = st.columns(2)
-                sups_na_lista = sorted(df_user['SUPERVISOR'].unique())
-                sup_alvo = col_ap1.selectbox("Selecionar Supervisor para Ação em Massa:", ["Todos"] + sups_na_lista)
-                obs_massa = st.text_area("Observação/Comentário para o Supervisor:", placeholder="Ex: Ajustar rota de quarta-feira...")
-                
-                btn_col1, btn_col2, _ = st.columns([1,1,2])
-                if btn_col1.button("✅ Aprovar Selecionados", use_container_width=True):
-                    mask = df_agenda['SUPERVISOR'] == sup_alvo if sup_alvo != "Todos" else df_agenda['SUPERVISOR'].isin(sups_na_lista)
-                    df_agenda.loc[mask, 'APROVACAO'] = "Aprovado"
-                    df_agenda.loc[mask, 'OBS_GESTAO'] = obs_massa
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA'], errors='ignore'))
-                    st.success("Agendas aprovadas!"); time.sleep(1); st.rerun()
-                
-                if btn_col2.button("❌ Reprovar e Liberar Clientes", use_container_width=True):
-                    # Reprovar remove da agenda para voltarem a ficar disponíveis
-                    mask_reprovar = df_agenda['SUPERVISOR'] == sup_alvo if sup_alvo != "Todos" else df_agenda['SUPERVISOR'].isin(sups_na_lista)
-                    df_final = df_agenda[~mask_reprovar].drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
-                    st.warning(f"Agendas de {sup_alvo} reprovadas e removidas."); time.sleep(1); st.rerun()
-
         if not df_user.empty:
             # --- CÁLCULO DOS CONTADORES ---
             def extrair_dist(val):
@@ -957,7 +934,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             st.markdown("---")
 
-            # --- SEÇÃO DE PREVISIBILIDADE ---
+            # --- SEÇÃO DE PREVISIBILIDADE (IA INSIGHTS) ---
             if is_admin or is_diretoria or is_analista:
                 st.subheader("🧠 Insights de Previsibilidade")
                 df_hist = df_user.copy()
@@ -984,6 +961,31 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                 st.markdown("---")
 
+            # --- PAINEL DE APROVAÇÃO (POSICIONADO ABAIXO DO GRÁFICO E ACIMA DA TABELA) ---
+            if (is_admin or is_diretoria or is_analista) and not df_user.empty:
+                with st.expander("⚖️ Painel de Aprovação de Agendas", expanded=True):
+                    col_ap1, col_ap2 = st.columns(2)
+                    sups_na_lista = sorted(df_user['SUPERVISOR'].unique())
+                    sup_alvo = col_ap1.selectbox("Selecionar Supervisor para Ação em Massa:", ["Todos"] + sups_na_lista)
+                    obs_massa = col_ap2.text_input("Observação/Comentário para o Supervisor:")
+                    
+                    btn_col1, btn_col2, _ = st.columns([1.5, 1.5, 7])
+                    if btn_col1.button("✅ Aprovar Selecionados", key="mass_app"):
+                        mask = df_agenda['SUPERVISOR'] == sup_alvo if sup_alvo != "Todos" else df_agenda['SUPERVISOR'].isin(sups_na_lista)
+                        df_agenda.loc[mask, 'APROVACAO'] = "Aprovado"
+                        df_agenda.loc[mask, 'OBS_GESTAO'] = obs_massa
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA'], errors='ignore'))
+                        st.cache_data.clear()
+                        st.success(f"Agendas de {sup_alvo} aprovadas!"); time.sleep(1); st.rerun()
+                    
+                    if btn_col2.button("❌ Reprovar e Liberar", key="mass_rej"):
+                        mask_reprovar = df_agenda['SUPERVISOR'] == sup_alvo if sup_alvo != "Todos" else df_agenda['SUPERVISOR'].isin(sups_na_lista)
+                        df_final = df_agenda[~mask_reprovar].drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA'], errors='ignore')
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
+                        st.cache_data.clear()
+                        st.warning(f"Agendas de {sup_alvo} removidas (clientes liberados)."); time.sleep(1); st.rerun()
+                st.markdown("---")
+
             # Trazer Cidade
             if df_base is not None and 'CIDADE' not in df_user.columns:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
@@ -1004,7 +1006,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 with pd.ExcelWriter(buffer_ex, engine='xlsxwriter') as writer:
                     df_export.to_excel(writer, index=False, sheet_name='Agenda')
                 st.download_button(label="📥 Excel", data=buffer_ex.getvalue(), 
-                                   file_name=f"Agenda_{user_atual}_{datetime.now().strftime('%d_%m')}.xlsx", mime="application/vnd.ms-excel")
+                                   file_name=f"Agenda_{user_atual}.xlsx", mime="application/vnd.ms-excel")
 
             with exp_col2:
                 try:
@@ -1030,14 +1032,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 if row['APROVACAO'] == "Aprovado": return ['background-color: #d4efdf'] * len(row)
                 return [''] * len(row)
 
-            cols_display = ['AÇÃO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'STATUS', 'APROVACAO', 'OBS_GESTAO', 'dist_val_calc']
+            cols_display = ['AÇÃO', 'DATA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'STATUS', 'APROVACAO', 'OBS_GESTAO']
             df_display = df_user[cols_display].copy()
             df_styled = df_display.style.apply(style_agenda, axis=1)
 
             config_col = {
                 "AÇÃO": st.column_config.CheckboxColumn("📌"),
-                "dist_val_calc": None,
-                "APROVACAO": st.column_config.SelectboxColumn("Status", options=["Pendente", "Aprovado", "Reprovado"])
+                "APROVACAO": st.column_config.TextColumn("Status")
             }
 
             edicao_user = st.data_editor(
@@ -1061,7 +1062,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 current_tab = 0
                 if is_admin or is_diretoria or is_analista:
                     with tabs[current_tab]:
-                        st.write("Definir status individual desta linha:")
                         nova_ap = st.selectbox("Decisão:", ["Aprovado", "Reprovado"], key="ind_ap")
                         nova_obs = st.text_input("Motivo/Obs:", value=sel_row['OBS_GESTAO'])
                         if st.button("Salvar Decisão"):
