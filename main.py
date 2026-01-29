@@ -453,11 +453,11 @@ if menu == "📅 Agendamentos do Dia":
             def style_status(row):
                 styles = [''] * len(row)
                 if row['STATUS'] == "Realizado":
-                    # Se houver distância salva e for maior que 500m
+                    # Se houver distância salva e for maior que 50m
                     dist_str = str(row.get('DISTANCIA_LOG', '0')).replace('m', '').replace('Erro GPS', '0')
                     try:
                         dist_val = float(dist_str) if dist_str != 'nan' else 0
-                        if dist_val > 500:
+                        if dist_val > 50:
                             # COR LARANJA para alertas de distância
                             return ['color: #E67E22; font-weight: bold'] * len(row)
                     except:
@@ -922,8 +922,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             if is_admin or is_diretoria or is_analista:
                 cols = st.columns(4)
-                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
-                cols[3].metric("📍 Fora do Raio (>500m)", fora_raio, 
+                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 50)])
+                cols[3].metric("📍 Fora do Raio (>50m)", fora_raio, 
                               delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
                               delta_color="inverse")
             else:
@@ -1005,7 +1005,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             def style_agenda_completa(row):
                 styles = [''] * len(row)
                 if row['STATUS'] == "Realizado":
-                    if row['dist_val_calc'] > 500:
+                    if row['dist_val_calc'] > 50:
                         return ['color: #E67E22; font-weight: bold'] * len(row)
                     return ['color: green; font-weight: bold'] * len(row)
                 return styles
