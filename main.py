@@ -222,11 +222,11 @@ def carregar_dados():
 df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
 # --- CONFIGURAÇÃO DE ACESSOS (EDITE AQUI) ---
-NOME_ADMIN = "SEU_NOME"         # Você (Admin)
-NOME_DIRETORIA = "ALDO"         # Aldo
-LISTA_ANALISTA = ["ANALISTA1", "ANALISTA2"] 
-LISTA_SUPERVISORES = ["SUPERVISOR1", "SUPERVISOR2"] 
-LISTA_VENDEDORES = ["VENDEDOR1", "VENDEDOR2"]     
+NOME_ADMIN = "lycio"         # Você (Admin)
+NOME_DIRETORIA = "aldo"         # Aldo
+LISTA_ANALISTA = ["Barbara", "Thais","Allana","Roberio","Regiane","Carol"] 
+LISTA_SUPERVISORES = ["Francisco", "Teste"] 
+LISTA_VENDEDORES = ["Carlos Antonio", "Rita", "Saraiva","Jose Carlos"]     
 
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
