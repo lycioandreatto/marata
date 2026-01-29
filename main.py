@@ -649,22 +649,23 @@ elif menu == "📊 Dashboard de Controle":
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
             col_cod_cliente_fat = df_fat.columns[10] # Coluna K
             col_pedidos = "OrdCliente"
+            col_data_fat_col = "Data fat."
 
-            # --- TRATAMENTO BLINDADO (O segredo está aqui) ---
+            # --- TRATAMENTO BLINDADO ---
             def limpar_codigo(id_cliente):
                 if pd.isna(id_cliente): return ""
-                # Remove o .0 se o Excel leu como número, remove espaços e converte para string
                 return str(id_cliente).split('.')[0].strip()
 
             df_fat['Cod_Limpo'] = df_fat[col_cod_cliente_fat].apply(limpar_codigo)
             
-            # 4. Agrupamento por código limpo
+            # 4. Agrupamento: Pegamos a Qtd de pedidos e a ÚLTIMA data de faturamento
             df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
-                col_pedidos: 'nunique' 
+                col_pedidos: 'nunique',
+                col_data_fat_col: 'max'
             }).reset_index()
-            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos']
+            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat']
 
-            # 5. Cruzamento com a Agenda (também limpando o código da base)
+            # 5. Cruzamento com a Agenda
             df_base_detalhe['Cliente_Limpo'] = df_base_detalhe['Cliente'].apply(limpar_codigo)
             
             df_comp = pd.merge(
@@ -676,8 +677,7 @@ elif menu == "📊 Dashboard de Controle":
             ).fillna(0)
 
             # --- 6. CÁLCULO DOS INDICADORES ---
-            # Filtramos apenas o que o usuário selecionou no dashboard (Analista/Supervisor)
-            df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO']
+            df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'].copy()
             
             total_na_agenda = len(df_agendados_ativos)
             agendados_que_compraram = len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
@@ -685,16 +685,39 @@ elif menu == "📊 Dashboard de Controle":
             
             taxa_conversao = (agendados_que_compraram / total_na_agenda * 100) if total_na_agenda > 0 else 0
 
-            # 7. EXIBIÇÃO
+            # 7. EXIBIÇÃO CARDS
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Clientes Agendados", total_na_agenda)
             c2.metric("Agendados que Compraram", agendados_que_compraram)
             c3.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
             c4.metric("Total de Pedidos (Agenda)", int(total_pedidos_agenda))
 
-            # 8. Tabela de Apoio para conferência
-            with st.expander("Ver detalhes da conversão"):
-                st.dataframe(df_agendados_ativos[['Cliente', 'Nome 1', 'Qtd_Pedidos', 'STATUS AGENDAMENTO']])
+            # 8. Tabela de Apoio para conferência (ATUALIZADA)
+            with st.expander("🔍 Ver detalhes da conversão (Auditoria)"):
+                # Formatação das datas para o padrão brasileiro
+                df_agendados_ativos['Data_Agendada_Format'] = pd.to_datetime(df_agendados_ativos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
+                df_agendados_ativos['Data_Fat_Format'] = pd.to_datetime(df_agendados_ativos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
+                
+                # Seleção das colunas solicitadas
+                df_view = df_agendados_ativos[[
+                    'Cliente', 
+                    'Nome 1', 
+                    col_ana_base, 
+                    'Data_Agendada_Format', 
+                    'Data_Fat_Format', 
+                    'Qtd_Pedidos'
+                ]]
+                
+                st.dataframe(
+                    df_view.rename(columns={
+                        'Nome 1': 'Nome do Cliente',
+                        col_ana_base: 'Analista',
+                        'Data_Agendada_Format': 'Data Agendada',
+                        'Data_Fat_Format': 'Data Faturamento'
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
         except Exception as e:
             st.error(f"Erro no processamento: {e}")
