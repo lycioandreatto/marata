@@ -12,6 +12,53 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def enviar_resumo_rota(email_destinatario, vendedor, data_rota, df_rota_vendedor):
+    """
+    Função para enviar o resumo da rota por e-mail.
+    """
+    # Configurações do Servidor (Exemplo Gmail)
+    # Recomendo usar st.secrets para não deixar a senha exposta
+    usuario_email = "seu_email@gmail.com" 
+    senha_email = "sua_senha_app" # Senha de App do Google
+
+    msg = MIMEMultipart()
+    msg['From'] = usuario_email
+    msg['To'] = email_destinatario
+    msg['Subject'] = f"Resumo de Rota - {vendedor} - {data_rota}"
+
+    # Criar o corpo do e-mail com a tabela de clientes
+    corpo_html = f"""
+    <h3>Resumo de Agendamentos</h3>
+    <p><b>Vendedor:</b> {vendedor}</p>
+    <p><b>Data:</b> {data_rota}</p>
+    <table border="1" style="border-collapse: collapse;">
+        <tr style="background-color: #f2f2f2;">
+            <th>Cliente</th>
+            <th>Status</th>
+        </tr>
+    """
+    
+    for _, row in df_rota_vendedor.iterrows():
+        corpo_html += f"<tr><td>{row['CLIENTE']}</td><td>{row['STATUS']}</td></tr>"
+    
+    corpo_html += "</table>"
+    msg.attach(MIMEText(corpo_html, 'html'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(usuario_email, senha_email)
+        server.sendmail(usuario_email, email_destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Erro ao enviar e-mail: {e}")
+        return False
+
 def calcular_distancia(lat1, lon1, lat2, lon2):
     # Raio da Terra em KM
     R = 6371.0
