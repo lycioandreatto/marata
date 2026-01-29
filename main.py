@@ -1309,30 +1309,36 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
 
-            # 2. LÓGICA DE METAS - O PONTO CHAVE
-            # Se NÃO detalhou por Supervisor ou Vendedor -> Busca o Nome do Analista
-            if not (sel_supervisor or sel_vendedor):
-                # Identifica qual analista estamos olhando (o selecionado ou o que restou no DF)
-                analistas_na_tela = sel_analista if sel_analista else df_f['ANALISTA'].dropna().unique().tolist()
-                nomes_para_busca = [str(x).upper() for x in analistas_na_tela]
+            # 2. LÓGICA DE METAS - FOCO NO NOME DO ANALISTA
+            
+            # Caso 1: Visão Geral ou Analista Selecionado (Sem detalhar supervisor/vendedor)
+            if not sel_supervisor and not sel_vendedor:
+                # Se filtrou analista, usa o filtro. Se não, pega o analista que está no dataframe.
+                nome_analista_alvo = ""
+                if sel_analista:
+                    nome_analista_alvo = str(sel_analista[0]).upper().strip()
+                elif 'ANALISTA' in df_f.columns and not df_f['ANALISTA'].dropna().empty:
+                    nome_analista_alvo = str(df_f['ANALISTA'].dropna().iloc[0]).upper().strip()
                 
-                dados_meta = df_metas_cob[df_metas_cob['RG'].isin(nomes_para_busca)]
+                # Busca a linha exata onde o RG é o nome do Analista
+                dados_meta = df_metas_cob[df_metas_cob['RG'] == nome_analista_alvo]
                 
-                # Se achou a linha com o nome do analista, usa ela. Se não (fallback), soma RGs.
                 if not dados_meta.empty:
-                    base_total = dados_meta['BASE'].sum()
-                    meta_val = dados_meta['META'].mean()
+                    base_total = dados_meta['BASE'].iloc[0] # Pega o valor da célula, não soma
+                    meta_val = dados_meta['META'].iloc[0]   # Pega o valor da célula
                 else:
+                    # Se não achar o nome do analista na aba de metas, volta pro calculo por RG
                     vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
-                    dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
-                    base_total = dados_meta['BASE'].sum()
-                    meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
+                    dados_meta_vends = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+                    base_total = dados_meta_vends['BASE'].sum()
+                    meta_val = dados_meta_vends['META'].mean() if not dados_meta_vends.empty else 0
+            
+            # Caso 2: Visão de Supervisor ou Vendedor (Soma os RGs individuais)
             else:
-                # Se detalhou por Supervisor ou Vendedor -> Soma RGs individuais
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
-                dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
-                base_total = dados_meta['BASE'].sum()
-                meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
+                dados_meta_vends = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+                base_total = dados_meta_vends['BASE'].sum()
+                meta_val = dados_meta_vends['META'].mean() if not dados_meta_vends.empty else 0
             
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
