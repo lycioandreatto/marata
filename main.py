@@ -628,12 +628,14 @@ if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, ty
         'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
     }
     
-    with st.spinner(f"Enviando para: {analista_encontrado}..."):
-        sucesso = enviar_resumo_rota(
-            destinatarios_lista=string_destinatarios,
-            vendedor=user_atual,
-            dados_resumo=resumo_dados
-        )
+    with st.spinner(f"Enviando resumo para {analista_encontrado}..."):
+            # O ERRO ESTAVA AQUI: Faltava o nome_analista
+            sucesso = enviar_resumo_rota(
+                destinatarios_lista=string_destinatarios,
+                vendedor=user_atual,
+                dados_resumo=resumo_dados,
+                nome_analista=analista_encontrado  # <--- ADICIONE ESTA LINHA
+            )
     
     if sucesso:
         st.success(f"Rota finalizada! E-mail enviado para: {string_destinatarios}")
