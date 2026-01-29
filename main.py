@@ -952,7 +952,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             df_export = df_user[cols_v].copy()
             
-            exp_col1, exp_col2, exp_col3 = st.columns([1, 1, 4])
+            exp_col1, exp_col2, exp_col3 = st.columns([1, 1, 8])
             
             with exp_col1:
                 # Exportar para Excel
