@@ -653,14 +653,24 @@ elif menu == "📊 Dashboard de Controle":
         try:
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
-            col_cod_fat = df_fat.columns[10] 
+            col_cod_fat = df_fat.columns[10] # Coluna K
+            
+            # Mapeamento da coluna de Hierarquia de produtos
+            col_hierarquia = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
             
             def limpar_cod(val):
                 return str(val).split('.')[0].strip() if pd.notnull(val) else ""
 
             df_fat['Cod_Limpo'] = df_fat[col_cod_fat].apply(limpar_cod)
-            df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({'OrdCliente': 'nunique', 'Data fat.': 'max'}).reset_index()
-            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat']
+            
+            # Agrupamento contando Pedidos Únicos, Data Máxima e Hierarquias Únicas
+            df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
+                'OrdCliente': 'nunique', 
+                'Data fat.': 'max',
+                col_hierarquia: 'nunique' # CONTAGEM DE HIERARQUIAS SOLICITADA
+            }).reset_index()
+            
+            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat', 'Qtd_Hierarquias']
 
             df_base_detalhe['Cliente_Limpo'] = df_base_detalhe[col_cliente_base].apply(limpar_cod)
             df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
@@ -682,10 +692,21 @@ elif menu == "📊 Dashboard de Controle":
                 df_convertidos['Data Agendada'] = pd.to_datetime(df_convertidos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
                 df_convertidos['Últ. Faturamento'] = pd.to_datetime(df_convertidos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
-                df_view_conv = df_convertidos[[col_cliente_base, col_nome_base, col_ana_base, col_sup_base, col_vend_base, 'Data Agendada', 'Últ. Faturamento', 'Qtd_Pedidos']]
+                # Exibição com a nova coluna de Hierarquias
+                df_view_conv = df_convertidos[[
+                    col_cliente_base, col_nome_base, col_ana_base, col_sup_base, col_vend_base, 
+                    'Data Agendada', 'Últ. Faturamento', 'Qtd_Pedidos', 'Qtd_Hierarquias'
+                ]]
+                
+                # Renomear para exibição mais bonita
+                df_view_conv.columns = [
+                    'CÓDIGO', 'NOME', 'ANALISTA', 'SUPERVISOR', 'VENDEDOR', 
+                    'AGENDADO EM', 'ÚLT. FATURAMENTO', 'PEDIDOS', 'TOTAL HIERARQUIAS'
+                ]
+                
                 st.dataframe(df_view_conv, use_container_width=True, hide_index=True)
-        except:
-            st.info("Informações de faturamento indisponíveis no momento.")
+        except Exception as e:
+            st.info(f"Informações de faturamento indisponíveis no momento.")
 
         # --- MAPA DE CALOR ---
         st.markdown("---")
