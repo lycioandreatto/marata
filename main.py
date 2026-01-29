@@ -692,14 +692,18 @@ elif menu == "📊 Dashboard de Controle":
             c3.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
             c4.metric("Total de Pedidos (Agenda)", int(total_pedidos_agenda))
 
-            # 8. Tabela de Apoio para conferência (ATUALIZADA)
+            # 8. Tabela de Apoio para conferência (FILTRADA PARA QUEM COMPROU)
             with st.expander("🔍 Ver detalhes da conversão (Auditoria)"):
+                
+                # --- ALTERAÇÃO AQUI: Filtrando para mostrar apenas quem tem pedidos > 0 ---
+                df_convertidos = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
+                
                 # Formatação das datas para o padrão brasileiro
-                df_agendados_ativos['Data_Agendada_Format'] = pd.to_datetime(df_agendados_ativos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
-                df_agendados_ativos['Data_Fat_Format'] = pd.to_datetime(df_agendados_ativos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
+                df_convertidos['Data_Agendada_Format'] = pd.to_datetime(df_convertidos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
+                df_convertidos['Data_Fat_Format'] = pd.to_datetime(df_convertidos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
                 # Seleção das colunas solicitadas
-                df_view = df_agendados_ativos[[
+                df_view = df_convertidos[[
                     'Cliente', 
                     'Nome 1', 
                     col_ana_base, 
