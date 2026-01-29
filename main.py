@@ -223,7 +223,6 @@ df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 
 # --- SISTEMA DE ACESSO ---
 if "logado" not in st.session_state:
-    # Verifica se existe cookie de login salvo
     if "user_marata" in cookies:
         st.session_state.logado = True
         st.session_state.usuario = cookies["user_marata"]
@@ -232,7 +231,6 @@ if "logado" not in st.session_state:
         st.session_state.usuario = ""
 
 if not st.session_state.logado:
-    # Este bloco cria um "container" onde a logo e o texto ficam lado a lado
     st.markdown(
         """
         <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
@@ -244,7 +242,7 @@ if not st.session_state.logado:
     )
 
     tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
-    # ... resto do código ...
+    
     with tab_login:
         with st.form("login_form"):
             u_login = st.text_input("Usuário:").strip().upper()
@@ -285,21 +283,25 @@ if not st.session_state.logado:
                             novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
                             df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
                             conn.update(spreadsheet=url_planilha, worksheet="USUARIOS", data=df_final_u)
-                            st.success("Cadastro realizado! Agora você pode fazer o login.")
+                            st.success("Cadastro realizado!")
                             st.cache_data.clear()
                         else:
                             st.error("Este usuário já está cadastrado.")
                 else:
                     st.warning("Preencha todos os campos.")
     st.stop()
-# Se o código chegou aqui, o usuário está logado.
-# Verificamos se a localização já foi capturada nesta sessão.
+
+# --- DEFINIÇÃO DE PERFIS (Movido para antes do GPS para validar a regra) ---
+user_atual = st.session_state.usuario
+is_admin = (user_atual == NOME_ADMIN.upper())
+is_analista = (user_atual in LISTA_ANALISTA)
+is_diretoria = (user_atual == NOME_DIRETORIA.upper())
+eh_gestao = is_admin or is_analista or is_diretoria
+
+# --- VALIDAÇÃO DE GPS ---
 if "lat" not in st.session_state:
     with st.container():
-        # Aviso visual para o usuário autorizar o navegador
-        st.info("📡 **Conectando...** Por favor, autorize a localização no seu navegador para carregar o sistema.")
-        
-        # Chama a função do seu arquivo geoloc.py
+        # Captura as coordenadas
         lat, lon = capturar_coordenadas()
         
         if lat and lon:
@@ -307,43 +309,35 @@ if "lat" not in st.session_state:
             st.session_state.lon = lon
             st.success(f"📍 GPS Ativo: {lat:.4f}, {lon:.4f}")
             time.sleep(1) 
-            st.rerun() # Recarrega para limpar a mensagem e carregar o menu
+            st.rerun()
         else:
-            st.warning("⚠️ **Acesso Negado ou GPS Desligado.** O sistema Maratá exige geolocalização para registro de visitas.")
-            if st.button("🔄 Tentar capturar novamente"):
+            # SE NÃO TIVER GPS:
+            if eh_gestao:
+                # Se for você, Aldo ou Analista, define coordenadas fakes e libera
+                st.session_state.lat = 0.0
+                st.session_state.lon = 0.0
+                st.info("ℹ️ Gestão logada: GPS ignorado.")
                 st.rerun()
-            st.stop() # Bloqueia o carregamento do Menu e Dados se não tiver GPS
+            else:
+                # Se for supervisor, bloqueia de verdade
+                st.warning("⚠️ **Acesso Negado.** O sistema Maratá exige geolocalização para Supervisores.")
+                if st.button("🔄 Tentar capturar novamente"):
+                    st.rerun()
+                st.stop()
 
-# ==============================================================================
-# O RESTO DO SEU CÓDIGO CONTINUA ABAIXO:
-# ==============================================================================
-
-# --- PERFIL DO USUÁRIO ---
-user_atual = st.session_state.usuario
-# ...
-# --- PERFIL DO USUÁRIO ---
-user_atual = st.session_state.usuario
-is_admin = (user_atual == NOME_ADMIN.upper())
-is_analista = (user_atual in LISTA_ANALISTA)
-is_diretoria = (user_atual == NOME_DIRETORIA.upper())
-
-# Definindo ícone e label com base no perfil
+# --- CONFIGURAÇÃO VISUAL DO PERFIL ---
 if is_admin:
     label_display = "ADMINISTRADOR"
-    user_icon = "👑"
-    border_color = "#FFD700"  # Dourado para ADM
+    user_icon = "👑"; border_color = "#FFD700"
 elif is_diretoria:
     label_display = f"{user_atual} | DIRETORIA"
-    user_icon = "📈"
-    border_color = "#1E90FF"
+    user_icon = "📈"; border_color = "#1E90FF"
 elif is_analista:
     label_display = f"{user_atual} | ANALISTA"
-    user_icon = "🔬"
-    border_color = "#9370DB"
+    user_icon = "🔬"; border_color = "#9370DB"
 else:
     label_display = f"{user_atual} | SUPERVISOR"
-    user_icon = "👤"
-    border_color = "#ff4b4b"
+    user_icon = "👤"; border_color = "#ff4b4b"
 
 # --- BARRA LATERAL ---
 with st.sidebar:
