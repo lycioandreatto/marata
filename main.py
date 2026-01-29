@@ -14,12 +14,23 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
-def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
+# --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
+MAPA_EMAILS = {
+    "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br"],
+    "THAIS": ["thais.oliveira@marata.com.br"],
+    "REGIANE": ["regiane.santana@marata.com.br"],
+    "ALLANA": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br"],
+    "ROBERIO": ["roberio@marata.com.br", "dione.lima@marata.com.br"]
+}
+
+# E-mails que sempre recebem
+EMAILS_GESTAO = ["aldo@marata.com.br", "lycio.oliveira@marata.com.br"]
+
+def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo):
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     try:
-        # AJUSTADO PARA OS SEUS SECRETS:
         email_origem = st.secrets["email"]["sender_email"]
         senha_origem = st.secrets["email"]["sender_password"]
         smtp_server = st.secrets["email"]["smtp_server"]
@@ -27,30 +38,34 @@ def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
         
         msg = MIMEMultipart()
         msg['From'] = email_origem
-        msg['To'] = destinatario
+        # Aqui o 'destinatarios_lista' será algo como "email1@... , email2@..."
+        msg['To'] = destinatarios_lista 
         msg['Subject'] = f"Resumo de Rota Finalizada - {vendedor}"
 
         corpo = f"""
         Olá, Gestão Maratá,
         
-        O vendedor {vendedor} finalizou a rota.
+        O vendedor {vendedor} acaba de finalizar a rota do dia.
         
         RESUMO:
-        - Clientes: {dados_resumo['total']}
-        - Realizados: {dados_resumo['realizados']}
-        - Pedidos: {dados_resumo['pedidos']}
+        - Total de Clientes: {dados_resumo['total']}
+        - Visitas Realizadas: {dados_resumo['realizados']}
+        - Visitas com Pedido: {dados_resumo['pedidos']}
         - Pendentes: {dados_resumo['pendentes']}
+        
+        E-mail enviado automaticamente pelo Sistema GVP.
         """
         msg.attach(MIMEText(corpo, 'plain'))
 
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
         server.login(email_origem, senha_origem)
-        server.sendmail(email_origem, destinatario, msg.as_string())
+        # O sendmail precisa de uma lista real, o split(',') resolve isso
+        server.sendmail(email_origem, destinatarios_lista.split(','), msg.as_string())
         server.quit()
         return True
     except Exception as e:
-        st.error(f"Erro detalhado: {e}") # Isso vai mostrar o erro real na tela
+        st.error(f"Erro detalhado no envio: {e}")
         return False
 
 # --- CONTINUAÇÃO DO SEU CÓDIGO (calcular_distancia, etc) ---
@@ -585,28 +600,45 @@ if menu == "📅 Agendamentos do Dia":
                     st.success("Dados atualizados!"); time.sleep(1); st.rerun()
 
             # --- BOTÃO ROTA FINALIZADA ---
-            st.markdown("---")
-            if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                # Cálculo do resumo conforme solicitado
-                resumo_dados = {
-                    'total': len(df_dia),
-                    'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
-                    'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
-                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
-                }
-                
-                with st.spinner("Enviando resumo por e-mail..."):
-                    sucesso = enviar_resumo_rota(
-                        destinatario="lycio.oliveira@marata.com.br",
-                        vendedor=user_atual,
-                        dados_resumo=resumo_dados
-                    )
-                
-                if sucesso:
-                    st.success(f"Parabéns {user_atual}! Rota finalizada e e-mail enviado para Lycio Oliveira.")
-                    st.balloons()
-                else:
-                    st.error("Erro ao enviar e-mail. Verifique se as credenciais SMTP estão configuradas nos Secrets.")
+           # --- BOTÃO ROTA FINALIZADA ---
+st.markdown("---")
+if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
+    
+    # 1. Busca o Analista do Vendedor na aba BASE
+    try:
+        # Filtra na base onde o vendedor é o usuário logado e pega o nome do analista
+        analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual]['ANALISTA'].iloc[0].upper().strip()
+    except:
+        analista_encontrado = "NÃO LOCALIZADO"
+
+    # 2. Monta a lista de e-mails
+    lista_final = EMAILS_GESTAO.copy() # Começa com Aldo e Lycio
+    
+    if analista_encontrado in MAPA_EMAILS:
+        lista_final.extend(MAPA_EMAILS[analista_encontrado])
+    
+    # Transforma a lista em string separada por vírgula para o campo 'To' do e-mail
+    string_destinatarios = ", ".join(lista_final)
+
+    resumo_dados = {
+        'total': len(df_dia),
+        'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
+        'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
+        'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
+    }
+    
+    with st.spinner(f"Enviando para: {analista_encontrado}..."):
+        sucesso = enviar_resumo_rota(
+            destinatarios_lista=string_destinatarios,
+            vendedor=user_atual,
+            dados_resumo=resumo_dados
+        )
+    
+    if sucesso:
+        st.success(f"Rota finalizada! E-mail enviado para: {string_destinatarios}")
+        st.balloons()
+    else:
+        st.error("Falha ao enviar e-mail. Verifique as credenciais.")
 
         else:
             st.warning("⚠️ Nenhuma agenda aprovada para hoje.")
