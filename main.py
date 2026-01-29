@@ -1231,10 +1231,10 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
         
         if df_faturado is not None and not df_faturado.empty:
-            # Limpeza básica de nomes de colunas
+            # Limpeza de espaços nos nomes das colunas
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             
-            # Tenta renomear o que for possível
+            # Mapeamento de colunas principais
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
                 'RG': 'VENDEDOR_COD',
@@ -1242,69 +1242,78 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # --- TRATAMENTO DINÂMICO PARA COLUNAS K E L ---
-            # Se não achar nomes 'K' ou 'CLIENTE_COD', pega pela posição da coluna
-            # Coluna K é a 11ª (índice 10), L é a 12ª (índice 11)
-            try:
-                col_cod_cliente = df_faturado.columns[10] # Tenta pegar a coluna K
-                col_nome_cliente = df_faturado.columns[11] # Tenta pegar a coluna L
-            except:
-                col_cod_cliente = df_faturado.columns[0] # Fallback caso a planilha seja pequena
-                col_nome_cliente = df_faturado.columns[0]
-
-            # Garantir que QTD_VENDAS seja número
-            if 'QTD_VENDAS' in df_faturado.columns:
-                df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
-    except:
-        st.error("Erro ao carregar os dados da aba FATURADO.")
+            # Garantir que QTD_VENDAS seja numérica
+            df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
+            
+            # Identificação das colunas K (Código) e L (Nome) por posição se necessário
+            col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
+    except Exception as e:
+        st.error(f"Erro ao carregar aba FATURADO: {e}")
         st.stop()
 
     if not df_faturado.empty:
-        # Define qual coluna usar para o nome do vendedor
+        # Define a coluna de vendedor (geralmente a segunda coluna se o rename falhar)
         col_vend = 'VENDEDOR_NOME' if 'VENDEDOR_NOME' in df_faturado.columns else df_faturado.columns[1]
 
-        # --- FILTRO SIMPLIFICADO ---
+        # --- FILTRO POR PERFIL ---
         if is_admin or is_diretoria or is_analista:
             lista_vends = sorted([str(x) for x in df_faturado[col_vend].unique() if x])
             selecao = st.multiselect("Filtrar Vendedores:", lista_vends)
             df_filtrado = df_faturado[df_faturado[col_vend].isin(selecao)] if selecao else df_faturado
         elif is_supervisor:
-            # Filtro para supervisor ver a equipe dele (ajuste manual se necessário)
             meus_vends = df_base[df_base['SUPERVISOR'].str.upper() == user_atual]['VENDEDOR'].unique()
             df_filtrado = df_faturado[df_faturado[col_vend].str.upper().isin([v.upper() for v in meus_vends])]
         else:
             df_filtrado = df_faturado[df_faturado[col_vend].str.upper() == user_atual]
 
         if not df_filtrado.empty:
+            # --- LÓGICA DE AGRUPAMENTO EXCLUSIVA (CONFORME SOLICITADO) ---
+            def agrupar_hierarquia_marata(valor):
+                valor = str(valor).strip()
+                
+                # Dicionário de Grupos
+                grupos = {
+                    "DESCARTAVEIS": ["DESCARTAVEIS COPOS", "DESCARTAVEIS POTES", "DESCARTAVEIS PRATOS", "DESCARTAVEIS TAMPAS"],
+                    "MILHO": ["MILHO", "MILHO CANJICA", "MILHO CANJIQUINHA", "MILHO CREME MILHO", "MILHO FUBA"],
+                    "MOLHOS ALHO": ["MOLHOS ALHO", "MOLHOS ALHO PICANTE"],
+                    "PIMENTA CONSERVA": ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]
+                }
+                
+                # Verifica se o valor pertence a algum grupo
+                for nome_grupo, itens in grupos.items():
+                    if valor in itens:
+                        return nome_grupo
+                
+                # Se não estiver na lista de grupos, retorna o nome original do faturado
+                return valor
+
+            # Aplicar o agrupamento na coluna de Hierarquia
+            df_filtrado['CATEGORIA_FINAL'] = df_filtrado['HIERARQUIA'].apply(agrupar_hierarquia_marata)
+
             # --- MÉTRICAS ---
-            total_vol = df_filtrado['QTD_VENDAS'].sum() if 'QTD_VENDAS' in df_filtrado.columns else 0
-            # Positivação usando a coluna identificada como K
-            clientes_atendidos = df_filtrado[col_cod_cliente].nunique()
+            total_vol = df_filtrado['QTD_VENDAS'].sum()
+            positivacao = df_filtrado[col_k].nunique()
             
             st.markdown("---")
             c1, c2 = st.columns(2)
             c1.metric("📦 Volume Total", f"{total_vol:,.0f}")
-            c2.metric("🏪 Clientes Positivados", clientes_atendidos)
+            c2.metric("🏪 Clientes Positivados", positivacao)
 
-            # --- HIERARQUIA ---
-            col_h = 'HIERARQUIA' if 'HIERARQUIA' in df_filtrado.columns else df_faturado.columns[4] # Fallback posição
+            # --- GRÁFICO E TABELA ---
+            resumo = df_filtrado.groupby('CATEGORIA_FINAL')['QTD_VENDAS'].sum().sort_values(ascending=False).reset_index()
             
-            def agrupar(item):
-                item = str(item).upper()
-                if "CAFE" in item: return "CAFÉ"
-                if "REFRESCO" in item or "SUCO" in item: return "REFRESCOS"
-                if "MILHO" in item or "FLOC" in item: return "MILHO/DERIVADOS"
-                return "OUTROS"
-
-            df_filtrado['CATEGORIA'] = df_filtrado[col_h].apply(agrupar)
+            st.subheader("📊 Vendas por Hierarquia")
+            st.bar_chart(resumo, x='CATEGORIA_FINAL', y='QTD_VENDAS', color="#8B0000")
             
-            resumo = df_filtrado.groupby('CATEGORIA')['QTD_VENDAS'].sum().sort_values(ascending=False).reset_index()
-            
-            st.subheader("📊 Vendas por Categoria")
-            st.bar_chart(resumo, x='CATEGORIA', y='QTD_VENDAS', color="#8B0000")
-            st.dataframe(resumo, use_container_width=True, hide_index=True)
+            st.subheader("📋 Detalhamento do Faturamento")
+            st.dataframe(
+                resumo, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={"CATEGORIA_FINAL": "Hierarquia de Produtos", "QTD_VENDAS": "Qtd Vendida"}
+            )
         else:
-            st.info("Nenhum dado encontrado para os filtros aplicados.")
+            st.warning("Nenhum dado encontrado para o filtro selecionado.")
 
 
 
