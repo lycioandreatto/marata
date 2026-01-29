@@ -1220,3 +1220,96 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             st.info("Nenhum agendamento encontrado.")
     else:
         st.warning("Agenda vazia.")
+
+
+# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
+elif menu == "📊 Desempenho de Vendas":
+    st.header("📊 Painel de Desempenho - Faturado")
+    
+    # 1. Carregar os dados da aba FATURADO
+    try:
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+    except:
+        st.error("Erro ao carregar a aba 'FATURADO'. Verifique se o nome está correto no Sheets.")
+        st.stop()
+
+    if not df_faturado.empty:
+        # Padronização de Nomes de Colunas (para evitar erros de espaços ou maiúsculas)
+        # Ajustando conforme você passou:
+        df_faturado.rename(columns={
+            'Região de vendas': 'VENDEDOR_NOME',
+            'RG': 'VENDEDOR_COD',
+            'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
+            'Hierarquia de produtos': 'HIERARQUIA'
+        }, inplace=True)
+
+        # 2. Lógica de Agrupamento da Hierarquia (Personalize conforme sua regra)
+        # Exemplo: Se quiser simplificar nomes longos
+        def simplificar_hierarquia(nome):
+            nome = str(nome).upper()
+            if "CAFE" in nome: return "CAFÉ"
+            if "REFRESCO" in nome or "SUCO" in nome: return "REFRESCOS"
+            if "LEITE" in nome: return "LÁCTEOS"
+            if "TEMPERO" in nome or "MOLHO" in nome: return "TEMPEROS/MOLHOS"
+            return nome
+        
+        df_faturado['CATEGORIA'] = df_faturado['HIERARQUIA'].apply(simplificar_hierarquia)
+
+        # 3. Filtros Superiores
+        st.markdown("### 🎯 Filtros")
+        c1, c2 = st.columns(2)
+        
+        # Se for vendedor, ele só vê o dele. Se for analista/admin, vê todos.
+        if is_admin or is_diretoria or is_analista:
+            lista_vendedores = sorted(df_faturado['VENDEDOR_NOME'].unique())
+            vend_sel = c1.multiselect("Selecionar Vendedores:", lista_vendedores)
+        else:
+            vend_sel = [user_atual] # Vendedor logado só vê o dele
+            st.info(f"Exibindo dados de: {user_atual}")
+
+        # Aplicar filtro
+        if vend_sel:
+            df_view = df_faturado[df_faturado['VENDEDOR_NOME'].isin(vend_sel)].copy()
+        else:
+            df_view = df_faturado.copy()
+
+        # 4. Blocos de Métricas Rápidas
+        total_qtd = df_view['QTD_VENDAS'].sum()
+        total_clientes = df_view['K'].nunique() if 'K' in df_view.columns else 0 # Coluna K é o código cliente
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("📦 Total Volume", f"{total_qtd:,.0f}")
+        m2.metric("👥 Clientes Faturados", total_clientes)
+        m3.metric("📂 Mix Categorias", df_view['CATEGORIA'].nunique())
+
+        st.markdown("---")
+
+        # 5. Visualização Principal (Tabela Dinâmica)
+        st.subheader("📋 Resumo por Categoria de Produto")
+        
+        # Agrupamento tipo Excel
+        tabela_dinamica = df_view.groupby('CATEGORIA').agg({
+            'QTD_VENDAS': 'sum'
+        }).sort_values(by='QTD_VENDAS', ascending=False).reset_index()
+
+        # Adicionando Porcentagem do Mix
+        tabela_dinamica['% Participação'] = (tabela_dinamica['QTD_VENDAS'] / total_qtd * 100).map("{:.1f}%".format)
+
+        col_tab, col_graf = st.columns([0.4, 0.6])
+        
+        with col_tab:
+            st.dataframe(tabela_dinamica, use_container_width=True, hide_index=True)
+            
+        with col_graf:
+            st.bar_chart(data=tabela_dinamica, x='CATEGORIA', y='QTD_VENDAS', color="#d32f2f")
+
+        # 6. Detalhe por Cliente (Opcional - Expandível)
+        with st.expander("🔍 Detalhar Vendas por Cliente"):
+            # Coluna L é nome, Coluna K é código
+            detalhe_cliente = df_view.groupby(['L', 'CATEGORIA'])['QTD_VENDAS'].sum().reset_index()
+            st.dataframe(detalhe_cliente, use_container_width=True, hide_index=True)
+
+    else:
+        st.warning("⚠️ A aba 'FATURADO' está vazia ou não pôde ser lida.")
+
+
