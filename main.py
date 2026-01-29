@@ -791,18 +791,22 @@ elif menu == "📋 Novo Agendamento":
 
         # --- LÓGICA DE FILTROS CASCATA (SLICERS) ---
         if is_admin or is_diretoria:
+            # Filtro 1: Analista
             lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
             ana_sel = st.selectbox("1. Filtrar por Analista:", ["Todos"] + lista_analistas)
             
+            # Filtro 2: Supervisor
             df_sup_f = df_base if ana_sel == "Todos" else df_base[df_base[col_ana_base] == ana_sel]
             lista_sups = sorted([str(s) for s in df_sup_f[col_sup_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
             sup_sel = st.selectbox("2. Filtrar por Supervisor:", ["Todos"] + lista_sups)
             
+            # Filtro 3: Vendedor
             df_ven_f = df_sup_f if sup_sel == "Todos" else df_sup_f[df_sup_f[col_sup_base] == sup_sel]
             vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
             ven_sel = st.selectbox("3. Selecione o Vendedor:", ["Selecione..."] + vends)
 
         elif is_analista:
+            # Analista logado: Filtra seus Supervisores e depois seus Vendedores
             df_ana_f = df_base[df_base[col_ana_base].str.upper() == user_atual]
             lista_sups = sorted([str(s) for s in df_ana_f[col_sup_base].unique() if str(s).strip()])
             sup_sel = st.selectbox("1. Filtrar seu Supervisor:", ["Todos"] + lista_sups)
@@ -812,23 +816,35 @@ elif menu == "📋 Novo Agendamento":
             ven_sel = st.selectbox("2. Selecione o Vendedor:", ["Selecione..."] + vends)
 
         elif any(df_base[col_sup_base].str.upper() == user_atual):
+            # Supervisor logado: Filtra seus Vendedores + ELE MESMO
             df_ven_f = df_base[df_base[col_sup_base].str.upper() == user_atual]
-            vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
-            ven_sel = st.selectbox("Selecione o Vendedor:", ["Selecione..."] + vends)
+            vends_equipe = [str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()]
+            
+            # Adiciona o próprio supervisor na lista para ele poder se auto-agendar
+            lista_final_vends = sorted(list(set(vends_equipe + [user_atual])))
+            
+            ven_sel = st.selectbox("Selecione para quem agendar:", ["Selecione..."] + lista_final_vends)
         
         else:
+            # Vendedor logado: Agendamento direto para ele
             ven_sel = user_atual
             st.info(f"Agendando para sua própria base: {user_atual}")
 
         # --- PROCESSAMENTO DO AGENDAMENTO ---
         if ven_sel != "Selecione...":
+            # Filtra clientes onde o vendedor selecionado atua
             clientes_f = df_base[df_base[col_ven_base] == ven_sel]
             
-            # CORREÇÃO DO ERRO: Garantir que a coluna VENDEDOR existe no df_agenda antes de filtrar
+            # Se for o supervisor se auto-agendando e ele não tiver clientes diretos na coluna VENDEDOR, 
+            # tentamos buscar clientes onde ele consta como SUPERVISOR
+            if clientes_f.empty and ven_sel == user_atual:
+                clientes_f = df_base[df_base[col_sup_base] == user_atual]
+
+            # Garantir que a coluna VENDEDOR existe no df_agenda
             if 'VENDEDOR' not in df_agenda.columns:
                 df_agenda['VENDEDOR'] = ""
 
-            # Agora o filtro não causará KeyError
+            # Filtro de clientes já agendados (ativos)
             codigos_agendados = df_agenda[
                 (df_agenda['VENDEDOR'] == ven_sel) & 
                 (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
@@ -847,14 +863,14 @@ elif menu == "📋 Novo Agendamento":
             m3.metric("Faltando", n_pendentes)
             m4.metric("% Adesão", f"{perc_sup:.1f}%")
             
-            # Identificação dos vínculos
+            # Identificação dos vínculos para salvar
             try:
                 amostra = clientes_f.iloc[0]
                 analista_vinc = str(amostra[col_ana_base]).upper()
                 supervisor_vinc = str(amostra[col_sup_base]).upper()
             except:
                 analista_vinc = "N/I"
-                supervisor_vinc = "N/I"
+                supervisor_vinc = user_atual if ven_sel == user_atual else "N/I"
 
             lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             
