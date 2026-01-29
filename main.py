@@ -1275,7 +1275,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
                     idx = 0 if col == 'RG' else (1 if col == 'BASE' else 2)
                     df_metas_cob.rename(columns={df_metas_cob.columns[idx]: col}, inplace=True)
 
-            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            # Aqui mantemos o RG como string para aceitar tanto código quanto o Nome (THAIS)
+            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             
             if 'META' in df_metas_cob.columns:
@@ -1325,11 +1326,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if not df_f.empty:
             total_vol = df_f['QTD_VENDAS'].sum()
             
-            # --- NOVA LÓGICA DE POSITIVAÇÃO (SMX/STR) ---
-            # Se Supervisor OU Vendedor estiverem selecionados -> CONTA TUDO
+            # 1. Cálculo da Positivação (SMX/STR)
             if sel_supervisor or sel_vendedor:
                 positivacao = df_f[col_k].nunique()
-            # Se estiver GERAL (nada selecionado) ou apenas ESTADO/ANALISTA -> EXCLUI SMX/STR
             else:
                 if 'EqVs' in df_f.columns:
                     df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)]
@@ -1337,11 +1336,29 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 else:
                     positivacao = df_f[col_k].nunique()
 
-            # Metas via RG
-            vendedores_ids = df_f['VENDEDOR_COD'].unique().tolist()
-            dados_meta_filtrados = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
-            base_total = dados_meta_filtrados['BASE'].sum() if not dados_meta_filtrados.empty else 0
-            meta_val = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
+            # 2. LÓGICA DE BUSCA DE METAS (RG vs NOME ANALISTA)
+            if sel_supervisor or sel_vendedor:
+                # Visão detalhada: soma metas por código de vendedor (RG)
+                vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
+                dados_meta_filtrados = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+                base_total = dados_meta_filtrados['BASE'].sum()
+                meta_val = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
+            else:
+                # Visão Geral: busca pela linha do Analista (ex: THAIS)
+                # Pega o primeiro analista filtrado ou o que estiver no DataFrame
+                analista_alvo = sel_analista[0].upper() if sel_analista else (df_f['ANALISTA'].iloc[0].upper() if 'ANALISTA' in df_f.columns else "")
+                
+                linha_meta_geral = df_metas_cob[df_metas_cob['RG'] == analista_alvo]
+                
+                if not linha_meta_geral.empty:
+                    base_total = linha_meta_geral['BASE'].sum()
+                    meta_val = linha_meta_geral['META'].mean()
+                else:
+                    # Fallback caso não ache o nome do analista na aba de metas
+                    vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
+                    dados_meta_filtrados = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+                    base_total = dados_meta_filtrados['BASE'].sum()
+                    meta_val = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
             
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
