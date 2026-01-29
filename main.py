@@ -1242,6 +1242,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             }, inplace=True)
 
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
+            # Normalização do código do vendedor (RG)
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
             
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
@@ -1252,11 +1253,10 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
             # Padronização Segura da aba de Metas
             if df_metas_cob is not None and not df_metas_cob.empty:
-                # Remove colunas fantasmas e normaliza nomes
                 df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
                 
-                # Garante que as colunas essenciais existem, se não, cria vazias para não dar KeyError
-                for col em ['COD', 'BASE', 'META']:
+                # CORREÇÃO AQUI: 'in' em vez de 'em'
+                for col in ['COD', 'BASE', 'META']:
                     if col not in df_metas_cob.columns:
                         df_metas_cob[col] = 0 if col != 'COD' else ""
 
@@ -1276,7 +1276,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_f = df_faturado.copy()
         filtro_vendedor_ativo = False
 
-        # --- FILTROS ---
+        # --- APLICAÇÃO DOS FILTROS ---
         if is_admin or is_diretoria:
             ana_sel = c1.multiselect("Analista:", sorted([str(x) for x in df_f['ANALISTA'].unique() if x and str(x) != 'nan']))
             if ana_sel: df_f = df_f[df_f['ANALISTA'].isin(ana_sel)]
@@ -1316,10 +1316,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 positivacao = df_pos[col_k].nunique()
                 label_pos = "🏪 Clientes Posit. (Exceto SMX/STR)"
 
-            # --- CÁLCULO DA COBERTURA (PREVENÇÃO DE KEYERROR) ---
+            # --- CÁLCULO DA COBERTURA ---
             vendedores_ids = df_f['VENDEDOR_COD'].unique()
             
-            # Verificação extra: se a coluna COD não existir mesmo após a normalização
             if 'COD' in df_metas_cob.columns:
                 dados_meta_filtrados = df_metas_cob[df_metas_cob['COD'].isin(vendedores_ids)]
             else:
@@ -1332,7 +1331,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             perc_atingido = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_status = "#28a745" if perc_atingido >= meta_media_perc else "#e67e22"
 
-            # --- INTERFACE (STYLE ORIGINAL) ---
+            # --- INTERFACE ---
             st.markdown("---")
             col_m1, col_m2, col_m3 = st.columns([1, 1, 2.5])
             col_m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
@@ -1359,7 +1358,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 </div>
                 """, unsafe_allow_html=True)
 
-            # Detalhamento por Categoria (Sem gráfico)
+            # Detalhamento por Categoria
             def agrupar_hierarquia_marata(valor):
                 v = str(valor).strip()
                 grupos = {
