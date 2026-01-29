@@ -24,7 +24,7 @@ MAPA_EMAILS = {
 }
 
 # E-mails que sempre recebem
-EMAILS_GESTAO = ["aldo@marata.com.br", "lycio.oliveira@marata.com.br"]
+EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
 
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista):
     import smtplib
