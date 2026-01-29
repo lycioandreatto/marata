@@ -12,6 +12,72 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
+    """
+    Função para disparar o e-mail de fechamento de rota.
+    """
+    try:
+        # Tenta carregar as configurações dos secrets do Streamlit
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
+        remetente = st.secrets["email"]["sender_email"]
+        senha = st.secrets["email"]["sender_password"]
+
+        # Montagem do E-mail
+        msg = MIMEMultipart()
+        msg['From'] = remetente
+        msg['To'] = destinatario
+        msg['Subject'] = f"🚀 Rota Finalizada - {vendedor}"
+
+        html = f"""
+        <html>
+            <body style="font-family: sans-serif;">
+                <h2 style="color: #2E86C1;">Resumo de Finalização de Rota</h2>
+                <p>O colaborador <b>{vendedor}</b> finalizou o roteiro do dia.</p>
+                <table border="1" style="border-collapse: collapse; width: 100%; max-width: 500px;">
+                    <tr style="background-color: #f2f2f2;">
+                        <th style="padding: 10px; text-align: left;">Indicador</th>
+                        <th style="padding: 10px; text-align: center;">Qtd</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px;">Total Agendado</td>
+                        <td style="padding: 10px; text-align: center;">{dados_resumo['total']}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px;">Visitados (Realizados)</td>
+                        <td style="padding: 10px; text-align: center;">{dados_resumo['realizados']}</td>
+                    </tr>
+                    <tr style="color: green; font-weight: bold;">
+                        <td style="padding: 10px;">Produtivos (Com Pedido)</td>
+                        <td style="padding: 10px; text-align: center;">{dados_resumo['pedidos']}</td>
+                    </tr>
+                    <tr style="color: red;">
+                        <td style="padding: 10px;">Não Realizados / Pendentes</td>
+                        <td style="padding: 10px; text-align: center;">{dados_resumo['pendentes']}</td>
+                    </tr>
+                </table>
+                <br>
+                <p style="font-size: 11px; color: gray;">Sistema de Gestão Maratá - Enviado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+            </body>
+        </html>
+        """
+        msg.attach(MIMEText(html, 'html'))
+
+        # Conexão SMTP
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(remetente, senha)
+        server.sendmail(remetente, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"Falha técnica no envio: {e}")
+        return False
+
 def calcular_distancia(lat1, lon1, lat2, lon2):
     # Raio da Terra em KM
     R = 6371.0
