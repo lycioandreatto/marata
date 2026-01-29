@@ -490,7 +490,6 @@ if menu == "📅 Agendamentos do Dia":
                 if row[col_aprov_exec] == "OK": return ['background-color: #D4EFDF'] * len(row)
                 return [''] * len(row)
 
-            # Inclusão da JUSTIFICATIVA nas colunas visíveis
             cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA', col_aprov_exec]
             if eh_gestao: cols_v.insert(6, 'DISTANCIA_LOG')
             
@@ -510,7 +509,7 @@ if menu == "📅 Agendamentos do Dia":
                 disabled=[c for c in df_display.columns if c not in ["EDITAR", col_aprov_exec]]
             )
 
-            # --- EDIÇÃO INDIVIDUAL (ONDE ESCOLHE A JUSTIFICATIVA) ---
+            # --- EDIÇÃO INDIVIDUAL ---
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 idx = marcados.index[0]
@@ -527,36 +526,43 @@ if menu == "📅 Agendamentos do Dia":
                                       index=["PENDENTE", "OK", "REPROVADO"].index(sel_row[col_aprov_exec]) if sel_row[col_aprov_exec] in ["PENDENTE", "OK", "REPROVADO"] else 0, horizontal=True) if eh_gestao else sel_row[col_aprov_exec]
                 
                 with c3:
-                    # OPÇÕES DE JUSTIFICATIVA
-                    opcoes_just = [
-                        "", 
-                        "Cliente Fechado", 
-                        "Proprietário Ausente", 
-                        "Sem estoque para o pedido", 
-                        "Reagendado a pedido do cliente", 
-                        "Visita produtiva com pedido",
-                        "Visita improdutiva",
-                        "Outros (especificar)"
-                    ]
-                    # Tenta encontrar o índice da justificativa atual se ela já existir
+                    opcoes_just = ["", "Cliente Fechado", "Proprietário Ausente", "Sem estoque para o pedido", "Reagendado a pedido do cliente", "Visita produtiva com pedido", "Visita improdutiva", "Outros (especificar)"]
                     val_atual_just = sel_row[col_just] if pd.notna(sel_row[col_just]) else ""
                     default_idx = opcoes_just.index(val_atual_just) if val_atual_just in opcoes_just else 0
-                    
                     nova_just = st.selectbox("Escolha a Justificativa:", opcoes_just, index=default_idx)
-                    
-                    # Se escolher "Outros", abre campo de texto
                     if nova_just == "Outros (especificar)":
                         nova_just = st.text_input("Especifique o motivo:", value=val_atual_just if val_atual_just not in opcoes_just else "")
 
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
-                    lat_v = st.session_state.get('lat', 0)
-                    lon_v = st.session_state.get('lon', 0)
-                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', col_aprov_exec, col_just, 'COORDENADAS']] = \
-                        [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}"]
-                    
+                    lat_v = st.session_state.get('lat', 0); lon_v = st.session_state.get('lon', 0)
+                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', col_aprov_exec, col_just, 'COORDENADAS']] = [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    st.success("Dados atualizados!")
-                    time.sleep(1); st.rerun()
+                    st.success("Dados atualizados!"); time.sleep(1); st.rerun()
+
+            # --- BOTÃO ROTA FINALIZADA ---
+            st.markdown("---")
+            if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
+                # Cálculo do resumo conforme solicitado
+                resumo_dados = {
+                    'total': len(df_dia),
+                    'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
+                    'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
+                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
+                }
+                
+                with st.spinner("Enviando resumo por e-mail..."):
+                    sucesso = enviar_resumo_rota(
+                        destinatario="lycio.oliveira@marata.com.br",
+                        vendedor=user_atual,
+                        dados_resumo=resumo_dados
+                    )
+                
+                if sucesso:
+                    st.success(f"Parabéns {user_atual}! Rota finalizada e e-mail enviado para Lycio Oliveira.")
+                    st.balloons()
+                else:
+                    st.error("Erro ao enviar e-mail. Verifique se as credenciais SMTP estão configuradas nos Secrets.")
+
         else:
             st.warning("⚠️ Nenhuma agenda aprovada para hoje.")
                     
