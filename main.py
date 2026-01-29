@@ -695,18 +695,19 @@ elif menu == "📊 Dashboard de Controle":
             # 8. Tabela de Apoio para conferência (FILTRADA PARA QUEM COMPROU)
             with st.expander("🔍 Ver detalhes da conversão"):
                 
-                # --- ALTERAÇÃO AQUI: Filtrando para mostrar apenas quem tem pedidos > 0 ---
+                # --- Filtrando para mostrar apenas quem tem pedidos > 0 ---
                 df_convertidos = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
                 
                 # Formatação das datas para o padrão brasileiro
                 df_convertidos['Data_Agendada_Format'] = pd.to_datetime(df_convertidos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
                 df_convertidos['Data_Fat_Format'] = pd.to_datetime(df_convertidos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
-                # Seleção das colunas solicitadas
+                # Seleção das colunas solicitadas (Adicionado col_rv_base para Supervisor)
                 df_view = df_convertidos[[
                     'Cliente', 
                     'Nome 1', 
-                    col_ana_base, 
+                    col_ana_base,
+                    col_rv_base, 
                     'Data_Agendada_Format', 
                     'Data_Fat_Format', 
                     'Qtd_Pedidos'
@@ -716,6 +717,7 @@ elif menu == "📊 Dashboard de Controle":
                     df_view.rename(columns={
                         'Nome 1': 'Nome do Cliente',
                         col_ana_base: 'Analista',
+                        col_rv_base: 'Supervisor',
                         'Data_Agendada_Format': 'Data Agendada',
                         'Data_Fat_Format': 'Data Faturamento'
                     }),
@@ -725,7 +727,6 @@ elif menu == "📊 Dashboard de Controle":
 
         except Exception as e:
             st.error(f"Erro no processamento: {e}")
-
         
         # --- MAPA DE CALOR: DISTRIBUIÇÃO GEOGRÁFICA ---
         st.markdown("---")
