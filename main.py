@@ -537,8 +537,6 @@ if menu == "📅 Agendamentos do Dia":
                     # Salva na planilha
                     df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                    
-import io
 
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
