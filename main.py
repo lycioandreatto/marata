@@ -978,12 +978,15 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         st.cache_data.clear()
                         st.success(f"Agendas de {sup_alvo} aprovadas!"); time.sleep(1); st.rerun()
                     
-                    if btn_col2.button("❌ Reprovar e Liberar", key="mass_rej"):
-                        mask_reprovar = df_agenda['SUPERVISOR'] == sup_alvo if sup_alvo != "Todos" else df_agenda['SUPERVISOR'].isin(sups_na_lista)
-                        df_final = df_agenda[~mask_reprovar].drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA'], errors='ignore')
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
+                    if btn_col2.button("❌ Reprovar Selecionados", key="mass_rej"):
+                        mask = df_agenda['SUPERVISOR'] == sup_alvo if sup_alvo != "Todos" else df_agenda['SUPERVISOR'].isin(sups_na_lista)
+                        df_agenda.loc[mask, 'APROVACAO'] = "Reprovado"
+                        df_agenda.loc[mask, 'OBS_GESTAO'] = obs_massa
+                        # Alteramos para 'Reprovado' para liberar o cliente na criação de agenda mas manter histórico aqui
+                        df_agenda.loc[mask, 'STATUS'] = "Reprovado" 
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA'], errors='ignore'))
                         st.cache_data.clear()
-                        st.warning(f"Agendas de {sup_alvo} removidas (clientes liberados)."); time.sleep(1); st.rerun()
+                        st.warning(f"Agendas de {sup_alvo} reprovadas (clientes liberados)."); time.sleep(1); st.rerun()
                 st.markdown("---")
 
             # Trazer Cidade
@@ -1065,13 +1068,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         nova_ap = st.selectbox("Decisão:", ["Aprovado", "Reprovado"], key="ind_ap")
                         nova_obs = st.text_input("Motivo/Obs:", value=sel_row['OBS_GESTAO'])
                         if st.button("Salvar Decisão"):
+                            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'APROVACAO'] = nova_ap
+                            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'OBS_GESTAO'] = nova_obs
                             if nova_ap == "Reprovado":
-                                df_final = df_agenda[df_agenda['ID'].astype(str) != str(sel_row['ID'])]
-                            else:
-                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'APROVACAO'] = nova_ap
-                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'OBS_GESTAO'] = nova_obs
-                                df_final = df_agenda
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final.drop(columns=['LINHA'], errors='ignore'))
+                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Reprovado"
+                            
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA'], errors='ignore'))
                             st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
                     current_tab += 1
 
