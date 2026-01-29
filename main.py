@@ -732,47 +732,40 @@ elif menu == "📊 Dashboard de Controle":
         st.markdown("---")
         st.subheader("🔥 Mapa de Calor: Visitas vs. Faturamento")
         
-        # Seletor para o usuário escolher o que quer ver no mapa
         tipo_mapa = st.radio("Selecione a camada de calor:", ["Visitas Realizadas", "Faturamento (R$)"], horizontal=True)
 
-        # 1. Preparação dos dados de Visitas (Sua lógica original)
+        # 1. Preparação dos dados de Visitas
         df_mapa_visitas = df_agenda[
             (df_agenda['STATUS'] == "Realizado") & 
-            (df_agenda['COORDENADAS'].str.contains(',', na=False))
+            (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))
         ].copy()
 
         # 2. Preparação dos dados de Faturamento
-        # Cruzamos o faturamento (df_fat) com a base detalhe que tem as coordenadas
-        df_mapa_fat = pd.merge(
-            df_fat_resumo, 
-            df_base_detalhe[['Cliente_Limpo', 'COORDENADAS']], 
-            left_on='Cod_Cliente', 
-            right_on='Cliente_Limpo', 
-            how='inner'
-        )
-        df_mapa_fat = df_mapa_fat[df_mapa_fat['COORDENADAS'].str.contains(',', na=False)].copy()
+        # Filtramos quem comprou e garantimos que temos a coordenada da base
+        df_mapa_fat_filtrado = df_comp[df_comp['Qtd_Pedidos'] > 0].copy()
 
-        # Aplicar filtros de Analista/Supervisor conforme o Dashboard
+        # Aplicar filtros de Analista/Supervisor
         if ana_sel_dash != "Todos":
              df_mapa_visitas = df_mapa_visitas[df_mapa_visitas['ANALISTA'].str.upper() == ana_sel_dash.upper()]
-             # Para o faturamento, precisamos filtrar a df_comp que já tem os dados de supervisor/analista
-             df_mapa_fat_filtrado = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp[col_ana_base].str.upper() == ana_sel_dash.upper())]
-        else:
-             df_mapa_fat_filtrado = df_comp[df_comp['Qtd_Pedidos'] > 0]
+             df_mapa_fat_filtrado = df_mapa_fat_filtrado[df_mapa_fat_filtrado[col_ana_base].str.upper() == ana_sel_dash.upper()]
 
         if sup_sel_dash != "Todos":
              df_mapa_visitas = df_mapa_visitas[df_mapa_visitas['SUPERVISOR'] == sup_sel_dash]
              df_mapa_fat_filtrado = df_mapa_fat_filtrado[df_mapa_fat_filtrado[col_rv_base] == sup_sel_dash]
 
-        # Define qual dataframe usar no mapa baseado na escolha do botão
+        # Define qual dataframe usar
         if tipo_mapa == "Visitas Realizadas":
             df_final_mapa = df_mapa_visitas.copy()
             label_mapa = "Visitas"
-            peso_calor = None # Peso igual para todas as visitas
         else:
             df_final_mapa = df_mapa_fat_filtrado.copy()
             label_mapa = "Faturamento"
-            peso_calor = 'Qtd_Pedidos' # O calor será mais forte onde houve mais pedidos
+
+        # Limpeza final das coordenadas para evitar o erro "str accessor"
+        if not df_final_mapa.empty:
+            # Forçamos a coluna a ser string e removemos linhas sem vírgula (coordenada inválida)
+            df_final_mapa['COORDENADAS'] = df_final_mapa['COORDENADAS'].astype(str)
+            df_final_mapa = df_final_mapa[df_final_mapa['COORDENADAS'].str.contains(',', na=False)]
 
         if not df_final_mapa.empty:
             try:
@@ -780,7 +773,7 @@ elif menu == "📊 Dashboard de Controle":
                 from folium.plugins import HeatMap
                 from streamlit_folium import st_folium
 
-                # Limpeza e conversão das coordenadas
+                # Conversão das coordenadas com tratamento de erro
                 df_final_mapa[['lat', 'lon']] = df_final_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
                 
                 centro_lat = df_final_mapa['lat'].mean()
@@ -788,21 +781,19 @@ elif menu == "📊 Dashboard de Controle":
                 
                 m = folium.Map(location=[centro_lat, centro_lon], zoom_start=7, tiles="cartodbpositron")
                 
-                # Gerar os dados de calor
                 if tipo_mapa == "Visitas Realizadas":
                     dados_calor = df_final_mapa[['lat', 'lon']].values.tolist()
                 else:
-                    # No faturamento, usamos a quantidade de pedidos para dar "peso" ao calor
+                    # Usamos a Qtd_Pedidos como peso para o calor do faturamento
                     dados_calor = df_final_mapa[['lat', 'lon', 'Qtd_Pedidos']].values.tolist()
 
                 HeatMap(dados_calor, radius=15, blur=10).add_to(m)
-                
                 st_folium(m, width="100%", height=500, returned_objects=[])
                 
             except Exception as e:
                 st.error(f"Erro ao gerar mapa: {e}")
         else:
-            st.info(f"ℹ️ Sem dados de {label_mapa} para os filtros selecionados.")
+            st.info(f"ℹ️ Sem dados de {label_mapa} com coordenadas válidas para os filtros selecionados.")
 
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
