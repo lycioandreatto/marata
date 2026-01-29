@@ -1237,38 +1237,40 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
-                'RG': 'VENDEDOR_COD', # Mantemos o apelido interno para não quebrar o resto do código
+                'RG': 'VENDEDOR_COD', 
                 'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # Limpeza do Código (Garante que "5.0" ou " 5" vire "5")
+            # Limpeza do Código RG no Faturado
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
-            col_eqvs = 'EqVs' 
 
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
-        # --- PROCESSAMENTO METAS (AGORA BUSCANDO COLUNA 'RG') ---
+        # --- PROCESSAMENTO METAS (USANDO RG) ---
         if df_metas_cob is not None and not df_metas_cob.empty:
-            # Normaliza nomes das colunas
+            # Normaliza colunas: remove espaços e coloca em MAIÚSCULO
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
             
-            # Como você renomeou para RG na planilha, o código busca RG ou o apelido VENDEDOR_COD
-            # Se a coluna na planilha for 'RG', o upper() a transformou em 'RG'
-            col_id_meta = 'RG' if 'RG' in df_metas_cob.columns else (df_metas_cob.columns[0])
+            # 1. Garante a coluna RG (Chave de ligação)
+            if 'RG' not in df_metas_cob.columns:
+                # Se você mudou na planilha mas o Pandas não leu como RG, tentamos a primeira coluna
+                df_metas_cob.rename(columns={df_metas_cob.columns[0]: 'RG'}, inplace=True)
 
-            # Limpeza do ID na Meta
-            df_metas_cob[col_id_meta] = df_metas_cob[col_id_meta].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            # 2. Garante a coluna BASE
+            if 'BASE' not in df_metas_cob.columns:
+                st.error("⚠️ A coluna 'BASE' não foi encontrada na aba META COBXPOSIT. Verifique o nome na planilha.")
+                df_metas_cob['BASE'] = 0
             
-            # Limpeza da BASE
-            if 'BASE' in df_metas_cob.columns:
-                df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+            # Limpeza dos dados
+            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             
-            # Limpeza da META (Tratando o símbolo de % e a vírgula da imagem)
+            # Limpeza da META (trata o % da imagem)
             if 'META' in df_metas_cob.columns:
                 df_metas_cob['META'] = (
                     df_metas_cob['META'].astype(str)
@@ -1276,78 +1278,52 @@ elif menu_interna == "📊 Desempenho de Vendas":
                     .str.replace(',', '.', regex=False).str.strip()
                 )
                 df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'], errors='coerce').fillna(0)
+            else:
+                df_metas_cob['META'] = 0
         else:
             df_metas_cob = pd.DataFrame(columns=['RG', 'BASE', 'META'])
 
     except Exception as e:
-        st.error(f"Erro ao processar dados: {e}")
+        st.error(f"Erro crítico no processamento: {e}")
         st.stop()
 
-    # --- RENDERIZAÇÃO E FILTROS ---
+    # --- RENDERIZAÇÃO ---
     if not df_faturado.empty:
-        st.markdown("### 🔍 Filtros de Visualização")
-        c1, c2, c3 = st.columns(3)
         df_f = df_faturado.copy()
-
-        # Blocos de filtros (Admin, Analista, Supervisor...)
-        if is_admin or is_diretoria:
-            ana_sel = c1.multiselect("Analista:", sorted([str(x) for x in df_f['ANALISTA'].unique() if x and str(x) != 'nan']))
-            if ana_sel: df_f = df_f[df_f['ANALISTA'].isin(ana_sel)]
-            sup_sel = c2.multiselect("Supervisor:", sorted([str(x) for x in df_f['SUPERVISOR'].unique() if x and str(x) != 'nan']))
-            if sup_sel: df_f = df_f[df_f['SUPERVISOR'].isin(sup_sel)]
-            vend_sel = c3.multiselect("Vendedor:", sorted([str(x) for x in df_f['VENDEDOR_NOME'].unique() if x]))
-            if vend_sel: df_f = df_f[df_f['VENDEDOR_NOME'].isin(vend_sel)]
         
-        # [Mantenha os outros elif de filtros aqui se houver...]
+        # Filtros de interface (Admin/User)
+        st.markdown("### 🔍 Filtros")
+        c1, c2, c3 = st.columns(3)
+        # ... [Seus filtros de multiselect aqui] ...
 
-        # --- CÁLCULO DA COBERTURA ---
+        # --- CÁLCULO FINAL ---
         if not df_f.empty:
             total_vol = df_f['QTD_VENDAS'].sum()
             positivacao = df_f[col_k].nunique()
 
-            # IDs que sobraram após os filtros de Analista/Supervisor
-            vendedores_ids_filtrados = df_f['VENDEDOR_COD'].unique().tolist()
+            # Cruzamento por RG
+            vendedores_ids = df_f['VENDEDOR_COD'].unique().tolist()
+            dados_meta_filtrados = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
             
-            # Filtra a tabela de metas usando os IDs do faturado
-            # Usamos col_id_meta que definimos lá em cima como 'RG'
-            dados_meta_filtrados = df_metas_cob[df_metas_cob[col_id_meta].isin(vendedores_ids_filtrados)]
+            # Somas com proteção
+            base_total = dados_meta_filtrados['BASE'].sum() if 'BASE' in dados_meta_filtrados.columns else 0
+            meta_val = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
             
-            base_total = dados_meta_filtrados['BASE'].sum() if not dados_meta_filtrados.empty else 0
-            meta_media_perc = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
-            
-            clientes_meta_objetivo = (base_total * (meta_media_perc / 100))
-            perc_atingido = (positivacao / base_total * 100) if base_total > 0 else 0
-            cor_status = "#28a745" if perc_atingido >= meta_media_perc else "#e67e22"
+            obj_clis = (base_total * (meta_val / 100))
+            real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
+            cor = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-            # --- EXIBIÇÃO ---
+            # --- DASHBOARD ---
             st.markdown("---")
-            col_m1, col_m2, col_m3 = st.columns([1, 1, 2.5])
-            col_m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
-            col_m2.metric("🏪 Clientes Positivados", positivacao)
-
-            with col_m3:
+            m1, m2, m3 = st.columns([1, 1, 2])
+            m1.metric("📦 Volume", f"{total_vol:,.0f}")
+            m2.metric("🏪 Positivados", positivacao)
+            
+            with m3:
                 st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 12px; border-radius: 10px; background-color: #fcfcfc;">
-                    <p style="margin:0; font-size: 13px; color: #444; font-weight: bold; text-transform: uppercase;">📊 Desempenho de Cobertura</p>
-                    <table style="width:100%; border-collapse: collapse; margin-top: 8px;">
-                        <tr style="font-size: 11px; text-align: left; color: #777; border-bottom: 1px solid #eee;">
-                            <th style="padding-bottom: 4px;">CLIENTES BASE</th>
-                            <th style="padding-bottom: 4px;">META (%)</th>
-                            <th style="padding-bottom: 4px;">OBJETIVO</th>
-                            <th style="padding-bottom: 4px;">REAL (%)</th>
-                        </tr>
-                        <tr style="font-size: 15px; font-weight: bold; color: #333;">
-                            <td style="padding-top: 6px;">{base_total:,.0f}</td>
-                            <td style="padding-top: 6px;">{meta_media_perc:.1f}%</td>
-                            <td style="padding-top: 6px;">{clientes_meta_objetivo:,.0f}</td>
-                            <td style="padding-top: 6px; color: {cor_status};">{perc_atingido:.1f}%</td>
-                        </tr>
-                    </table>
+                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px;">
+                    <small>COBERTURA (META vs REAL)</small><br>
+                    <b>Base:</b> {base_total:,.0f} | <b>Meta:</b> {meta_val:.1f}%<br>
+                    <b>Atingido:</b> <span style="color:{cor};">{real_perc:.1f}%</span>
                 </div>
                 """, unsafe_allow_html=True)
-            
-            # Detalhamento por Categoria
-            df_f['CATEGORIA_FINAL'] = df_f['HIERARQUIA'].fillna("OUTROS")
-            resumo = df_f.groupby('CATEGORIA_FINAL')['QTD_VENDAS'].sum().sort_values(ascending=False).reset_index()
-            st.subheader("📋 Detalhamento por Categoria")
-            st.dataframe(resumo, use_container_width=True, hide_index=True)
