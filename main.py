@@ -690,10 +690,10 @@ elif menu == "📊 Dashboard de Controle":
             c1.metric("Clientes Agendados", total_na_agenda)
             c2.metric("Agendados que Compraram", agendados_que_compraram)
             c3.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
-            c4.metric("Total de Pedidos (Agenda)", int(total_pedidos_agenda))
+            c4.metric("Total de Pedidos", int(total_pedidos_agenda))
 
             # 8. Tabela de Apoio para conferência (FILTRADA PARA QUEM COMPROU)
-            with st.expander("🔍 Ver detalhes da conversão (Auditoria)"):
+            with st.expander("🔍 Ver detalhes da conversão"):
                 
                 # --- ALTERAÇÃO AQUI: Filtrando para mostrar apenas quem tem pedidos > 0 ---
                 df_convertidos = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
