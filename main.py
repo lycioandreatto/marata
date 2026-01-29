@@ -942,12 +942,15 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            # --- BLOCO DE EXPORTAÇÃO (EXCEL E PDF) ---
+            # --- BLOCO DE EXPORTAÇÃO (EXCEL E PDF RESTRITOS) ---
             import io
             from fpdf import FPDF
             
+            # Definimos as colunas básicas
             cols_v = ['DATA', 'REGISTRO', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
-            if 'DISTANCIA_LOG' in df_user.columns:
+            
+            # Só adicionamos DISTANCIA_LOG para exportação se for admin, diretoria ou analista
+            if (is_admin or is_diretoria or is_analista) and 'DISTANCIA_LOG' in df_user.columns:
                 cols_v.append('DISTANCIA_LOG')
             
             df_export = df_user[cols_v].copy()
@@ -972,14 +975,18 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     pdf.set_font("Arial", 'B', 12)
                     pdf.cell(0, 10, f"Relatorio de Agenda - {user_atual}", ln=True, align='C')
                     pdf.set_font("Arial", size=8)
-                    col_width = pdf.w / (len(cols_v) + 1)
+                    
+                    # Ajuste de largura de coluna dinâmica para o PDF
+                    col_width = (pdf.w - 20) / len(cols_v)
                     for col in cols_v:
                         pdf.cell(col_width, 10, str(col), border=1)
                     pdf.ln()
+                    
                     for _, row in df_export.iterrows():
                         for item in row:
                             pdf.cell(col_width, 10, str(item)[:15], border=1)
                         pdf.ln()
+                    
                     pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
                     st.download_button(
                         label="📥 PDF",
@@ -988,14 +995,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         mime="application/pdf"
                     )
                 except Exception as e:
-                    st.error("Erro PDF")
+                    st.error(f"Erro PDF: {e}")
 
-            # --- LÓGICA DA TABELA ---
+            # --- LÓGICA DA TABELA (VISUALIZAÇÃO EM TELA) ---
             df_user["AÇÃO"] = False
             
             def style_agenda_completa(row):
                 styles = [''] * len(row)
-                # Só aplica cores para Admin, Diretoria ou Analista
                 if is_admin or is_diretoria or is_analista:
                     if row['STATUS'] == "Realizado":
                         if row['dist_val_calc'] > 50:
@@ -1003,6 +1009,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         return ['color: green; font-weight: bold'] * len(row)
                 return styles
 
+            # Na tela, a coluna dist_val_calc é usada apenas para o cálculo do estilo, não exibimos
             cols_display = ['AÇÃO'] + cols_v + ['dist_val_calc']
             df_display = df_user[cols_display].copy()
             df_styled = df_display.style.apply(style_agenda_completa, axis=1)
@@ -1010,12 +1017,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             config_col = {
                 "AÇÃO": st.column_config.CheckboxColumn("📌"),
                 "REGISTRO": st.column_config.TextColumn("🕒 Data Registro"),
-                "dist_val_calc": None
+                "dist_val_calc": None # Oculta sempre a coluna de cálculo
             }
             
-            # Oculta a coluna de distância para supervisores
+            # Se for supervisor, garantimos que DISTANCIA_LOG não apareça no editor
             if not (is_admin or is_diretoria or is_analista):
-                config_col["DISTANCIA_LOG"] = None
+                if "DISTANCIA_LOG" in df_display.columns:
+                    config_col["DISTANCIA_LOG"] = None
             else:
                 config_col["DISTANCIA_LOG"] = st.column_config.TextColumn("📍 Dist. GPS")
 
