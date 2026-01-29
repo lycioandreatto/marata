@@ -546,7 +546,7 @@ elif menu == "📊 Dashboard de Controle":
         st.header("📊 Resumo de Engajamento por Vendedor")
     
     with col_btn:
-        st.write("") 
+        st.write("") # Alinhamento vertical
         if st.button("🔄 Atualizar Tudo"):
             st.cache_data.clear()
             st.success("Dados Atualizados!")
@@ -604,6 +604,7 @@ elif menu == "📊 Dashboard de Controle":
         # --- TABELA RESUMO (ANALISTA + SUPERVISOR + VENDEDOR) ---
         if col_vend_base in df_base_filtrada.columns:
             resumo_base = df_base_filtrada.groupby([col_ana_base, col_sup_base, col_vend_base]).size().reset_index(name='Total na Base')
+            
             agenda_no_filtro = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada[col_cliente_base])]
             resumo_agenda = agenda_no_filtro.groupby('VENDEDOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
             
@@ -617,6 +618,7 @@ elif menu == "📊 Dashboard de Controle":
             
             st.dataframe(df_dash_view, use_container_width=True, hide_index=True)
             
+            # Cards Métricas
             c1, c2, c3, c4 = st.columns(4)
             t_base = df_dash_view['CLIENTES NA BASE'].sum()
             t_agend = df_dash_view['CLIENTES AGENDADOS'].sum()
@@ -645,40 +647,40 @@ elif menu == "📊 Dashboard de Controle":
             df_ranking['POSIÇÃO'] = [medalha(i) for i in df_ranking.index]
             st.table(df_ranking[['POSIÇÃO', 'VENDEDOR', 'SUPERVISOR', 'ANALISTA', 'CLIENTES AGENDADOS', '% DE ADESÃO']])
 
-        # --- CONVERSÃO DE VENDAS + GAP DE SKUS/HIERARQUIAS ---
+        # --- CONVERSÃO DE VENDAS COM CRUZAMENTO DE SKUS E GAPS ---
         st.markdown("---")
-        st.subheader("🎯 Conversão de Agendamentos em Vendas")
+        st.subheader("🎯 Conversão e Gap de Mix (SKUS)")
         try:
             # Lendo a planilha de Faturamento e a nova aba SKUS
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-            df_skus_base = conn.read(spreadsheet=url_planilha, worksheet="SKUS")
+            df_skus_ref = conn.read(spreadsheet=url_planilha, worksheet="SKUS")
             
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
-            df_skus_base.columns = [str(c).strip() for c in df_skus_base.columns]
+            df_skus_ref.columns = [str(c).strip() for c in df_skus_ref.columns]
             
-            # Totais de referência da aba SKUS
-            total_hierarquias_alvo = df_skus_base['Hierarquia de produtos'].nunique()
-            total_skus_alvo = df_skus_base['SKU'].nunique()
+            # 1. Referências da aba SKUS (O que deveria ser vendido)
+            total_h_alvo = df_skus_ref['Hierarquia de produtos'].nunique()
+            total_s_alvo = df_skus_ref['SKU'].nunique()
             
-            col_cod_fat = df_fat.columns[10] 
-            col_hierarquia = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
-            # Assumindo que a coluna de SKU no faturado também se chame 'SKU' ou similar
-            col_sku_fat = next((c for c in df_fat.columns if "SKU" in c.upper()), "SKU")
+            # 2. Mapeamento do faturado (O que foi vendido)
+            col_cod_fat = df_fat.columns[10] # Coluna K (Código Cliente)
+            col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
+            col_s_fat = "Nº artigo" # Conforme informado por você
             
             def limpar_cod(val):
                 return str(val).split('.')[0].strip() if pd.notnull(val) else ""
 
             df_fat['Cod_Limpo'] = df_fat[col_cod_fat].apply(limpar_cod)
             
-            # Agrupamento com contagem de Hierarquias e SKUs vendidos por cliente
+            # Agrupamento contando Pedidos Únicos, Data Máxima e Mix de Produtos
             df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
                 'OrdCliente': 'nunique', 
                 'Data fat.': 'max',
-                col_hierarquia: 'nunique',
-                col_sku_fat: 'nunique'
+                col_h_fat: 'nunique', # Quantas hierarquias ele comprou
+                col_s_fat: 'nunique'  # Quantos SKUs (Nº artigo) ele comprou
             }).reset_index()
             
-            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat', 'Vend_Hierarquias', 'Vend_SKUs']
+            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat', 'H_Vendidas', 'S_Vendidos']
 
             df_base_detalhe['Cliente_Limpo'] = df_base_detalhe[col_cliente_base].apply(limpar_cod)
             df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
@@ -691,40 +693,36 @@ elif menu == "📊 Dashboard de Controle":
 
             cv1, cv2, cv3, cv4 = st.columns(4)
             cv1.metric("Clientes Agendados", t_ag)
-            cv2.metric("Agendados que Compraram", v_ag)
+            cv2.metric("Agendados com Venda", v_ag)
             cv3.metric("Taxa de Conversão", f"{tx:.1f}%")
             cv4.metric("Total de Pedidos", int(df_agendados_ativos['Qtd_Pedidos'].sum()))
 
-            with st.expander("🔍 Ver detalhes da conversão e GAPs de Mix"):
+            with st.expander("🔍 Detalhes de GAPs por Cliente"):
                 df_convertidos = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
                 
-                # Cálculos de GAP
-                df_convertidos['GAP HIERARQUIAS'] = total_hierarquias_alvo - df_convertidos['Vend_Hierarquias']
-                df_convertidos['GAP SKU'] = total_skus_alvo - df_convertidos['Vend_SKUs']
-                
-                # Garantir que o Gap não seja negativo (caso vendam algo fora da lista SKUS)
-                df_convertidos['GAP HIERARQUIAS'] = df_convertidos['GAP HIERARQUIAS'].clip(lower=0).astype(int)
-                df_convertidos['GAP SKU'] = df_convertidos['GAP SKU'].clip(lower=0).astype(int)
+                # CÁLCULO DOS GAPS
+                df_convertidos['GAP HIERARQUIAS'] = (total_h_alvo - df_convertidos['H_Vendidas']).clip(lower=0).astype(int)
+                df_convertidos['GAP SKU'] = (total_s_alvo - df_convertidos['S_Vendidos']).clip(lower=0).astype(int)
                 
                 df_convertidos['Data Agendada'] = pd.to_datetime(df_convertidos['REGISTRO'], errors='coerce').dt.strftime('%d/%m/%Y')
                 df_convertidos['Últ. Faturamento'] = pd.to_datetime(df_convertidos['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
+                # Exibição com GAPs
                 df_view_conv = df_convertidos[[
                     col_cliente_base, col_nome_base, col_vend_base, 
-                    'Data Agendada', 'Vend_Hierarquias', 'GAP HIERARQUIAS', 'Vend_SKUs', 'GAP SKU'
+                    'H_Vendidas', 'GAP HIERARQUIAS', 'S_Vendidos', 'GAP SKU', 'Últ. Faturamento'
                 ]]
                 
                 df_view_conv.columns = [
-                    'CÓDIGO', 'NOME', 'VENDEDOR', 'AGENDADO EM', 
-                    'HIERARQUIAS VEND.', 'GAP HIERARQUIA', 'SKUS VEND.', 'GAP SKU'
+                    'CÓDIGO', 'NOME', 'VENDEDOR', 
+                    'HIERARQUIAS FAT.', 'GAP HIERARQUIAS', 'SKUS FAT.', 'GAP SKU', 'ÚLT. FATURAMENTO'
                 ]
                 
                 st.dataframe(df_view_conv, use_container_width=True, hide_index=True)
-                
-                st.info(f"💡 Base de Referência (Aba SKUS): {total_hierarquias_alvo} Hierarquias e {total_skus_alvo} SKUs no total.")
-                
+                st.info(f"📋 Meta do Mix (Aba SKUS): {total_h_alvo} Hierarquias e {total_s_alvo} SKUs únicos.")
+
         except Exception as e:
-            st.error(f"Erro ao processar GAPs: Verifique se as abas 'FATURADO' e 'SKUS' possuem as colunas corretas.")
+            st.warning(f"Atenção: Verifique as abas SKUS e FATURADO. Erro: {e}")
 
         # --- MAPA DE CALOR ---
         st.markdown("---")
@@ -738,12 +736,6 @@ elif menu == "📊 Dashboard de Controle":
 
             if tipo_mapa == "Visitas Realizadas":
                 df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-                if ana_sel_dash != "Todos":
-                    df_mapa = df_mapa[df_mapa['ANALISTA'].astype(str).str.upper() == ana_sel_dash.upper()]
-                if sup_sel_dash != "Todos":
-                    df_mapa = df_mapa[df_mapa['SUPERVISOR'] == sup_sel_dash]
-                if vend_sel_dash != "Todos":
-                    df_mapa = df_mapa[df_mapa['VENDEDOR'] == vend_sel_dash]
                 label_peso = None
             else:
                 df_mapa = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
