@@ -965,15 +965,14 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         quebra = (1 - row['Taxa de Realização']) * 100
                         st.write(f"👉 **{row['Supervisor']}**: Às **{row['Dia']}s**, costuma deixar de visitar **{quebra:.0f}%** da base.")
                     
-                    # Gráfico apenas para Admin e Diretoria (Controle estratégico)
-                    if is_admin or is_diretoria:
-                        import plotly.express as px
-                        fig = px.bar(analise_prev, x='Dia', y='Taxa de Realização', color='Supervisor',
-                                     barmode='group', title="Performance Prevista por Dia da Semana",
-                                     labels={'Taxa de Realização': '% Realizado'},
-                                     category_orders={"Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]})
-                        fig.add_hline(y=0.8, line_dash="dash", line_color="red", annotation_text="Meta 80%")
-                        st.plotly_chart(fig, use_container_width=True)
+                    # GRÁFICO: Ajustado para aparecer para ADMIN, DIRETORIA e ANALISTA
+                    import plotly.express as px
+                    fig = px.bar(analise_prev, x='Dia', y='Taxa de Realização', color='Supervisor',
+                                 barmode='group', title="Performance Prevista por Dia da Semana",
+                                 labels={'Taxa de Realização': '% Realizado'},
+                                 category_orders={"Dia": ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]})
+                    fig.add_hline(y=0.8, line_dash="dash", line_color="red", annotation_text="Meta 80%")
+                    st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.success("✅ Nenhum padrão de quebra sistemática detectado.")
 
