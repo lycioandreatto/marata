@@ -366,13 +366,6 @@ with st.sidebar:
     menu = st.selectbox("Menu Principal", opcoes_menu)
 
     # --- CARREGAMENTO E MAPEAMENTO GLOBAL (Coloque isso antes do if menu == ...) ---
-if df_base is not None:
-    col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'ANALISTA')
-    col_sup_base = next((c for c in df_base.columns if c.upper() == 'SUPERVISOR'), 'SUPERVISOR')
-    col_vend_base = next((c for c in df_base.columns if c.upper() == 'VENDEDOR'), 'VENDEDOR')
-    col_cliente_base = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
-    col_nome_base = next((c for c in df_base.columns if c.upper() == 'NOME 1'), 'Nome 1')
-    col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
 
 # --- AGORA AS PÁGINAS ---
 if menu == "📊 Dashboard de Controle":
