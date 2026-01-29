@@ -383,21 +383,15 @@ with st.sidebar:
     for _ in range(8):
         st.sidebar.write("")
     
-    # --- SEÇÃO DE LIMPEZA EM MASSA (Restrito: Admin, Diretoria e Analista) ---
-    if is_admin or is_diretoria or is_analista:
+    # --- SEÇÃO DE LIMPEZA EM MASSA (EXCLUSIVO APENAS PARA ADMIN - VOCÊ) ---
+    if is_admin:
         st.markdown("---")
         st.subheader("🗑️ Limpeza em Massa")
         
         if df_agenda is not None and not df_agenda.empty:
-            if is_admin or is_diretoria:
-                # Adm e Diretoria veem todos os supervisores
-                lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
-                sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
-            elif is_analista:
-                # Analista filtra apenas os supervisores dele
-                df_agenda_analista = df_agenda[df_agenda['ANALISTA'].str.upper() == user_atual]
-                lista_sups = sorted(df_agenda_analista['SUPERVISOR'].unique())
-                sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
+            # Você (Admin) vê todos os supervisores para limpar
+            lista_sups = sorted(df_agenda['SUPERVISOR'].unique())
+            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups)
 
             # Lógica do Botão de Deletar com Confirmação
             if sup_limpar != "Selecione...":
