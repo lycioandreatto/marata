@@ -18,13 +18,14 @@ from email.mime.multipart import MIMEMultipart
 
 def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
     """
-    Envia o resumo da rota para o Lycio.
-    Certifique-se de configurar as senhas de app no Streamlit Cloud Secrets.
+    Envia o resumo da rota usando as chaves exatas do seu Secrets.
     """
     try:
-        # Pega as credenciais dos Secrets do Streamlit
-        email_origem = st.secrets["smtp"]["user"]
-        senha_origem = st.secrets["smtp"]["password"]
+        # Lendo exatamente conforme o seu arquivo [email]
+        email_origem = st.secrets["email"]["sender_email"]
+        senha_origem = st.secrets["email"]["sender_password"]
+        servidor_smtp = st.secrets["email"]["smtp_server"]
+        porta_smtp = st.secrets["email"]["smtp_port"]
         
         msg = MIMEMultipart()
         msg['From'] = email_origem
@@ -32,28 +33,33 @@ def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
         msg['Subject'] = f"🚩 ROTA FINALIZADA: {vendedor}"
 
         corpo = f"""
-        <h2>Resumo de Atividades - Maratá</h2>
-        <p><b>Vendedor:</b> {vendedor}</p>
-        <hr>
-        <ul>
-            <li><b>Total Planejado:</b> {dados_resumo['total']}</li>
-            <li><b>Realizados:</b> {dados_resumo['realizados']}</li>
-            <li><b>Visitas com Pedido:</b> {dados_resumo['pedidos']}</li>
-            <li><b>Pendentes:</b> {dados_resumo['pendentes']}</li>
-        </ul>
-        <p>Relatório gerado automaticamente pelo Dashboard de Vendas.</p>
+        <div style="font-family: sans-serif; border: 1px solid #ddd; padding: 20px; border-radius: 10px;">
+            <h2 style="color: #d32f2f;">Resumo de Atividades - Maratá</h2>
+            <p><b>Vendedor:</b> {vendedor}</p>
+            <hr>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr><td><b>Total Planejado:</b></td><td>{dados_resumo['total']}</td></tr>
+                <tr><td><b>Realizados:</b></td><td>{dados_resumo['realizados']}</td></tr>
+                <tr><td><b>Visitas com Pedido:</b></td><td>{dados_resumo['pedidos']}</td></tr>
+                <tr><td><b>Pendentes:</b></td><td>{dados_resumo['pendentes']}</td></tr>
+            </table>
+            <br>
+            <p style="font-size: 12px; color: #666;">Relatório gerado automaticamente pelo Dashboard de Vendas.</p>
+        </div>
         """
         
         msg.attach(MIMEText(corpo, 'html'))
         
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        # Conexão usando os dados do seu Secret
+        server = smtplib.SMTP(servidor_smtp, porta_smtp)
         server.starttls()
         server.login(email_origem, senha_origem)
         server.sendmail(email_origem, destinatario, msg.as_string())
         server.quit()
         return True
     except Exception as e:
-        print(f"Erro SMTP: {e}")
+        # Isso aparecerá no log do Streamlit em caso de erro
+        st.error(f"Erro técnico no envio: {e}")
         return False
 
 def calcular_distancia(lat1, lon1, lat2, lon2):
