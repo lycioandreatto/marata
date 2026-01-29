@@ -12,6 +12,50 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
+    """
+    Envia o resumo da rota para o Lycio.
+    Certifique-se de configurar as senhas de app no Streamlit Cloud Secrets.
+    """
+    try:
+        # Pega as credenciais dos Secrets do Streamlit
+        email_origem = st.secrets["smtp"]["user"]
+        senha_origem = st.secrets["smtp"]["password"]
+        
+        msg = MIMEMultipart()
+        msg['From'] = email_origem
+        msg['To'] = destinatario
+        msg['Subject'] = f"🚩 ROTA FINALIZADA: {vendedor}"
+
+        corpo = f"""
+        <h2>Resumo de Atividades - Maratá</h2>
+        <p><b>Vendedor:</b> {vendedor}</p>
+        <hr>
+        <ul>
+            <li><b>Total Planejado:</b> {dados_resumo['total']}</li>
+            <li><b>Realizados:</b> {dados_resumo['realizados']}</li>
+            <li><b>Visitas com Pedido:</b> {dados_resumo['pedidos']}</li>
+            <li><b>Pendentes:</b> {dados_resumo['pendentes']}</li>
+        </ul>
+        <p>Relatório gerado automaticamente pelo Dashboard de Vendas.</p>
+        """
+        
+        msg.attach(MIMEText(corpo, 'html'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(email_origem, senha_origem)
+        server.sendmail(email_origem, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Erro SMTP: {e}")
+        return False
+
 def calcular_distancia(lat1, lon1, lat2, lon2):
     # Raio da Terra em KM
     R = 6371.0
