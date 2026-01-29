@@ -565,7 +565,6 @@ elif menu == "📊 Dashboard de Controle":
         f_c1, f_c2, f_c3 = st.columns(3)
         df_base_filtrada = df_base.copy()
         
-        # Filtros (Lógica Admin/Diretoria vs Usuário)
         with f_c1:
             if is_admin or is_diretoria:
                 lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if pd.notnull(a) and str(a).strip() and str(a).lower() != 'nan'])
@@ -604,7 +603,7 @@ elif menu == "📊 Dashboard de Controle":
         df_dash['% Conclusão'] = df_dash.apply(lambda r: f"{(r['Já Agendados']/r['Total na Base']*100):.1f}%" if r['Total na Base'] > 0 else "0.0%", axis=1)
         st.dataframe(df_dash.drop(columns=['VENDEDOR_y'], errors='ignore'), use_container_width=True, hide_index=True)
 
-        # --- CONVERSÃO E GAPS COM AGRUPAMENTO DE HIERARQUIAS ---
+        # --- CONVERSÃO E GAPS COM AGRUPAMENTO DINÂMICO ---
         st.markdown("---")
         st.subheader("🎯 Conversão e Gap de Mix (SKUS)")
         
@@ -614,22 +613,24 @@ elif menu == "📊 Dashboard de Controle":
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
             df_skus_ref.columns = [str(c).strip() for c in df_skus_ref.columns]
 
-            # --- FUNÇÃO DE AGRUPAMENTO (ENXUGAR FAMÍLIAS) ---
+            # --- FUNÇÃO DE AGRUPAMENTO DE HIERARQUIAS ---
             def agrupar_hierarquia(nome):
-                nome = str(nome).upper().strip()
-                if "DESCARTAVEIS" in nome: return "DESCARTAVEIS"
-                if "MILHO" in nome: return "MILHO"
-                if "MOLHOS ALHO" in nome: return "MOLHOS ALHO"
-                if "PIMENTA CONSERVA" in nome: return "PIMENTA CONSERVA"
-                return nome
+                n = str(nome).upper().strip()
+                if "DESCARTAVEIS" in n: return "DESCARTAVEIS"
+                if "MILHO" in n: return "MILHO"
+                if "MOLHOS ALHO" in n: return "MOLHOS ALHO"
+                if "PIMENTA CONSERVA" in n: return "PIMENTA CONSERVA"
+                return n
 
-            # Aplicar agrupamento na referência e no faturado
+            # 1. Processar Meta (Aba SKUS)
             col_h_ref = 'Hierarquia de produtos'
             df_skus_ref['H_AGRUPADA'] = df_skus_ref[col_h_ref].apply(agrupar_hierarquia)
             
-            total_h_alvo = df_skus_ref['H_AGRUPADA'].nunique()
+            # Aqui calculamos as 53 famílias alvo
+            total_h_alvo = df_skus_ref['H_AGRUPADA'].nunique() 
             total_s_alvo = df_skus_ref['SKU'].nunique()
 
+            # 2. Processar Faturado
             col_cod_fat = df_fat.columns[10] 
             col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), col_h_ref)
             col_s_fat = "Nº artigo"
@@ -639,10 +640,11 @@ elif menu == "📊 Dashboard de Controle":
             def limpar_cod(val): return str(val).split('.')[0].strip() if pd.notnull(val) else ""
             df_fat['Cod_Limpo'] = df_fat[col_cod_fat].apply(limpar_cod)
             
+            # Agrupado por cliente para ver o que ele comprou das 53 famílias
             df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
                 'OrdCliente': 'nunique', 
                 'Data fat.': 'max',
-                'H_AGRUPADA': 'nunique',
+                'H_AGRUPADA': 'nunique', # Quantas das 53 famílias ele comprou
                 col_s_fat: 'nunique'
             }).reset_index()
             
@@ -652,25 +654,37 @@ elif menu == "📊 Dashboard de Controle":
             df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
             df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'].copy()
             
-            # Cards de Métricas
+            # Cards
             t_ag = len(df_agendados_ativos)
             v_ag = len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Agendados", t_ag)
-            c2.metric("Com Venda", v_ag)
+            c1.metric("Clientes Agendados", t_ag)
+            c2.metric("Compraram", v_ag)
             c3.metric("Conversão", f"{(v_ag/t_ag*100 if t_ag > 0 else 0):.1f}%")
             c4.metric("Total Pedidos", int(df_agendados_ativos['Qtd_Pedidos'].sum()))
 
             with st.expander("🔍 Detalhes de GAPs por Cliente"):
                 df_conv = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
-                df_conv['GAP HIER.'] = (total_h_alvo - df_conv['H_Vendidas']).clip(lower=0).astype(int)
+                df_conv['GAP FAMÍLIA'] = (total_h_alvo - df_conv['H_Vendidas']).clip(lower=0).astype(int)
                 df_conv['GAP SKU'] = (total_s_alvo - df_conv['S_Vendidos']).clip(lower=0).astype(int)
                 df_conv['ÚLT. FAT.'] = pd.to_datetime(df_conv['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
-                df_view = df_conv[[col_cliente_base, col_nome_base, col_vend_base, 'H_Vendidas', 'GAP HIER.', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']]
+                df_view = df_conv[[col_cliente_base, col_nome_base, col_vend_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']]
                 df_view.columns = ['CÓDIGO', 'NOME', 'VENDEDOR', 'FAMÍLIAS FAT.', 'GAP FAMÍLIA', 'SKUS FAT.', 'GAP SKU', 'ÚLT. FAT.']
                 st.dataframe(df_view, use_container_width=True, hide_index=True)
-                st.info(f"📊 Meta Consolidada: {total_h_alvo} Famílias (após agrupamento) e {total_s_alvo} SKUs únicos.")
+                st.info(f"📊 Meta consolidada na aba SKUS: {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
+
+            # --- INSIGHTS DE FAMÍLIAS (GAPS GERAIS) ---
+            st.subheader("💡 Insights de Mix por Família")
+            # Identificar quais das 53 famílias estão ausentes nas vendas dos clientes agendados
+            familias_alvo = set(df_skus_ref['H_AGRUPADA'].unique())
+            familias_vendidas = set(df_fat[df_fat['Cod_Limpo'].isin(df_agendados_ativos['Cliente_Limpo'])]['H_AGRUPADA'].unique())
+            
+            gap_geral = familias_alvo - familias_vendidas
+            if gap_geral:
+                st.warning(f"As seguintes famílias não foram vendidas para nenhum cliente agendado: {', '.join(list(gap_geral)[:10])}...")
+            else:
+                st.success("Todas as 53 famílias foram positivadas em pelo menos um cliente agendado!")
 
         except Exception as e:
             st.warning(f"Erro no processamento de SKUS: {e}")
@@ -687,9 +701,11 @@ elif menu == "📊 Dashboard de Controle":
             if not df_mapa.empty:
                 df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
                 m = folium.Map(location=[df_mapa['lat'].mean(), df_mapa['lon'].mean()], zoom_start=7, tiles="cartodbpositron")
-                HeatMap(df_mapa[['lat', 'lon', 'Qtd_Pedidos' if tipo_mapa != "Visitas Realizadas" else None]].dropna().values.tolist(), radius=15).add_to(m)
+                # Se for faturamento, o peso do calor é a Qtd de Pedidos
+                peso = df_mapa['Qtd_Pedidos'] if tipo_mapa == "Faturamento (Pedidos)" else None
+                HeatMap(df_mapa[['lat', 'lon']].assign(peso=peso).dropna().values.tolist(), radius=15).add_to(m)
                 st_folium(m, width="100%", height=500, returned_objects=[])
-        except: st.info("Sem dados geográficos para o mapa.")
+        except: st.info("Sem dados geográficos suficientes.")
 
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
 # --- PÁGINA: NOVO AGENDAMENTO ---
