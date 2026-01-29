@@ -1043,24 +1043,37 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
             # --- TABELA DE EXIBIÇÃO ---
+            # --- TABELA DE EXIBIÇÃO (SUBSTITUIÇÃO COMPLETA) ---
             df_user["AÇÃO"] = False
             
+            # Aqui é onde a mágica acontece: incluímos as colunas que você quer ver
+            cols_display = [
+                'AÇÃO', 'DATA', 'VENDEDOR', 'CLIENTE', 'CIDADE', 
+                'STATUS', 'DISTANCIA_LOG', 'COORDENADAS', 'APROVACAO', 'OBS_GESTAO'
+            ]
+            
+            # Criamos o DataFrame de exibição garantindo que as colunas existam
+            df_display = df_user[[c for c in cols_display if c in df_user.columns]].copy()
+
+            # Estilização (mantendo o que você já tinha)
             def style_agenda(row):
-                if row['APROVACAO'] == "Reprovado": return ['background-color: #fadbd8'] * len(row)
-                if row['APROVACAO'] == "Aprovado": return ['background-color: #d4efdf'] * len(row)
+                if row.get('APROVACAO') == "Reprovado": return ['background-color: #fadbd8'] * len(row)
+                if row.get('APROVACAO') == "Aprovado": return ['background-color: #d4efdf'] * len(row)
                 return [''] * len(row)
 
-            cols_display = ['AÇÃO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'APROVACAO', 'OBS_GESTAO']
-            df_display = df_user[[c for c in cols_display if c in df_user.columns]].copy()
-            df_styled = df_display.style.apply(style_agenda, axis=1)
-
+            # O editor que finalmente vai mostrar o GPS e os Metros
             edicao_user = st.data_editor(
-                df_styled, key="edit_agenda_final", hide_index=True, 
+                df_display.style.apply(style_agenda, axis=1), 
+                key="edit_agenda_final", 
+                hide_index=True, 
                 use_container_width=True, 
-                column_config={"AÇÃO": st.column_config.CheckboxColumn("📌")},
+                column_config={
+                    "AÇÃO": st.column_config.CheckboxColumn("📌"),
+                    "DISTANCIA_LOG": st.column_config.TextColumn("Metros"),
+                    "COORDENADAS": st.column_config.TextColumn("Localização (GPS)")
+                },
                 disabled=[c for c in cols_display if c != "AÇÃO"]
             )
-
             # --- GERENCIAMENTO INDIVIDUAL ---
             marcados = edicao_user[edicao_user["AÇÃO"] == True]
             if not marcados.empty:
