@@ -787,26 +787,22 @@ elif menu == "📋 Novo Agendamento":
         # Mapeamento das colunas da BASE conforme nova estrutura
         col_ana_base = 'ANALISTA'
         col_sup_base = 'SUPERVISOR'
-        col_ven_base = 'VENDEDOR' # Antiga Região de Vendas
+        col_ven_base = 'VENDEDOR' 
 
         # --- LÓGICA DE FILTROS CASCATA (SLICERS) ---
         if is_admin or is_diretoria:
-            # Filtro 1: Analista
             lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
             ana_sel = st.selectbox("1. Filtrar por Analista:", ["Todos"] + lista_analistas)
             
-            # Filtro 2: Supervisor
             df_sup_f = df_base if ana_sel == "Todos" else df_base[df_base[col_ana_base] == ana_sel]
             lista_sups = sorted([str(s) for s in df_sup_f[col_sup_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
             sup_sel = st.selectbox("2. Filtrar por Supervisor:", ["Todos"] + lista_sups)
             
-            # Filtro 3: Vendedor
             df_ven_f = df_sup_f if sup_sel == "Todos" else df_sup_f[df_sup_f[col_sup_base] == sup_sel]
             vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
             ven_sel = st.selectbox("3. Selecione o Vendedor:", ["Selecione..."] + vends)
 
         elif is_analista:
-            # Analista logado: Filtra seus Supervisores e depois seus Vendedores
             df_ana_f = df_base[df_base[col_ana_base].str.upper() == user_atual]
             lista_sups = sorted([str(s) for s in df_ana_f[col_sup_base].unique() if str(s).strip()])
             sup_sel = st.selectbox("1. Filtrar seu Supervisor:", ["Todos"] + lista_sups)
@@ -816,23 +812,23 @@ elif menu == "📋 Novo Agendamento":
             ven_sel = st.selectbox("2. Selecione o Vendedor:", ["Selecione..."] + vends)
 
         elif any(df_base[col_sup_base].str.upper() == user_atual):
-            # Supervisor logado: Filtra apenas seus Vendedores
             df_ven_f = df_base[df_base[col_sup_base].str.upper() == user_atual]
             vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
             ven_sel = st.selectbox("Selecione o Vendedor:", ["Selecione..."] + vends)
         
         else:
-            # Vendedor logado: Agendamento direto para ele
             ven_sel = user_atual
             st.info(f"Agendando para sua própria base: {user_atual}")
 
-        # --- PROCESSAMENTO DO AGENDAMENTO PARA O VENDEDOR SELECIONADO ---
+        # --- PROCESSAMENTO DO AGENDAMENTO ---
         if ven_sel != "Selecione...":
-            # Filtra clientes da base do vendedor escolhido
             clientes_f = df_base[df_base[col_ven_base] == ven_sel]
             
-            # Clientes já agendados (considerando apenas ativos: Planejado ou Realizado)
-            # Isso permite que se for Reprovado, ele saia desta lista e volte para pendentes
+            # CORREÇÃO DO ERRO: Garantir que a coluna VENDEDOR existe no df_agenda antes de filtrar
+            if 'VENDEDOR' not in df_agenda.columns:
+                df_agenda['VENDEDOR'] = ""
+
+            # Agora o filtro não causará KeyError
             codigos_agendados = df_agenda[
                 (df_agenda['VENDEDOR'] == ven_sel) & 
                 (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
@@ -840,7 +836,6 @@ elif menu == "📋 Novo Agendamento":
             
             clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
             
-            # Métricas da base do vendedor
             m1, m2, m3, m4 = st.columns(4)
             n_total = len(clientes_f)
             n_agendados = len(codigos_agendados)
@@ -852,7 +847,7 @@ elif menu == "📋 Novo Agendamento":
             m3.metric("Faltando", n_pendentes)
             m4.metric("% Adesão", f"{perc_sup:.1f}%")
             
-            # Identificação dos vínculos para salvar na Agenda
+            # Identificação dos vínculos
             try:
                 amostra = clientes_f.iloc[0]
                 analista_vinc = str(amostra[col_ana_base]).upper()
