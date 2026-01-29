@@ -922,7 +922,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             if is_admin or is_diretoria or is_analista:
                 cols = st.columns(4)
-                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 500)])
+                fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 50)])
                 cols[3].metric("📍 Fora do Raio (>500m)", fora_raio, 
                               delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, 
                               delta_color="inverse")
@@ -952,7 +952,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             
             df_export = df_user[cols_v].copy()
             
-            exp_col1, exp_col2, exp_col3 = st.columns([1, 1, 4])
+            exp_col1, exp_col2, exp_col3 = st.columns([0,5, 0,5, 3])
             
             with exp_col1:
                 # Exportar para Excel
