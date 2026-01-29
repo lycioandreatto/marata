@@ -1150,14 +1150,21 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 'AÇÃO', 'REGISTRO','DATA', 'VENDEDOR', 'CLIENTE', 'CIDADE', 
                 'STATUS', 'DISTANCIA_LOG', 'COORDENADAS', 'APROVACAO', 'OBS_GESTAO'
             ]
+
+            # 2. TRAVA DE SEGURANÇA: Se NÃO for Admin/Diretoria/Analista, removemos o GPS
+            if not (is_admin or is_diretoria or is_analista):
+                if 'DISTANCIA_LOG' in cols_display: cols_display.remove('DISTANCIA_LOG')
+                if 'COORDENADAS' in cols_display: cols_display.remove('COORDENADAS')
+                    
             cols_presentes = [c for c in cols_display if c in df_user.columns]
-            df_display = df_user[[c for c in cols_display if c in df_user.columns]].copy()
+            df_display = df_user[cols_presentes].copy()
 
             def style_agenda(row):
                 if row.get('APROVACAO') == "Reprovado": return ['background-color: #fadbd8'] * len(row)
                 if row.get('APROVACAO') == "Aprovado": return ['background-color: #d4efdf'] * len(row)
                 return [''] * len(row)
 
+            # 4. Renderização da Tabela
             edicao_user = st.data_editor(
                 df_display.style.apply(style_agenda, axis=1), 
                 key="edit_agenda_final", 
@@ -1165,10 +1172,11 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 use_container_width=True, 
                 column_config={
                     "AÇÃO": st.column_config.CheckboxColumn("📌"),
+                    "REGISTRO": st.column_config.TextColumn("📅 Criado em"),
                     "DISTANCIA_LOG": st.column_config.TextColumn("Metros"),
                     "COORDENADAS": st.column_config.TextColumn("Localização (GPS)")
                 },
-                disabled=[c for c in cols_display if c != "AÇÃO"]
+                disabled=[c for c in cols_presentes if c != "AÇÃO"]
             )
             
             # --- GERENCIAMENTO INDIVIDUAL ---
