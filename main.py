@@ -640,7 +640,7 @@ if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, ty
     else:
         st.error("Falha ao enviar e-mail. Verifique as credenciais.")
 
-        else:
+    else:
             st.warning("⚠️ Nenhuma agenda aprovada para hoje.")
                     
 # --- PÁGINA: DASHBOARD ---
