@@ -554,7 +554,7 @@ elif menu == "📊 Dashboard de Controle":
             st.rerun()
     
     if df_base is not None and df_agenda is not None:
-        # --- MAPEAMENTO DINÂMICO DE COLUNAS ---
+        # --- MAPEAMENTO DINÂMICO DE COLUNAS DA BASE ---
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'ANALISTA')
         col_sup_base = next((c for c in df_base.columns if c.upper() == 'SUPERVISOR'), 'SUPERVISOR')
         col_vend_base = next((c for c in df_base.columns if c.upper() == 'VENDEDOR'), 'VENDEDOR')
@@ -613,6 +613,11 @@ elif menu == "📊 Dashboard de Controle":
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
             df_skus_ref.columns = [str(c).strip() for c in df_skus_ref.columns]
 
+            # Mapeamento Inteligente de Colunas (Evita erro de index)
+            col_h_ref = next((c for c in df_skus_ref.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
+            col_sku_ref = next((c for c in df_skus_ref.columns if any(x in c.upper() for x in ["SKU", "ARTIGO"])), "SKU")
+            col_desc_ref = next((c for c in df_skus_ref.columns if any(x in c.upper() for x in ["DESC", "TEXTO", "NOME"])), "DESCRIÇÃO")
+
             def agrupar_hierarquia(nome):
                 n = str(nome).upper().strip()
                 if n in ["DESCARTAVEIS COPOS", "DESCARTAVEIS POTES", "DESCARTAVEIS PRATOS", "DESCARTAVEIS TAMPAS"]: return "DESCARTAVEIS"
@@ -621,17 +626,13 @@ elif menu == "📊 Dashboard de Controle":
                 if n in ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]: return "PIMENTA CONSERVA"
                 return n
 
-            col_h_ref = next((c for c in df_skus_ref.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
-            col_sku_ref = next((c for c in df_skus_ref.columns if "SKU" in c.upper() or "ARTIGO" in c.upper()), "SKU")
-            col_desc_ref = next((c for c in df_skus_ref.columns if "DESC" in c.upper() or "TEXTO" in c.upper()), "DESCRIÇÃO")
-
             df_skus_ref['H_AGRUPADA'] = df_skus_ref[col_h_ref].apply(agrupar_hierarquia)
             total_h_alvo = df_skus_ref['H_AGRUPADA'].nunique()
             total_s_alvo = df_skus_ref[col_sku_ref].nunique()
 
             col_cod_fat = df_fat.columns[10] 
             col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), col_h_ref)
-            col_s_fat = next((c for c in df_fat.columns if "ARTIGO" in c.upper() or "SKU" in c.upper()), col_sku_ref)
+            col_s_fat = next((c for c in df_fat.columns if any(x in c.upper() for x in ["ARTIGO", "SKU"])), col_sku_ref)
             
             df_fat['H_AGRUPADA'] = df_fat[col_h_fat].apply(agrupar_hierarquia)
             def limpar_cod(val): return str(val).split('.')[0].strip() if pd.notnull(val) else ""
@@ -646,9 +647,8 @@ elif menu == "📊 Dashboard de Controle":
             df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
             df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'].copy()
             
-            # Métricas
-            t_ag = len(df_agendados_ativos)
-            v_ag = len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
+            # Cards de Métricas
+            t_ag, v_ag = len(df_agendados_ativos), len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Clientes Agendados", t_ag)
             c2.metric("Agendados com Venda", v_ag)
@@ -666,72 +666,52 @@ elif menu == "📊 Dashboard de Controle":
                 df_view.insert(0, "Selecionar", False)
 
                 edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True, key="editor_gap")
-                sel_cods = edited_df[edited_df['Selecionar'] == True]['CÓDIGO'].tolist()
+                sel_cods = [str(x) for x in edited_df[edited_df['Selecionar'] == True]['CÓDIGO'].tolist()]
 
                 if sel_cods:
-                    # --- PREPARAÇÃO DOS DADOS PARA EXPORTAÇÃO ---
                     output_ex = io.BytesIO()
-                    
-                    # Para PDF
                     from fpdf import FPDF
                     pdf = FPDF()
-                    pdf.set_auto_page_break(auto=True, margin=15)
-
+                    
                     with pd.ExcelWriter(output_ex, engine='xlsxwriter') as writer:
                         for cod in sel_cods:
                             c_l = limpar_cod(cod)
                             info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == c_l].iloc[0]
-                            
-                            # Filtros de Comprados e Faltantes
                             ja_comprou_cods = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
-                            df_falta = df_skus_ref[~df_skus_ref[col_sku_ref].isin(ja_comprou_cods)].copy()
-                            df_tem = df_skus_ref[df_skus_ref[col_sku_ref].isin(ja_comprou_cods)].copy()
                             
-                            # --- EXCEL ---
+                            cols_sel = ['H_AGRUPADA', col_sku_ref, col_desc_ref]
+                            df_falta = df_skus_ref[~df_skus_ref[col_sku_ref].isin(ja_comprou_cods)][cols_sel].copy()
+                            df_tem = df_skus_ref[df_skus_ref[col_sku_ref].isin(ja_comprou_cods)][cols_sel].copy()
+                            
                             aba = f"CLI_{c_l}"[:31]
-                            # Cabeçalho Cliente
                             pd.DataFrame([["CLIENTE:", info_cli[col_nome_base], "CÓDIGO:", cod]]).to_excel(writer, aba, index=False, header=False, startrow=0)
-                            
-                            # Bloco 1: GAP
                             pd.DataFrame([["--- PRODUTOS QUE FALTAM (GAP) ---"]]).to_excel(writer, aba, index=False, header=False, startrow=2)
-                            df_falta[['H_AGRUPADA', col_sku_ref, col_desc_ref]].to_excel(writer, aba, index=False, startrow=3)
+                            df_falta.to_excel(writer, aba, index=False, startrow=3)
                             
-                            # Bloco 2: JÁ COMPROU
-                            start_row_tem = len(df_falta) + 6
-                            pd.DataFrame([["--- PRODUTOS JÁ COMPRADOS ---"]]).to_excel(writer, aba, index=False, header=False, startrow=start_row_tem)
-                            df_tem[['H_AGRUPADA', col_sku_ref, col_desc_ref]].to_excel(writer, aba, index=False, startrow=start_row_tem + 1)
+                            row_tem = len(df_falta) + 6
+                            pd.DataFrame([["--- PRODUTOS JÁ COMPRADOS ---"]]).to_excel(writer, aba, index=False, header=False, startrow=row_tem)
+                            df_tem.to_excel(writer, aba, index=False, startrow=row_tem + 1)
 
-                            # --- PDF ---
+                            # PDF
                             pdf.add_page()
                             pdf.set_font("Arial", 'B', 14)
-                            pdf.cell(200, 10, f"Mix de Produtos: {info_cli[col_nome_base]}", ln=True, align='C')
-                            pdf.set_font("Arial", 'I', 10)
-                            pdf.cell(200, 10, f"Codigo: {cod} | Vendedor: {info_cli[col_vend_base]}", ln=True, align='C')
-                            
-                            pdf.set_font("Arial", 'B', 11)
-                            pdf.ln(5)
-                            pdf.cell(200, 10, "SKUS FALTANTES NO MIX:", ln=True)
+                            pdf.cell(0, 10, f"Mix: {info_cli[col_nome_base]}", ln=True, align='C')
+                            pdf.set_font("Arial", 'B', 11); pdf.ln(5)
+                            pdf.cell(0, 10, "SKUS FALTANTES NO MIX:", ln=True)
                             pdf.set_font("Arial", '', 9)
-                            for _, row in df_falta.head(40).iterrows(): # Limitado para não estourar layout simples
-                                pdf.cell(0, 7, f"- {row['H_AGRUPADA']} | {row[col_sku_ref]} | {row[col_desc_ref][:40]}", ln=True)
-                            
-                            pdf.ln(5)
-                            pdf.set_font("Arial", 'B', 11)
-                            pdf.cell(200, 10, "SKUS JÁ COMPRADOS:", ln=True)
-                            pdf.set_font("Arial", '', 9)
-                            for _, row in df_tem.head(20).iterrows():
-                                pdf.cell(0, 7, f"[OK] {row['H_AGRUPADA']} | {row[col_sku_ref]}", ln=True)
+                            for _, r in df_falta.head(45).iterrows():
+                                pdf.cell(0, 7, f"- {r['H_AGRUPADA']} | {r[col_sku_ref]} | {str(r[col_desc_ref])[:40]}", ln=True)
 
                     c_btn1, c_btn2 = st.columns(2)
                     with c_btn1:
-                        st.download_button("📊 Baixar Excel Detalhado", output_ex.getvalue(), "Gap_Mix_Completo.xlsx", "application/vnd.ms-excel")
+                        st.download_button("📊 Baixar Excel", output_ex.getvalue(), "Gap_Mix.xlsx", "application/vnd.ms-excel")
                     with c_btn2:
-                        st.download_button("📄 Baixar PDF Resumo", pdf.output(dest='S').encode('latin-1'), "Sugestao_Mix.pdf", "application/pdf")
+                        st.download_button("📄 Baixar PDF", pdf.output(dest='S').encode('latin-1', 'replace'), "Sugestao_Mix.pdf", "application/pdf")
 
-                st.info(f"📊 Meta do Mix (Aba SKUS): {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
+                st.info(f"📊 Meta do Mix: {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
 
         except Exception as e:
-            st.warning(f"Erro no processamento de SKUS: {e}")
+            st.error(f"Erro no processamento de SKUS: {e}")
 
         # --- MAPA DE CALOR ---
         st.markdown("---")
@@ -741,11 +721,15 @@ elif menu == "📊 Dashboard de Controle":
             import folium
             from folium.plugins import HeatMap
             from streamlit_folium import st_folium
-            df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy() if tipo_mapa == "Visitas Realizadas" else df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
+            if tipo_mapa == "Visitas Realizadas":
+                df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
+            else:
+                df_mapa = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
+            
             if not df_mapa.empty:
                 df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
                 m = folium.Map(location=[df_mapa['lat'].mean(), df_mapa['lon'].mean()], zoom_start=7, tiles="cartodbpositron")
-                HeatMap(df_mapa[['lat', 'lon', 'Qtd_Pedidos' if tipo_mapa != "Visitas Realizadas" else None]].dropna().values.tolist(), radius=15).add_to(m)
+                HeatMap(df_mapa[['lat', 'lon']].dropna().values.tolist(), radius=15).add_to(m)
                 st_folium(m, width="100%", height=500, returned_objects=[])
         except: st.info("Aguardando coordenadas válidas.")
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
