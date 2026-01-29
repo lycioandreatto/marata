@@ -1300,41 +1300,76 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
     # --- RENDERIZAÇÃO ---
     if not df_faturado.empty:
+        # --- RENDERIZAÇÃO ---
+    if not df_faturado.empty:
         df_f = df_faturado.copy()
         
-        # Filtros de interface (Admin/User)
+        # --- 🔍 FILTROS (SLICERS) ---
         st.markdown("### 🔍 Filtros")
         c1, c2, c3 = st.columns(3)
-        # ... [Seus filtros de multiselect aqui] ...
+        
+        with c1:
+            lista_analistas = sorted(df_f['ANALISTA'].dropna().unique())
+            sel_analista = st.multiselect("Filtrar Analista", lista_analistas)
+        
+        with c2:
+            # Filtro dinâmico: se selecionar analista, filtra os supervisores dele
+            df_temp = df_f[df_f['ANALISTA'].isin(sel_analista)] if sel_analista else df_f
+            lista_supervisores = sorted(df_temp['SUPERVISOR'].dropna().unique())
+            sel_supervisor = st.multiselect("Filtrar Supervisor", lista_supervisores)
+            
+        with c3:
+            # Filtro dinâmico: se selecionar supervisor, filtra os vendedores dele
+            df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
+            lista_vendedores = sorted(df_temp['VENDEDOR_NOME'].dropna().unique())
+            sel_vendedor = st.multiselect("Filtrar Vendedor", lista_vendedores)
+
+        # Aplicando os filtros no DataFrame final
+        if sel_analista:
+            df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
+        if sel_supervisor:
+            df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
+        if sel_vendedor:
+            df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
         # --- CÁLCULO FINAL ---
         if not df_f.empty:
             total_vol = df_f['QTD_VENDAS'].sum()
             positivacao = df_f[col_k].nunique()
 
-            # Cruzamento por RG
+            # Cruzamento por RG para pegar a Meta e Base corretas
             vendedores_ids = df_f['VENDEDOR_COD'].unique().tolist()
             dados_meta_filtrados = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
             
-            # Somas com proteção
-            base_total = dados_meta_filtrados['BASE'].sum() if 'BASE' in dados_meta_filtrados.columns else 0
+            base_total = dados_meta_filtrados['BASE'].sum() if not dados_meta_filtrados.empty else 0
             meta_val = dados_meta_filtrados['META'].mean() if not dados_meta_filtrados.empty else 0
             
-            obj_clis = (base_total * (meta_val / 100))
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-            # --- DASHBOARD ---
+            # --- DASHBOARD DE MÉTRICAS ---
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
-            m1.metric("📦 Volume", f"{total_vol:,.0f}")
+            m1.metric("📦 Volume Total", f"{total_vol:,.0f}")
             m2.metric("🏪 Positivados", positivacao)
             
             with m3:
                 st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px;">
-                    <small>COBERTURA (META vs REAL)</small><br>
-                    <b>Base:</b> {base_total:,.0f} | <b>Meta:</b> {meta_val:.1f}%<br>
-                    <b>Atingido:</b> <span style="color:{cor};">{real_perc:.1f}%</span>
+                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                    <small style="color: #666;">COBERTURA (META vs REAL)</small><br>
+                    <span style="font-size: 1.2em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
+                    Atingido: <span style="color:{cor}; font-size: 1.5em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>
                 """, unsafe_allow_html=True)
+
+            # --- 📊 TABELA DE HIERARQUIAS (POR PRODUTO) ---
+            st.markdown("### 📈 Desempenho por Hierarquia")
+            df_hierarquia = df_f.groupby('HIERARQUIA').agg({
+                'QTD_VENDAS': 'sum',
+                col_k: 'nunique'
+            }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).sort_values(by='Volume', ascending=False)
+            
+            st.dataframe(df_hierarquia, use_container_width=True)
+
+        else:
+            st.warning("Nenhum dado encontrado para os filtros selecionados.")
