@@ -942,7 +942,31 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            # Alteramos de EXCLUIR para AÇÃO para refletir as duas opções
+            # --- BLOCO DE EXPORTAÇÃO (RESTAURADO) ---
+            import io
+            
+            cols_v = ['DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR']
+            if 'DISTANCIA_LOG' in df_user.columns:
+                cols_v.append('DISTANCIA_LOG')
+            
+            df_export = df_user[cols_v].copy()
+            
+            exp_col1, exp_col2 = st.columns([1, 5])
+            with exp_col1:
+                # Exportar para Excel
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df_export.to_excel(writer, index=False, sheet_name='Agenda')
+                
+                st.download_button(
+                    label="📥 Excel",
+                    data=buffer.getvalue(),
+                    file_name=f"Agenda_{user_atual}_{datetime.now().strftime('%d_%m')}.xlsx",
+                    mime="application/vnd.ms-excel"
+                )
+            # ---------------------------------------
+
+            # Lógica da Tabela com Checkbox
             df_user["AÇÃO"] = False
             
             def style_agenda_completa(row):
@@ -953,14 +977,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     return ['color: green; font-weight: bold'] * len(row)
                 return styles
 
-            cols_v = ['AÇÃO', 'DATA', 'ANALISTA', 'SUPERVISOR', 'CLIENTE', 'CIDADE', 'JUSTIFICATIVA', 'STATUS', 'AGENDADO POR', 'dist_val_calc']
-            if 'DISTANCIA_LOG' in df_user.columns:
-                cols_v.append('DISTANCIA_LOG')
-
-            df_display = df_user[cols_v].copy()
+            cols_display = ['AÇÃO'] + cols_v + ['dist_val_calc']
+            df_display = df_user[cols_display].copy()
             df_styled = df_display.style.apply(style_agenda_completa, axis=1)
 
-            # Ajuste de privacidade na visualização da coluna GPS
             config_col = {
                 "AÇÃO": st.column_config.CheckboxColumn("📌"),
                 "dist_val_calc": None
@@ -976,7 +996,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 hide_index=True, 
                 use_container_width=True,
                 column_config=config_col,
-                disabled=[c for c in cols_v if c != "AÇÃO"]
+                disabled=[c for c in cols_display if c != "AÇÃO"]
             )
 
             # LÓGICA DE GERENCIAMENTO (REAGENDAR OU EXCLUIR)
@@ -992,7 +1012,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     st.write("Crie uma nova data para este cliente mantendo o histórico atual.")
                     n_data = st.date_input("Nova Data:", value=datetime.now())
                     if st.button("Confirmar Novo Agendamento"):
-                        # Criar cópia e limpar dados de execução
                         nova_v = sel_row.copy()
                         nova_v['ID'] = str(uuid.uuid4())
                         nova_v['DATA'] = n_data.strftime('%d/%m/%Y')
@@ -1002,7 +1021,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         nova_v['COORDENADAS'] = ""
                         nova_v['AGENDADO POR'] = user_atual
                         
-                        # Limpar colunas que não vão para a planilha
                         nova_v_dict = nova_v.drop(labels=['AÇÃO', 'dist_val_calc', 'CIDADE', 'LINHA'], errors='ignore').to_frame().T
                         
                         df_final = pd.concat([df_agenda, nova_v_dict], ignore_index=True)
