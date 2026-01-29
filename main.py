@@ -1270,9 +1270,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
         lista_hierarquia_oficial = []
         if df_skus is not None and not df_skus.empty:
             df_skus.columns = [str(c).strip() for c in df_skus.columns]
-            if 'Hierarquia 2' in df_skus.columns:
+            if 'HIERARQUIA DE PRODUTOS 2' in df_skus.columns:
                 # Pega os valores únicos da sua nova coluna exclusiva
-                lista_hierarquia_oficial = sorted([str(x).strip().upper() for x in df_skus['Hierarquia 2'].dropna().unique()])
+                lista_hierarquia_oficial = sorted([str(x).strip().upper() for x in df_skus['HIERARQUIA DE PRODUTOS 2'].dropna().unique()])
 
         # --- PROCESSAMENTO METAS ---
         if df_param_metas is not None and not df_param_metas.empty:
