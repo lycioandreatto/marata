@@ -537,7 +537,7 @@ if menu == "📅 Agendamentos do Dia":
                     # Salva na planilha
                     df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-
+                    
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
     # Cabeçalho com Botão de Atualizar
@@ -546,28 +546,64 @@ elif menu == "📊 Dashboard de Controle":
         st.header("📊 Resumo de Engajamento por Vendedor")
     
     with col_btn:
+        st.write("") 
         if st.button("🔄 Atualizar Tudo"):
             st.cache_data.clear()
+            st.success("Dados Atualizados!")
+            time.sleep(1)
             st.rerun()
     
     if df_base is not None and df_agenda is not None:
-        # --- MAPEAMENTO DINÂMICO ---
+        # --- MAPEAMENTO DINÂMICO DE COLUNAS ---
         col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'ANALISTA')
         col_sup_base = next((c for c in df_base.columns if c.upper() == 'SUPERVISOR'), 'SUPERVISOR')
         col_vend_base = next((c for c in df_base.columns if c.upper() == 'VENDEDOR'), 'VENDEDOR')
         col_cliente_base = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
         col_nome_base = next((c for c in df_base.columns if c.upper() == 'NOME 1'), 'Nome 1')
 
-        # --- FILTROS (Simplificados para o exemplo) ---
+        st.subheader("Filtros de Visualização")
+        f_c1, f_c2, f_c3 = st.columns(3)
         df_base_filtrada = df_base.copy()
-        # ... (seu código de filtros aqui se mantém igual)
+        
+        with f_c1:
+            if is_admin or is_diretoria:
+                lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if pd.notnull(a) and str(a).strip() and str(a).lower() != 'nan'])
+                ana_sel_dash = st.selectbox("Escolher Analista:", ["Todos"] + lista_analistas, key="ana_dash")
+                if ana_sel_dash != "Todos":
+                    df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base] == ana_sel_dash]
+            else: 
+                ana_sel_dash = user_atual
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_ana_base].astype(str).str.upper() == user_atual]
 
-        # --- PROCESSAMENTO GERAL ---
+        with f_c2:
+            lista_sups_dash = sorted([str(s) for s in df_base_filtrada[col_sup_base].unique() if pd.notnull(s) and str(s).strip() and str(s).lower() != 'nan'])
+            sup_sel_dash = st.selectbox("Escolher Supervisor:", ["Todos"] + lista_sups_dash, key="sup_dash")
+            if sup_sel_dash != "Todos":
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_sup_base] == sup_sel_dash]
+
+        with f_c3:
+            lista_vends_dash = sorted([str(v) for v in df_base_filtrada[col_vend_base].unique() if pd.notnull(v) and str(v).strip() and str(v).lower() != 'nan'])
+            vend_sel_dash = st.selectbox("Escolher Vendedor:", ["Todos"] + lista_vends_dash, key="vend_dash")
+            if vend_sel_dash != "Todos":
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_vend_base] == vend_sel_dash]
+
+        # --- PROCESSAMENTO DE AGENDAMENTOS ---
         df_reg_agenda = df_agenda[['CÓDIGO CLIENTE', 'REGISTRO']].copy().drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')
         df_base_detalhe = pd.merge(df_base_filtrada, df_reg_agenda, left_on=col_cliente_base, right_on='CÓDIGO CLIENTE', how='left')
-        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['REGISTRO'].apply(lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" else 'PENDENTE')
+        df_base_detalhe['STATUS AGENDAMENTO'] = df_base_detalhe['REGISTRO'].apply(lambda x: 'AGENDADO' if pd.notnull(x) and str(x).strip() != "" and str(x) != "-" else 'PENDENTE')
+        df_base_detalhe['REGISTRO'] = df_base_detalhe['REGISTRO'].fillna("-")
 
-        # --- SEÇÃO DE SKUS ---
+        # --- TABELA RESUMO ---
+        resumo_base = df_base_filtrada.groupby([col_ana_base, col_sup_base, col_vend_base]).size().reset_index(name='Total na Base')
+        agenda_no_filtro = df_agenda[df_agenda['CÓDIGO CLIENTE'].isin(df_base_filtrada[col_cliente_base])]
+        resumo_agenda = agenda_no_filtro.groupby('VENDEDOR')['CÓDIGO CLIENTE'].nunique().reset_index(name='Já Agendados')
+        df_dash = pd.merge(resumo_base, resumo_agenda, left_on=col_vend_base, right_on='VENDEDOR', how='left').fillna(0)
+        df_dash['Já Agendados'] = df_dash['Já Agendados'].astype(int)
+        df_dash['Faltando'] = df_dash['Total na Base'] - df_dash['Já Agendados']
+        df_dash['% Conclusão'] = df_dash.apply(lambda r: f"{(r['Já Agendados']/r['Total na Base']*100):.1f}%" if r['Total na Base'] > 0 else "0.0%", axis=1)
+        st.dataframe(df_dash.drop(columns=['VENDEDOR_y'], errors='ignore'), use_container_width=True, hide_index=True)
+
+        # --- CONVERSÃO E GAPS COM AGRUPAMENTO EXATO ---
         st.markdown("---")
         st.subheader("🎯 Conversão e Gap de Mix (SKUS)")
         
@@ -585,88 +621,133 @@ elif menu == "📊 Dashboard de Controle":
                 if n in ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]: return "PIMENTA CONSERVA"
                 return n
 
+            col_h_ref = next((c for c in df_skus_ref.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
             col_sku_ref = next((c for c in df_skus_ref.columns if "SKU" in c.upper() or "ARTIGO" in c.upper()), "SKU")
             col_desc_ref = next((c for c in df_skus_ref.columns if "DESC" in c.upper() or "TEXTO" in c.upper()), "DESCRIÇÃO")
-            
-            df_skus_ref['H_AGRUPADA'] = df_skus_ref.get('Hierarquia de produtos', df_skus_ref.columns[0]).apply(agrupar_hierarquia)
+
+            df_skus_ref['H_AGRUPADA'] = df_skus_ref[col_h_ref].apply(agrupar_hierarquia)
             total_h_alvo = df_skus_ref['H_AGRUPADA'].nunique()
             total_s_alvo = df_skus_ref[col_sku_ref].nunique()
 
             col_cod_fat = df_fat.columns[10] 
+            col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), col_h_ref)
             col_s_fat = next((c for c in df_fat.columns if "ARTIGO" in c.upper() or "SKU" in c.upper()), col_sku_ref)
             
+            df_fat['H_AGRUPADA'] = df_fat[col_h_fat].apply(agrupar_hierarquia)
             def limpar_cod(val): return str(val).split('.')[0].strip() if pd.notnull(val) else ""
             df_fat['Cod_Limpo'] = df_fat[col_cod_fat].apply(limpar_cod)
-            df_fat['H_AGRUPADA'] = df_fat.get('Hierarquia de produtos', df_fat.columns[0]).apply(agrupar_hierarquia)
-
+            
             df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
                 'OrdCliente': 'nunique', 'Data fat.': 'max', 'H_AGRUPADA': 'nunique', col_s_fat: 'nunique'
             }).reset_index()
             df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat', 'H_Vendidas', 'S_Vendidos']
-            
+
             df_base_detalhe['Cliente_Limpo'] = df_base_detalhe[col_cliente_base].apply(limpar_cod)
             df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
             df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'].copy()
+            
+            # Métricas
+            t_ag = len(df_agendados_ativos)
+            v_ag = len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Clientes Agendados", t_ag)
+            c2.metric("Agendados com Venda", v_ag)
+            c3.metric("Taxa de Conversão", f"{(v_ag/t_ag*100 if t_ag > 0 else 0):.1f}%")
+            c4.metric("Total de Pedidos", int(df_agendados_ativos['Qtd_Pedidos'].sum()))
 
             with st.expander("🔍 Detalhes de GAPs e Exportação", expanded=True):
                 df_conv = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
                 df_conv['GAP FAMÍLIA'] = (total_h_alvo - df_conv['H_Vendidas']).clip(lower=0).astype(int)
                 df_conv['GAP SKU'] = (total_s_alvo - df_conv['S_Vendidos']).clip(lower=0).astype(int)
+                df_conv['ÚLT. FAT.'] = pd.to_datetime(df_conv['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
-                df_view = df_conv[[col_cliente_base, col_nome_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU']].copy()
-                df_view.columns = ['CÓDIGO', 'NOME', 'FAM. ATUAIS', 'GAP FAM', 'SKU ATUAIS', 'GAP SKU']
+                df_view = df_conv[[col_cliente_base, col_nome_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']].copy()
+                df_view.columns = ['CÓDIGO', 'NOME', 'FAM. ATUAIS', 'GAP FAM', 'SKU ATUAIS', 'GAP SKU', 'ÚLT. FAT.']
                 df_view.insert(0, "Selecionar", False)
 
-                edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True)
+                edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True, key="editor_gap")
                 sel_cods = edited_df[edited_df['Selecionar'] == True]['CÓDIGO'].tolist()
 
                 if sel_cods:
-                    c_exp1, c_exp2 = st.columns(2)
+                    # --- PREPARAÇÃO DOS DADOS PARA EXPORTAÇÃO ---
+                    output_ex = io.BytesIO()
                     
-                    # --- LÓGICA EXCEL (Com os que já tem) ---
-                    with c_exp1:
-                        output_ex = io.BytesIO()
-                        with pd.ExcelWriter(output_ex, engine='xlsxwriter') as writer:
-                            for cod in sel_cods:
-                                c_l = limpar_cod(cod)
-                                skus_cliente = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
-                                
-                                df_tem = df_skus_ref[df_skus_ref[col_sku_ref].isin(skus_cliente)].copy()
-                                df_falta = df_skus_ref[~df_skus_ref[col_sku_ref].isin(skus_cliente)].copy()
-                                
-                                aba = f"CLI_{c_l}"[:31]
-                                # Parte 1: O que falta
-                                pd.DataFrame([["PRODUTOS FALTANTES (GAP)"]]).to_excel(writer, aba, index=False, header=False, startrow=0)
-                                df_falta[['H_AGRUPADA', col_sku_ref, col_desc_ref]].to_excel(writer, aba, index=False, startrow=1)
-                                
-                                # Parte 2: O que já tem
-                                start_row_tem = len(df_falta) + 4
-                                pd.DataFrame([["PRODUTOS JÁ COMPRADOS"]]).to_excel(writer, aba, index=False, header=False, startrow=start_row_tem)
-                                df_tem[['H_AGRUPADA', col_sku_ref, col_desc_ref]].to_excel(writer, aba, index=False, startrow=start_row_tem + 1)
-                        
-                        st.download_button("📊 Baixar Excel Detalhado", output_ex.getvalue(), "Gap_Mix_Completo.xlsx")
+                    # Para PDF
+                    from fpdf import FPDF
+                    pdf = FPDF()
+                    pdf.set_auto_page_break(auto=True, margin=15)
 
-                    # --- LÓGICA PDF (Simples) ---
-                    with c_exp2:
-                        from fpdf import FPDF
-                        class PDF(FPDF):
-                            def header(self):
-                                self.set_font('Arial', 'B', 12)
-                                self.cell(0, 10, 'Relatório de Mix de Produtos - Maratá', 0, 1, 'C')
-                        
-                        pdf = PDF()
+                    with pd.ExcelWriter(output_ex, engine='xlsxwriter') as writer:
                         for cod in sel_cods:
+                            c_l = limpar_cod(cod)
+                            info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == c_l].iloc[0]
+                            
+                            # Filtros de Comprados e Faltantes
+                            ja_comprou_cods = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
+                            df_falta = df_skus_ref[~df_skus_ref[col_sku_ref].isin(ja_comprou_cods)].copy()
+                            df_tem = df_skus_ref[df_skus_ref[col_sku_ref].isin(ja_comprou_cods)].copy()
+                            
+                            # --- EXCEL ---
+                            aba = f"CLI_{c_l}"[:31]
+                            # Cabeçalho Cliente
+                            pd.DataFrame([["CLIENTE:", info_cli[col_nome_base], "CÓDIGO:", cod]]).to_excel(writer, aba, index=False, header=False, startrow=0)
+                            
+                            # Bloco 1: GAP
+                            pd.DataFrame([["--- PRODUTOS QUE FALTAM (GAP) ---"]]).to_excel(writer, aba, index=False, header=False, startrow=2)
+                            df_falta[['H_AGRUPADA', col_sku_ref, col_desc_ref]].to_excel(writer, aba, index=False, startrow=3)
+                            
+                            # Bloco 2: JÁ COMPROU
+                            start_row_tem = len(df_falta) + 6
+                            pd.DataFrame([["--- PRODUTOS JÁ COMPRADOS ---"]]).to_excel(writer, aba, index=False, header=False, startrow=start_row_tem)
+                            df_tem[['H_AGRUPADA', col_sku_ref, col_desc_ref]].to_excel(writer, aba, index=False, startrow=start_row_tem + 1)
+
+                            # --- PDF ---
                             pdf.add_page()
-                            pdf.set_font('Arial', 'B', 10)
-                            pdf.cell(0, 10, f"Cliente: {cod}", 0, 1)
-                            # Aqui você pode iterar no df_falta e adicionar linhas...
-                            pdf.set_font('Arial', '', 8)
-                            pdf.cell(0, 10, "(Consulte o Excel para a lista completa de SKUs)", 0, 1)
-                        
-                        st.download_button("📄 Baixar PDF Resumo", pdf.output(dest='S').encode('latin-1'), "Relatorio_Mix.pdf")
+                            pdf.set_font("Arial", 'B', 14)
+                            pdf.cell(200, 10, f"Mix de Produtos: {info_cli[col_nome_base]}", ln=True, align='C')
+                            pdf.set_font("Arial", 'I', 10)
+                            pdf.cell(200, 10, f"Codigo: {cod} | Vendedor: {info_cli[col_vend_base]}", ln=True, align='C')
+                            
+                            pdf.set_font("Arial", 'B', 11)
+                            pdf.ln(5)
+                            pdf.cell(200, 10, "SKUS FALTANTES NO MIX:", ln=True)
+                            pdf.set_font("Arial", '', 9)
+                            for _, row in df_falta.head(40).iterrows(): # Limitado para não estourar layout simples
+                                pdf.cell(0, 7, f"- {row['H_AGRUPADA']} | {row[col_sku_ref]} | {row[col_desc_ref][:40]}", ln=True)
+                            
+                            pdf.ln(5)
+                            pdf.set_font("Arial", 'B', 11)
+                            pdf.cell(200, 10, "SKUS JÁ COMPRADOS:", ln=True)
+                            pdf.set_font("Arial", '', 9)
+                            for _, row in df_tem.head(20).iterrows():
+                                pdf.cell(0, 7, f"[OK] {row['H_AGRUPADA']} | {row[col_sku_ref]}", ln=True)
+
+                    c_btn1, c_btn2 = st.columns(2)
+                    with c_btn1:
+                        st.download_button("📊 Baixar Excel Detalhado", output_ex.getvalue(), "Gap_Mix_Completo.xlsx", "application/vnd.ms-excel")
+                    with c_btn2:
+                        st.download_button("📄 Baixar PDF Resumo", pdf.output(dest='S').encode('latin-1'), "Sugestao_Mix.pdf", "application/pdf")
+
+                st.info(f"📊 Meta do Mix (Aba SKUS): {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
 
         except Exception as e:
-            st.error(f"Erro no processamento de SKUS: {e}")
+            st.warning(f"Erro no processamento de SKUS: {e}")
+
+        # --- MAPA DE CALOR ---
+        st.markdown("---")
+        st.subheader("🔥 Mapa de Calor")
+        tipo_mapa = st.radio("Selecione a camada:", ["Visitas Realizadas", "Faturamento (Pedidos)"], horizontal=True)
+        try:
+            import folium
+            from folium.plugins import HeatMap
+            from streamlit_folium import st_folium
+            df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy() if tipo_mapa == "Visitas Realizadas" else df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
+            if not df_mapa.empty:
+                df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
+                m = folium.Map(location=[df_mapa['lat'].mean(), df_mapa['lon'].mean()], zoom_start=7, tiles="cartodbpositron")
+                HeatMap(df_mapa[['lat', 'lon', 'Qtd_Pedidos' if tipo_mapa != "Visitas Realizadas" else None]].dropna().values.tolist(), radius=15).add_to(m)
+                st_folium(m, width="100%", height=500, returned_objects=[])
+        except: st.info("Aguardando coordenadas válidas.")
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
