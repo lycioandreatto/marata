@@ -1222,7 +1222,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         st.warning("Agenda vazia.")
 
 
-# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 elif menu == "📊 Desempenho de Vendas":
     st.header("📊 Painel de Desempenho - Faturado")
     
@@ -1313,3 +1312,9 @@ elif menu == "📊 Desempenho de Vendas":
         st.warning("⚠️ A aba 'FATURADO' está vazia ou não pôde ser lida.")
 
 
+
+
+
+
+
+# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
