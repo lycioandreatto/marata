@@ -26,7 +26,7 @@ MAPA_EMAILS = {
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
 
-def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista):
+def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -39,9 +39,8 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analist
         msg = MIMEMultipart()
         msg['From'] = email_origem
         msg['To'] = destinatarios_lista 
-        msg['Subject'] = f"Resumo de Rota Finalizada - {vendedor}"
+        msg['Subject'] = f"✅ Rota Finalizada - {vendedor} ({datetime.now().strftime('%d/%m')})"
 
-        # Tratamento para o nome não vir "NÃO LOCALIZADO" ou "TODOS" de forma feia
         saudacao = nome_analista.title() if nome_analista != "NÃO LOCALIZADO" else "Gestão Maratá"
 
         corpo = f"""
@@ -49,13 +48,19 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analist
         
         O vendedor {vendedor} acaba de finalizar a rota do dia.
         
-        RESUMO DA OPERAÇÃO:
-        - Total de Clientes Planejados: {dados_resumo['total']}
+        📊 RESUMO DE PERFORMANCE:
+        ------------------------------------------
+        - Total Planejado: {dados_resumo['total']} clientes
         - Visitas Realizadas: {dados_resumo['realizados']}
         - Visitas com Pedido: {dados_resumo['pedidos']}
-        - Pendências (Não Visitados): {dados_resumo['pendentes']}
+        - Taxa de Conversão: {taxa:.1f}%
         
-        E-mail enviado automaticamente pelo Sistema Maratá GVP.
+        📍 DADOS DE FINALIZAÇÃO:
+        ------------------------------------------
+        - Hora do Envio: {hora}
+        - Localização: {link}
+        
+        E-mail gerado automaticamente pelo Sistema Maratá GVP.
         """
         msg.attach(MIMEText(corpo, 'plain'))
 
@@ -66,7 +71,7 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analist
         server.quit()
         return True
     except Exception as e:
-        st.error(f"Erro detalhado no envio: {e}")
+        st.error(f"Erro no envio: {e}")
         return False
 
 # --- CONTINUAÇÃO DO SEU CÓDIGO (calcular_distancia, etc) ---
@@ -602,44 +607,51 @@ if menu == "📅 Agendamentos do Dia":
 
             # --- BOTÃO ROTA FINALIZADA ---
            # --- BOTÃO ROTA FINALIZADA ---
-st.markdown("---")
-if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-    
-    # 1. Busca o Analista do Vendedor na aba BASE
-    try:
-        # Filtra na base onde o vendedor é o usuário logado e pega o nome do analista
-        analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual]['ANALISTA'].iloc[0].upper().strip()
-    except:
-        analista_encontrado = "NÃO LOCALIZADO"
+# --- BOTÃO ROTA FINALIZADA ---
+        st.markdown("---")
+        if not df_dia.empty:
+            if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
+                
+                # 1. Busca Analista
+                try:
+                    analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual]['ANALISTA'].iloc[0].upper().strip()
+                except:
+                    analista_encontrado = "NÃO LOCALIZADO"
 
-    # 2. Monta a lista de e-mails
-    lista_final = EMAILS_GESTAO.copy() # Começa com Aldo e Lycio
-    
-    if analista_encontrado in MAPA_EMAILS:
-        lista_final.extend(MAPA_EMAILS[analista_encontrado])
-    
-    # Transforma a lista em string separada por vírgula para o campo 'To' do e-mail
-    string_destinatarios = ", ".join(lista_final)
+                # 2. Prepara Destinatários
+                lista_final = EMAILS_GESTAO.copy()
+                if analista_encontrado in MAPA_EMAILS:
+                    lista_final.extend(MAPA_EMAILS[analista_encontrado])
+                string_destinatarios = ", ".join(lista_final)
 
-    resumo_dados = {
-        'total': len(df_dia),
-        'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
-        'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
-        'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
-    }
-    
-    with st.spinner(f"Enviando resumo para {analista_encontrado}..."):
-            # O ERRO ESTAVA AQUI: Faltava o nome_analista
-            sucesso = enviar_resumo_rota(
-                destinatarios_lista=string_destinatarios,
-                vendedor=user_atual,
-                dados_resumo=resumo_dados,
-                nome_analista=analista_encontrado  # <--- ADICIONE ESTA LINHA
-            )
-    
-    if sucesso:
-        st.success(f"Rota finalizada! E-mail enviado para: {string_destinatarios}")
-        st.balloons()
+                # 3. Prepara Dados Básicos
+                resumo_dados = {
+                    'total': len(df_dia),
+                    'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
+                    'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
+                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
+                }
+
+                # --- 4. OS SEUS NOVOS CÁLCULOS ENTRAM AQUI ---
+                taxa_conversao = (resumo_dados['pedidos'] / resumo_dados['realizados'] * 100) if resumo_dados['realizados'] > 0 else 0
+                hora_finalizacao = datetime.now(fuso_br).strftime("%H:%M:%S")
+                link_mapas = f"https://www.google.com/maps?q={st.session_state.lat},{st.session_state.lon}"
+
+                # 5. Envio Final (Passando os novos argumentos)
+                with st.spinner(f"Enviando resumo para {analista_encontrado}..."):
+                    sucesso = enviar_resumo_rota(
+                        destinatarios_lista=string_destinatarios,
+                        vendedor=user_atual,
+                        dados_resumo=resumo_dados,
+                        nome_analista=analista_encontrado,
+                        taxa=taxa_conversao,        # Novo!
+                        hora=hora_finalizacao,      # Novo!
+                        link=link_mapas             # Novo!
+                    )
+                
+                if sucesso:
+                    st.success(f"✅ Rota finalizada! Performance de {taxa_conversao:.1f}% enviada.")
+                    st.balloons()
     else:
         st.error("Falha ao enviar e-mail. Verifique as credenciais.")
                     
