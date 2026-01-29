@@ -1147,10 +1147,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- TABELA DE EXIBIÇÃO FINAL ---
             df_user["AÇÃO"] = False
             cols_display = [
-                'AÇÃO', 'DATA', 'VENDEDOR', 'CLIENTE', 'CIDADE', 
+                'AÇÃO', 'REGISTRO','DATA', 'VENDEDOR', 'CLIENTE', 'CIDADE', 
                 'STATUS', 'DISTANCIA_LOG', 'COORDENADAS', 'APROVACAO', 'OBS_GESTAO'
             ]
-            
+            cols_presentes = [c for c in cols_display if c in df_user.columns]
             df_display = df_user[[c for c in cols_display if c in df_user.columns]].copy()
 
             def style_agenda(row):
