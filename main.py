@@ -32,7 +32,7 @@ if not cookies.ready():
     st.stop()
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Maratá - SCA", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Maratá - GVP", page_icon="📅", layout="wide")
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
@@ -237,7 +237,7 @@ if not st.session_state.logado:
         """
         <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
             <img src="https://raw.githubusercontent.com/lycioandreatto/marata/main/pngmarata" width="60">
-            <h1 style="color: #000C75; margin: 0;">SISTEMA DE CONTROLE DE AGENDAMIENTOS</h1>
+            <h1 style="color: #000C75; margin: 0;">GESTÃO DE VISITAS PDV</h1>
         </div>
         """,
         unsafe_allow_html=True
@@ -414,7 +414,7 @@ with st.sidebar:
                 st.rerun()
 
 # --- TÍTULO CENTRAL NO TOPO ---
-st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>SISTEMA DE CONTROLE DE AGENDAMENTOS (SCA) - MARATÁ</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
