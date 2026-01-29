@@ -937,7 +937,15 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 elif menu == "🔍 Ver/Editar Minha Agenda":
-    st.header("🔍 Minha Agenda Completa")
+    # --- CABEÇALHO COM BOTÃO DE ATUALIZAR ---
+    col_titulo, col_btn = st.columns([0.8, 0.2])
+    with col_titulo:
+        st.header("🔍 Minha Agenda Completa")
+    
+    with col_btn:
+        if st.button("🔄 Atualizar Dados", key="btn_refresh_agenda"):
+            st.cache_data.clear()
+            st.rerun()
     
     if df_agenda is not None and not df_agenda.empty:
         # 1. Limpeza e Padronização Inicial
@@ -945,7 +953,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             if col not in df_agenda.columns: 
                 df_agenda[col] = ""
             else:
-                # Remove o "NaN" visual transformando em string vazia ou Pendente
                 if col == 'APROVACAO':
                     df_agenda[col] = df_agenda[col].fillna("Pendente").replace(["", "none", "None", "nan", "NaN"], "Pendente")
                 else:
@@ -1004,25 +1011,25 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             total_pendente = len(df_user[df_user['STATUS'] == "Planejado"])
             total_realizado = len(df_user[df_user['STATUS'] == "Realizado"])
             
-            cols = st.columns(4 if (is_admin or is_diretoria or is_analista) else 3)
-            cols[0].metric("📅 Total Agendado", total_agendado)
-            cols[1].metric("⏳ Total Pendente", total_pendente)
-            cols[2].metric("✅ Total Realizado", total_realizado)
+            cols_metrics = st.columns(4 if (is_admin or is_diretoria or is_analista) else 3)
+            cols_metrics[0].metric("📅 Total Agendado", total_agendado)
+            cols_metrics[1].metric("⏳ Total Pendente", total_pendente)
+            cols_metrics[2].metric("✅ Total Realizado", total_realizado)
             
-            if len(cols) == 4:
+            if len(cols_metrics) == 4:
                 fora_raio = len(df_user[(df_user['STATUS'] == "Realizado") & (df_user['dist_val_calc'] > 50)])
-                cols[3].metric("📍 Fora do Raio (>50m)", fora_raio, delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, delta_color="inverse")
+                cols_metrics[3].metric("📍 Fora do Raio (>50m)", fora_raio, delta=f"{fora_raio} Alertas" if fora_raio > 0 else None, delta_color="inverse")
             
             st.markdown("---")
 
-            # --- PAINEL DE APROVAÇÃO EM MASSA ---
+            # --- PAINEL DE APROVAÇÃO EM MASSA (Opcional para gestores) ---
             if (is_admin or is_diretoria or is_analista) and not df_user.empty:
-                with st.expander("⚖️ Painel de Aprovação de Agendas", expanded=True):
+                with st.expander("⚖️ Painel de Aprovação de Agendas", expanded=False):
                     col_ap1, col_ap2, col_ap3 = st.columns([2, 2, 3])
                     vends_na_lista = sorted([str(x) for x in df_user['VENDEDOR'].unique() if x])
                     vend_alvo = col_ap1.selectbox("Ação em Massa para Vendedor:", ["Todos"] + vends_na_lista)
                     status_massa = col_ap2.selectbox("Definir como:", ["Aprovado", "Reprovado"])
-                    obs_massa = col_ap3.text_input("Observação da Gestão:", placeholder="Digite o motivo...")
+                    obs_massa = col_ap3.text_input("Observação da Gestão:", placeholder="Digite o motivo...", key="obs_massa_input")
                     
                     if st.button("🚀 Aplicar Decisão em Massa"):
                         mask = df_agenda['VENDEDOR'] == vend_alvo if vend_alvo != "Todos" else df_agenda['VENDEDOR'].isin(vends_na_lista)
@@ -1035,33 +1042,27 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         st.cache_data.clear()
                         st.success("Agendas atualizadas!"); time.sleep(1); st.rerun()
 
-            # Traz Cidade
+            # Traz Cidade caso não exista
             if df_base is not None and 'CIDADE' not in df_user.columns:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 df_cidades = df_base[['Cliente', col_local_base]].copy()
                 df_user = pd.merge(df_user, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left').drop(columns=['Cliente_y'], errors='ignore')
                 df_user.rename(columns={col_local_base: 'CIDADE'}, inplace=True)
 
-            # --- TABELA DE EXIBIÇÃO ---
-            # --- TABELA DE EXIBIÇÃO (SUBSTITUIÇÃO COMPLETA) ---
+            # --- TABELA DE EXIBIÇÃO FINAL ---
             df_user["AÇÃO"] = False
-            
-            # Aqui é onde a mágica acontece: incluímos as colunas que você quer ver
             cols_display = [
                 'AÇÃO', 'DATA', 'VENDEDOR', 'CLIENTE', 'CIDADE', 
                 'STATUS', 'DISTANCIA_LOG', 'COORDENADAS', 'APROVACAO', 'OBS_GESTAO'
             ]
             
-            # Criamos o DataFrame de exibição garantindo que as colunas existam
             df_display = df_user[[c for c in cols_display if c in df_user.columns]].copy()
 
-            # Estilização (mantendo o que você já tinha)
             def style_agenda(row):
                 if row.get('APROVACAO') == "Reprovado": return ['background-color: #fadbd8'] * len(row)
                 if row.get('APROVACAO') == "Aprovado": return ['background-color: #d4efdf'] * len(row)
                 return [''] * len(row)
 
-            # O editor que finalmente vai mostrar o GPS e os Metros
             edicao_user = st.data_editor(
                 df_display.style.apply(style_agenda, axis=1), 
                 key="edit_agenda_final", 
@@ -1074,6 +1075,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 },
                 disabled=[c for c in cols_display if c != "AÇÃO"]
             )
+            
             # --- GERENCIAMENTO INDIVIDUAL ---
             marcados = edicao_user[edicao_user["AÇÃO"] == True]
             if not marcados.empty:
@@ -1085,9 +1087,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 
                 with tabs[0]:
                     if is_admin or is_diretoria or is_analista:
-                        # Ajuste para garantir que n_ob não venha com "nan"
                         motivo_atual = str(sel_row['OBS_GESTAO']) if pd.notnull(sel_row['OBS_GESTAO']) and str(sel_row['OBS_GESTAO']).lower() != "nan" else ""
-                        
                         n_ap = st.selectbox("Decisão:", ["Aprovado", "Reprovado"], key="ind_v")
                         n_ob = st.text_input("Motivo da Decisão:", value=motivo_atual, key="motivo_ind")
                         
