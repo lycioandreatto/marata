@@ -452,42 +452,54 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", t_validado)
         m4.metric("Reprovados", t_reprovado, delta_color="inverse")
 
-        # --- PAINEL DE APROVAÇÃO EM MASSA (GESTÃO) ---
+        # --- PAINEL DE VALIDAÇÃO EM MASSA (GESTÃO) ---
         if eh_gestao and not df_dia.empty:
             with st.expander("⚡ Painel de Validação em Massa (Gestão)"):
-                st.info("Valide rapidamente os atendimentos realizados pela equipe.")
-                c_mass1, c_mass2, c_mass3 = st.columns([1, 1, 1])
+                st.info("Selecione o grupo para validar todos os 'Realizados' de uma vez.")
                 
-                with c_mass1:
-                    # Filtro para agir apenas em uma equipe específica se desejar
-                    equipes = ["TODOS"] + sorted(list(df_dia['SUPERVISOR'].unique()))
-                    sel_eq = st.selectbox("Filtrar Equipe:", equipes, key="mass_eq")
+                c_m1, c_m2, c_m3, c_m4 = st.columns([1.2, 1.2, 1, 1])
                 
-                with c_mass2:
-                    acao_mass = st.radio("Ação:", ["Dar OK", "REPROVAR"], horizontal=True)
+                with c_m1:
+                    sups = ["TODOS"] + sorted(list(df_dia['SUPERVISOR'].dropna().unique()))
+                    sel_sup = st.selectbox("Filtrar Supervisor:", sups, key="mass_sup")
                 
-                with c_mass3:
-                    st.write("") # Alinhamento
-                    if st.button("🚀 EXECUTAR EM MASSA", use_container_width=True):
-                        # Lógica de filtro para a massa
-                        df_para_massa = df_dia[df_dia['STATUS'] == "Realizado"].copy()
-                        if sel_eq != "TODOS":
-                            df_para_massa = df_para_massa[df_para_massa['SUPERVISOR'] == sel_eq]
+                with c_m2:
+                    # Filtra vendedores com base no supervisor escolhido
+                    if sel_sup == "TODOS":
+                        vends = ["TODOS"] + sorted(list(df_dia['VENDEDOR'].dropna().unique()))
+                    else:
+                        vends = ["TODOS"] + sorted(list(df_dia[df_dia['SUPERVISOR'] == sel_sup]['VENDEDOR'].unique()))
+                    sel_vend = st.selectbox("Filtrar Vendedor:", vends, key="mass_vend")
+                
+                with c_m3:
+                    acao_mass = st.radio("Ação:", ["Dar OK", "REPROVAR"], horizontal=True, key="mass_acao")
+                
+                with c_m4:
+                    st.write("") # Espaçamento
+                    if st.button("🚀 EXECUTAR", use_container_width=True):
+                        # Aplica os filtros para identificar quem será afetado
+                        df_massa = df_dia[df_dia['STATUS'] == "Realizado"].copy()
                         
-                        ids_massa = df_para_massa['ID'].tolist()
+                        if sel_sup != "TODOS":
+                            df_massa = df_massa[df_massa['SUPERVISOR'] == sel_sup]
+                        if sel_vend != "TODOS":
+                            df_massa = df_massa[df_massa['VENDEDOR'] == sel_vend]
+                        
+                        ids_massa = df_massa['ID'].tolist()
                         
                         if ids_massa:
                             status_val = "OK" if acao_mass == "Dar OK" else "REPROVADO"
                             df_agenda.loc[df_agenda['ID'].isin(ids_massa), col_aprov_exec] = status_val
                             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
-                            st.success(f"Sucesso! {len(ids_massa)} itens marcados como {status_val}.")
+                            st.success(f"Sucesso! {len(ids_massa)} visitas validadas.")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.warning("Nada para processar com esse filtro.")
+                            st.warning("Nenhuma visita 'Realizada' encontrada para este filtro.")
 
         # --- TABELA DE AGENDAMENTOS ---
         if not df_dia.empty:
+            # Lógica de Cidade (Merge com Base)
             if df_base is not None:
                 col_local_base = next((c for c in df_base.columns if c.upper() == 'LOCAL'), 'Local')
                 col_cod_cliente = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
