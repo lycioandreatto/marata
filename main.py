@@ -538,6 +538,8 @@ if menu == "📅 Agendamentos do Dia":
                     df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', 'JUSTIFICATIVA', 'COORDENADAS', 'DISTANCIA_LOG']] = [n_st, final_j, f"{lat_v}, {lon_v}", log_distancia_valor]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA'], errors='ignore'))
                     
+import io
+
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
     # Cabeçalho com Botão de Atualizar
@@ -561,6 +563,7 @@ elif menu == "📊 Dashboard de Controle":
         col_cliente_base = next((c for c in df_base.columns if c.upper() == 'CLIENTE'), 'Cliente')
         col_nome_base = next((c for c in df_base.columns if c.upper() == 'NOME 1'), 'Nome 1')
 
+        # --- FILTROS ---
         st.subheader("Filtros de Visualização")
         f_c1, f_c2, f_c3 = st.columns(3)
         df_base_filtrada = df_base.copy()
@@ -613,34 +616,24 @@ elif menu == "📊 Dashboard de Controle":
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
             df_skus_ref.columns = [str(c).strip() for c in df_skus_ref.columns]
 
-            # --- FUNÇÃO DE AGRUPAMENTO (TERMOS EXATOS) ---
             def agrupar_hierarquia(nome):
                 n = str(nome).upper().strip()
-                # Grupos Exatos
-                if n in ["DESCARTAVEIS COPOS", "DESCARTAVEIS POTES", "DESCARTAVEIS PRATOS", "DESCARTAVEIS TAMPAS"]:
-                    return "DESCARTAVEIS"
-                if n in ["MILHO", "MILHO CANJICA", "MILHO CANJIQUINHA", "MILHO CREME MILHO", "MILHO FUBA"]:
-                    return "MILHO"
-                if n in ["MOLHOS ALHO", "MOLHOS ALHO PICANTE"]:
-                    return "MOLHOS ALHO"
-                if n in ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]:
-                    return "PIMENTA CONSERVA"
+                if n in ["DESCARTAVEIS COPOS", "DESCARTAVEIS POTES", "DESCARTAVEIS PRATOS", "DESCARTAVEIS TAMPAS"]: return "DESCARTAVEIS"
+                if n in ["MILHO", "MILHO CANJICA", "MILHO CANJIQUINHA", "MILHO CREME MILHO", "MILHO FUBA"]: return "MILHO"
+                if n in ["MOLHOS ALHO", "MOLHOS ALHO PICANTE"]: return "MOLHOS ALHO"
+                if n in ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]: return "PIMENTA CONSERVA"
                 return n
 
-            # Aplicar na referência (SKUS) para chegar nas 53 famílias
             col_h_ref = 'Hierarquia de produtos'
             df_skus_ref['H_AGRUPADA'] = df_skus_ref[col_h_ref].apply(agrupar_hierarquia)
-            
             total_h_alvo = df_skus_ref['H_AGRUPADA'].nunique()
             total_s_alvo = df_skus_ref['SKU'].nunique()
 
-            # Aplicar no faturado
             col_cod_fat = df_fat.columns[10] 
             col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), col_h_ref)
             col_s_fat = "Nº artigo"
             
             df_fat['H_AGRUPADA'] = df_fat[col_h_fat].apply(agrupar_hierarquia)
-            
             def limpar_cod(val): return str(val).split('.')[0].strip() if pd.notnull(val) else ""
             df_fat['Cod_Limpo'] = df_fat[col_cod_fat].apply(limpar_cod)
             
@@ -652,29 +645,63 @@ elif menu == "📊 Dashboard de Controle":
             }).reset_index()
             
             df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat', 'H_Vendidas', 'S_Vendidos']
-
             df_base_detalhe['Cliente_Limpo'] = df_base_detalhe[col_cliente_base].apply(limpar_cod)
             df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
             df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'].copy()
             
-            # Cards de Métricas
-            t_ag = len(df_agendados_ativos)
-            v_ag = len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Clientes Agendados", t_ag)
-            c2.metric("Agendados com Venda", v_ag)
-            c3.metric("Taxa de Conversão", f"{(v_ag/t_ag*100 if t_ag > 0 else 0):.1f}%")
-            c4.metric("Total de Pedidos", int(df_agendados_ativos['Qtd_Pedidos'].sum()))
-
-            with st.expander("🔍 Detalhes de GAPs por Cliente"):
+            # --- SEÇÃO DE EXPORTAÇÃO ---
+            with st.expander("🔍 Detalhes de GAPs e Exportação por Cliente"):
                 df_conv = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
                 df_conv['GAP FAMÍLIA'] = (total_h_alvo - df_conv['H_Vendidas']).clip(lower=0).astype(int)
                 df_conv['GAP SKU'] = (total_s_alvo - df_conv['S_Vendidos']).clip(lower=0).astype(int)
                 df_conv['ÚLT. FAT.'] = pd.to_datetime(df_conv['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
-                df_view = df_conv[[col_cliente_base, col_nome_base, col_vend_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']]
+                # Prepara DataFrame para exibição com checkbox de seleção
+                df_view = df_conv[[col_cliente_base, col_nome_base, col_vend_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']].copy()
                 df_view.columns = ['CÓDIGO', 'NOME', 'VENDEDOR', 'FAMÍLIAS FAT.', 'GAP FAMÍLIA', 'SKUS FAT.', 'GAP SKU', 'ÚLT. FAT.']
-                st.dataframe(df_view, use_container_width=True, hide_index=True)
+                df_view.insert(0, "Selecionar", False)
+
+                # Tabela editável para seleção
+                edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True, key="editor_gap")
+                
+                # Lógica de Exportação
+                clientes_selecionados = edited_df[edited_df['Selecionar'] == True]['CÓDIGO'].tolist()
+                
+                def gerar_excel_gap(codigos):
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        for cod in codigos:
+                            cod_limpo = limpar_cod(cod)
+                            info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == cod_limpo].iloc[0]
+                            
+                            # SKUs que o cliente JA comprou
+                            ja_comprados = df_fat[df_fat['Cod_Limpo'] == cod_limpo][['H_AGRUPADA', col_s_fat, 'Texto breve item']].drop_duplicates()
+                            
+                            # SKUs que FALTAM (Referência total - comprados)
+                            skus_faltantes = df_skus_ref[~df_skus_ref['SKU'].isin(ja_comprados[col_s_fat])].copy()
+                            
+                            # Criar aba para o cliente
+                            df_final = pd.DataFrame({
+                                'Analista': [info_cli[col_ana_base]],
+                                'Supervisor': [info_cli[col_sup_base]],
+                                'Vendedor': [info_cli[col_vend_base]],
+                                'Código': [cod],
+                                'Cliente': [info_cli[col_nome_base]]
+                            })
+                            
+                            df_final.to_excel(writer, sheet_name=f"CLI_{cod_limpo}", index=False, startrow=0)
+                            pd.DataFrame([["--- SKUS QUE FALTAM TRABALHAR ---"]]).to_excel(writer, sheet_name=f"CLI_{cod_limpo}", index=False, header=False, startrow=3)
+                            skus_faltantes[['H_AGRUPADA', 'SKU', 'DESCRIÇÃO']].to_excel(writer, sheet_name=f"CLI_{cod_limpo}", index=False, startrow=4)
+                    return output.getvalue()
+
+                c_exp1, c_exp2 = st.columns(2)
+                with c_exp1:
+                    if clientes_selecionados:
+                        excel_data = gerar_excel_gap(clientes_selecionados)
+                        st.download_button(f"📥 Exportar Excel ({len(clientes_selecionados)} Selecionados)", data=excel_data, file_name="GAP_MIX_DETALHADO.xlsx", mime="application/vnd.ms-excel")
+                with c_exp2:
+                    st.info("💡 Marque a coluna 'Selecionar' para exportar o detalhamento de SKUs faltantes de clientes específicos.")
+
                 st.info(f"📊 Meta do Mix (Aba SKUS): {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
 
         except Exception as e:
@@ -688,11 +715,7 @@ elif menu == "📊 Dashboard de Controle":
             import folium
             from folium.plugins import HeatMap
             from streamlit_folium import st_folium
-            if tipo_mapa == "Visitas Realizadas":
-                df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-            else:
-                df_mapa = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-            
+            df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy() if tipo_mapa == "Visitas Realizadas" else df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
             if not df_mapa.empty:
                 df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
                 m = folium.Map(location=[df_mapa['lat'].mean(), df_mapa['lon'].mean()], zoom_start=7, tiles="cartodbpositron")
