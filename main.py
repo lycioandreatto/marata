@@ -50,15 +50,16 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analist
         
         📊 RESUMO DE PERFORMANCE:
         ------------------------------------------
-        - Total Planejado: {dados_resumo['total']} clientes
+        - Total de Clientes na Agenda: {dados_resumo['total']}
         - Visitas Realizadas: {dados_resumo['realizados']}
         - Visitas com Pedido: {dados_resumo['pedidos']}
-        - Taxa de Conversão: {taxa:.1f}%
+        - Clientes Pendentes: {dados_resumo['pendentes']}
+        - Taxa de Conversão: {taxa:.1f}% (Pedidos / Visitas)
         
         📍 DADOS DE FINALIZAÇÃO:
         ------------------------------------------
         - Hora do Envio: {hora}
-        - Localização: {link}
+        - Localização Final: {link}
         
         E-mail gerado automaticamente pelo Sistema Maratá GVP.
         """
@@ -624,7 +625,7 @@ if menu == "📅 Agendamentos do Dia":
                     lista_final.extend(MAPA_EMAILS[analista_encontrado])
                 string_destinatarios = ", ".join(lista_final)
 
-                # 3. Prepara Dados Básicos
+                # 3. Prepara Dados do Resumo
                 resumo_dados = {
                     'total': len(df_dia),
                     'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
@@ -632,25 +633,30 @@ if menu == "📅 Agendamentos do Dia":
                     'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
                 }
 
-                # --- 4. OS SEUS NOVOS CÁLCULOS ENTRAM AQUI ---
+                # 4. Cálculos Adicionais
+                # Taxa: Pedidos divididos pelas visitas que ele DE FATO fez
                 taxa_conversao = (resumo_dados['pedidos'] / resumo_dados['realizados'] * 100) if resumo_dados['realizados'] > 0 else 0
+                
+                # Hora usando o fuso horário configurado no seu app
                 hora_finalizacao = datetime.now(fuso_br).strftime("%H:%M:%S")
+                
+                # Link do GPS
                 link_mapas = f"https://www.google.com/maps?q={st.session_state.lat},{st.session_state.lon}"
 
-                # 5. Envio Final (Passando os novos argumentos)
+                # 5. Envio Final
                 with st.spinner(f"Enviando resumo para {analista_encontrado}..."):
                     sucesso = enviar_resumo_rota(
                         destinatarios_lista=string_destinatarios,
                         vendedor=user_atual,
                         dados_resumo=resumo_dados,
                         nome_analista=analista_encontrado,
-                        taxa=taxa_conversao,        # Novo!
-                        hora=hora_finalizacao,      # Novo!
-                        link=link_mapas             # Novo!
+                        taxa=taxa_conversao,
+                        hora=hora_finalizacao,
+                        link=link_mapas
                     )
                 
                 if sucesso:
-                    st.success(f"✅ Rota finalizada! Performance de {taxa_conversao:.1f}% enviada.")
+                    st.success(f"✅ Rota finalizada! Resumo enviado.")
                     st.balloons()
     else:
         st.error("Falha ao enviar e-mail. Verifique as credenciais.")
