@@ -12,6 +12,52 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
+# --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
+
+def enviar_resumo_rota(destinatario, vendedor, dados_resumo):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    try:
+        # Puxa dos Secrets (Certifique-se que o GSheets e o [email] estão lá)
+        email_origem = st.secrets["email"]["user"]
+        senha_origem = st.secrets["email"]["password"]
+        
+        msg = MIMEMultipart()
+        msg['From'] = email_origem
+        msg['To'] = destinatario
+        msg['Subject'] = f"Resumo de Rota Finalizada - {vendedor}"
+
+        corpo = f"""
+        Olá, Gestão Maratá,
+        
+        O vendedor {vendedor} acaba de finalizar a rota do dia.
+        
+        RESUMO DA OPERAÇÃO:
+        -------------------------
+        - Total de Clientes Planejados: {dados_resumo['total']}
+        - Visitas Realizadas: {dados_resumo['realizados']}
+        - Pedidos Efetuados: {dados_resumo['pedidos']}
+        - Pendências/Não Visitados: {dados_resumo['pendentes']}
+        
+        Gerado automaticamente pelo Sistema GVP.
+        """
+        msg.attach(MIMEText(corpo, 'plain'))
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(email_origem, senha_origem)
+        server.sendmail(email_origem, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Erro no e-mail: {e}")
+        return False
+
+# --- CONTINUAÇÃO DO SEU CÓDIGO (calcular_distancia, etc) ---
+
+
+
 def calcular_distancia(lat1, lon1, lat2, lon2):
     # Raio da Terra em KM
     R = 6371.0
