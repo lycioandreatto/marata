@@ -1233,20 +1233,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
         df_skus = conn.read(spreadsheet=url_planilha, worksheet="SKUS")
         
-        # --- FUNÇÃO DE AGRUPAMENTO PADRONIZADA ---
-        def aplicar_agrupamento_custom(item):
-            item = str(item).strip().upper()
-            mapeamento = {
-                'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
-                'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
-                'MILHO': 'MILHO', 'MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO', 
-                'MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO',
-                'MOLHOS ALHO': 'MOLHOS ALHO', 'MOLHOS ALHO PICANTE': 'MOLHOS ALHO',
-                'PIMENTA CONSERVA': 'PIMENTA CONSERVA', 'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA', 
-                'PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'
-            }
-            return mapeamento.get(item, item)
-
         # --- PROCESSAMENTO FATURADO ---
         if df_faturado is not None and not df_faturado.empty:
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
@@ -1263,26 +1249,38 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
+
+            # --- FUNÇÃO DE AGRUPAMENTO (LÓGICA PARA O FATURADO) ---
+            def aplicar_agrupamento_custom(item):
+                item = str(item).strip().upper()
+                mapeamento = {
+                    'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
+                    'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
+                    'MILHO': 'MILHO', 'MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO', 
+                    'MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO',
+                    'MOLHOS ALHO': 'MOLHOS ALHO', 'MOLHOS ALHO PICANTE': 'MOLHOS ALHO',
+                    'PIMENTA CONSERVA': 'PIMENTA CONSERVA', 'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA', 
+                    'PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'
+                }
+                return mapeamento.get(item, item)
             
-            # Aplica o agrupamento no faturado
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
 
-        # --- PROCESSAMENTO LISTA FIXA (ABA SKUS) ---
+        # --- PROCESSAMENTO LISTA FIXA (USANDO HIERARQUIA 2 DA ABA SKUS) ---
         lista_hierarquia_oficial = []
         if df_skus is not None and not df_skus.empty:
             df_skus.columns = [str(c).strip() for c in df_skus.columns]
-            nome_col_sku = 'HIERARQUIA DE PRODUTOS 2'
-            if nome_col_sku in df_skus.columns:
-                # Tratamos a coluna e removemos duplicatas para ter apenas 1 linha por família
-                familias_unicas = df_skus[nome_col_sku].apply(aplicar_agrupamento_custom).dropna().unique()
-                lista_hierarquia_oficial = sorted(familias_unicas.tolist())
+            if 'Hierarquia 2' in df_skus.columns:
+                # Pega os valores únicos da sua nova coluna exclusiva
+                lista_hierarquia_oficial = sorted([str(x).strip().upper() for x in df_skus['Hierarquia 2'].dropna().unique()])
 
-        # --- PROCESSAMENTO METAS (Simplificado para o código rodar) ---
+        # --- PROCESSAMENTO METAS ---
         if df_param_metas is not None and not df_param_metas.empty:
             df_param_metas.columns = [str(c).strip().upper() for c in df_param_metas.columns]
             df_param_metas['ANALISTA'] = df_param_metas['ANALISTA'].astype(str).str.strip().str.upper()
             df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
-            df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
+            df_param_metas['META_COB'] = df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.').str.strip()
+            df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'], errors='coerce').fillna(0)
 
         if df_metas_cob is not None and not df_metas_cob.empty:
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
@@ -1295,7 +1293,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
 
     except Exception as e:
-        st.error(f"Erro no processamento inicial: {e}")
+        st.error(f"Erro no processamento: {e}")
         st.stop()
 
     if df_faturado is not None and not df_faturado.empty:
@@ -1322,28 +1320,35 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
         if not df_f.empty:
-            # Cálculos de Positivação e Metas
+            # 1. Positivação
             if sel_supervisor or sel_vendedor:
                 positivacao = df_f[col_k].nunique()
             else:
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
 
+            # 2. Metas (Tabela Parâmetros)
             analista_alvo = sel_analista[0].upper() if sel_analista else (df_f['ANALISTA'].iloc[0].upper() if 'ANALISTA' in df_f.columns else "")
             if not (sel_supervisor or sel_vendedor):
                 linha_meta = df_param_metas[df_param_metas['ANALISTA'] == analista_alvo]
-                base_total = linha_meta['BASE'].iloc[0] if not linha_meta.empty else 1
-                meta_val = linha_meta['META_COB'].iloc[0] if not linha_meta.empty else 0
+                if not linha_meta.empty:
+                    base_total = linha_meta['BASE'].iloc[0]
+                    meta_val = linha_meta['META_COB'].iloc[0]
+                else:
+                    vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
+                    dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+                    base_total = dados_meta['BASE'].sum()
+                    meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
             else:
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
                 dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
-                base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
+                base_total = dados_meta['BASE'].sum()
                 meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
             
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-            # Cards de resumo
+            # Cards
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
             m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}")
@@ -1351,33 +1356,34 @@ elif menu_interna == "📊 Desempenho de Vendas":
             with m3:
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small style="color: #666;">COBERTURA</small><br>
+                    <small style="color: #666;">COBERTURA (TABELA PARÂMETROS)</small><br>
                     <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
                     Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>
                 """, unsafe_allow_html=True)
 
-            # --- 3. TABELA DE HIERARQUIA (CORREÇÃO DE SOMA) ---
+            # --- 3. TABELA DE HIERARQUIA (USANDO HIERARQUIA 2 COMO BASE) ---
             st.markdown("### 📈 Desempenho por Hierarquia")
             
-            # Agrupar faturado (Garantimos que o faturado esteja somado pela hierarquia tratada)
+            # Agrupa o faturado atual
             df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
                 'QTD_VENDAS': 'sum', 
                 col_k: 'nunique'
-            }).reset_index().rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'})
+            }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'})
 
             if lista_hierarquia_oficial:
-                # Criamos o esqueleto com a lista oficial ÚNICA
+                # Criamos o esqueleto baseado na coluna 'Hierarquia 2'
                 df_esqueleto = pd.DataFrame(lista_hierarquia_oficial, columns=['HIERARQUIA'])
                 
-                # Merge Final
+                # Merge: traz o faturado para dentro da lista oficial
                 df_final_h = pd.merge(df_esqueleto, df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
                 df_final_h = df_final_h.sort_values(by='Volume', ascending=False)
                 
+                # Formatação para exibição
                 st.dataframe(df_final_h.style.format({
                     'Volume': '{:,.0f}',
                     'Positivação': '{:,.0f}'
                 }), use_container_width=True, hide_index=True)
             else:
-                st.warning("Lista oficial de hierarquias não gerada. Verifique a coluna 'HIERARQUIA DE PRODUTOS 2'.")
+                st.warning("A coluna 'Hierarquia 2' não foi encontrada na aba SKUS.")
                 st.dataframe(df_f_agrupado, use_container_width=True)
