@@ -1140,7 +1140,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_user["AÇÃO"] = False
             
             # Definimos as colunas básicas
-            cols_display = ['AÇÃO', 'REGISTRO', 'DATA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'OBS_GESTAO']
+            cols_display = ['AÇÃO', 'REGISTRO', 'DATA', 'ANALISTA','VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'OBS_GESTAO']
             
             # Adicionamos a DISTANCIA_LOG se ela existir no DataFrame
             if 'DISTANCIA_LOG' in df_user.columns:
