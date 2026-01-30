@@ -417,26 +417,28 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- FILTRO DE PENDÊNCIAS POR HIERARQUIA (SINO) ---
     if eh_gestao:
         if df_agenda is not None and not df_agenda.empty:
-            # Filtra apenas registros com status Pendente
-            df_p_base = df_agenda[df_agenda['STATUS'] == "Pendente"]
+            # Limpeza preventiva: remove espaços e padroniza para maiúsculas
+            usuario_limpo = str(user_atual).strip().upper()
+            df_p_base = df_agenda[df_agenda['STATUS'].fillna('').set_strip().str.upper() == "PENDENTE"].copy()
             
-            # Lógica de Filtro: Se for analista (e não admin/diretoria), filtra pelo nome dele
-            if is_analista and not (is_admin or is_diretoria):
-                df_pendentes_contagem = df_p_base[
-                    df_p_base['SUPERVISOR'].str.upper() == user_atual.upper()
-                ]
-            else:
-                # Admin (Lycio) e Diretoria (Aldo) vêem o total de todos
+            if is_admin or is_diretoria:
                 df_pendentes_contagem = df_p_base
+            else:
+                # O segredo está aqui: strip() em ambos os lados da comparação
+                df_pendentes_contagem = df_p_base[
+                    df_p_base['SUPERVISOR'].fillna('').astype(str).str.strip().str.upper() == usuario_limpo
+                ]
             
             qtd_p = len(df_pendentes_contagem)
+            
+            # APENAS PARA VOCÊ (LYCIO) VER SE O FILTRO ESTÁ CERTO
+            if is_admin:
+                st.caption(f"Debug: User={usuario_limpo} | Total P={len(df_p_base)}")
         else:
             qtd_p = 0
 
-        # Exibição do Sino Flutuante
         if qtd_p > 0:
             if st.button(f"🔔 {qtd_p} Pendências da Sua Equipe", use_container_width=True, type="primary"):
                 st.session_state.pagina_direta = "🔔 Aprovações"
@@ -444,6 +446,7 @@ with st.sidebar:
         else:
             st.caption("✅ Nenhuma aprovação pendente")
 
+    # ... (Restante do código do menu igual ao anterior)
     # Texto dinâmico do menu conforme perfil
     if eh_gestao:
         texto_ver_agenda = "🔍 Agenda Geral"
@@ -1643,27 +1646,33 @@ elif menu_interna == "📊 Desempenho de Vendas":
 elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
     
-    # 1. Filtro de Segurança por Analista / Gestão
+    usuario_limpo = str(user_atual).strip().upper()
+
     if df_agenda is not None and not df_agenda.empty:
-        # Se for analista (e não for admin/diretoria), filtra apenas registros sob sua supervisão
-        if is_analista and not (is_admin or is_diretoria):
-            df_pendentes = df_agenda[
-                (df_agenda['STATUS'] == "Pendente") & 
-                (df_agenda['SUPERVISOR'].str.upper() == user_atual.upper())
-            ].copy()
+        # Filtra primeiro por Pendente
+        df_p_total = df_agenda[df_agenda['STATUS'].fillna('').astype(str).str.strip().str.upper() == "PENDENTE"].copy()
+        
+        if is_admin or is_diretoria:
+            df_pendentes = df_p_total
         else:
-            # LYCIO e ALDO possuem visão mestre e veem todas as pendências
-            df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
+            # Filtro reforçado com strip() para garantir que Barbara veja Barbara
+            df_pendentes = df_p_total[
+                df_p_total['SUPERVISOR'].fillna('').astype(str).str.strip().str.upper() == usuario_limpo
+            ].copy()
     else:
         df_pendentes = pd.DataFrame()
 
-    # 2. Interface de Usuário
     if df_pendentes.empty:
-        st.success("Não há agendamentos aguardando sua aprovação!")
+        st.info(f"Olá {user_atual}, não encontramos pendências vinculadas ao seu nome de supervisor.")
+        # Se você for admin, ele te mostra o que tem na coluna supervisor pra conferir
+        if is_admin and not df_p_total.empty:
+            st.write("Supervisores com pendência na planilha:", df_p_total['SUPERVISOR'].unique())
+            
         if st.button("Voltar ao Menu Principal"):
             st.session_state.pagina_direta = None
             st.rerun()
     else:
+        # ... (Restante do código dos expanders e botões igual ao anterior)
         # Resumo de pendências
         st.warning(f"Existem {len(df_pendentes)} solicitações aguardando sua ação.")
         
