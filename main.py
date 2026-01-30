@@ -1640,33 +1640,72 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 st.warning(f"Erro ao gerar PDF: {e}")
 
 # --- PÁGINA: APROVAÇÕES ---
-elif menu == "🔔 Aprovações":
+elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
     
-    # Filtrar apenas os pendentes
-    df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
-    
-    if df_pendentes.empty:
-        st.success("Não há agendamentos aguardando aprovação!")
+    # 1. Filtro de Segurança e Hierarquia
+    if df_agenda is not None and not df_agenda.empty:
+        # Primeiro, pegamos todos os pendentes
+        df_p_total = df_agenda[df_agenda['STATUS'].fillna('').astype(str).str.strip() == "Pendente"].copy()
+        
+        # Se for Analista (e não for Lycio/Aldo), filtra pelo nome dele na coluna SUPERVISOR
+        if is_analista and not (is_admin or is_diretoria):
+            usuario_atual_clean = str(user_atual).strip().upper()
+            df_pendentes = df_p_total[
+                df_p_total['SUPERVISOR'].fillna('').astype(str).str.strip().str.upper() == usuario_atual_clean
+            ].copy()
+        else:
+            # Lycio (Admin) e Aldo (Diretoria) veem tudo
+            df_pendentes = df_p_total
     else:
-        # Mostrar quantos estão pendentes
+        df_pendentes = pd.DataFrame()
+
+    # 2. Exibição dos resultados
+    if df_pendentes.empty:
+        st.success("Não há agendamentos aguardando sua aprovação!")
+        if st.button("Voltar para Agenda"):
+            st.session_state.pagina_direta = None
+            st.rerun()
+    else:
         st.warning(f"Existem {len(df_pendentes)} agendamentos aguardando sua ação.")
         
+        # Botão para retornar à página principal
+        if st.button("⬅️ Voltar para Agenda Geral"):
+            st.session_state.pagina_direta = None
+            st.rerun()
+            
+        st.markdown("---")
+
         for i, row in df_pendentes.iterrows():
             with st.expander(f"📍 {row['VENDEDOR']} -> {row['CLIENTE']} ({row['DATA']})"):
+                st.write(f"**Cidade:** {row.get('CIDADE', 'Não informada')}")
+                st.write(f"**Supervisor Responsável:** {row.get('SUPERVISOR', 'Não informado')}")
+                st.write(f"**Solicitado por:** {row.get('AGENDADO POR', 'Não informado')}")
+                
                 col1, col2 = st.columns(2)
                 
                 # Botão para Aprovar
-                if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}"):
+                if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}", use_container_width=True):
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Planejado"
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                    
+                    # Importante: Remover colunas calculadas antes de subir para a planilha
+                    df_save = df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
+                    
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
+                    st.cache_data.clear()
                     st.success(f"Agendamento de {row['CLIENTE']} aprovado!")
+                    time.sleep(1)
                     st.rerun()
                 
                 # Botão para Recusar
-                if col2.button("❌ Recusar", key=f"recus_{row['ID']}"):
-                    # Aqui você pode deletar a linha ou mudar para "Recusado"
+                if col2.button("❌ Recusar", key=f"recus_{row['ID']}", use_container_width=True):
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Recusado"
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                    
+                    # Importante: Remover colunas calculadas antes de subir para a planilha
+                    df_save = df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
+                    
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save)
+                    st.cache_data.clear()
                     st.error(f"Agendamento de {row['CLIENTE']} recusado.")
+                    time.sleep(1)
                     st.rerun()
