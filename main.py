@@ -975,6 +975,52 @@ elif menu == "📊 Dashboard de Controle":
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
+
+    # --- BLOCO: ALERTA DE CLIENTES SEM COMPRA (+30 DIAS) ---
+        if df_fat is not None and ven_sel != "Selecione...":
+            with st.expander("🚨 ALERTA: Clientes há mais de 30 dias sem comprar", expanded=False):
+                try:
+                    # 1. Preparar dados do faturado
+                    df_fat_copy = df_fat.copy()
+                    # Ajuste o nome da coluna 'Data fat.' se houver espaços ou letras diferentes
+                    col_data_fat = 'Data fat.' 
+                    df_fat_copy[col_data_fat] = pd.to_datetime(df_fat_copy[col_data_fat], errors='coerce')
+                    
+                    # 2. Pegar a última data de compra de cada cliente do vendedor selecionado
+                    # Filtra o faturado pelo vendedor atual
+                    fat_vendedor = df_fat_copy[df_fat_copy['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
+                    
+                    if not fat_vendedor.empty:
+                        # Agrupa por cliente e pega a data máxima
+                        ultima_compra = fat_vendedor.groupby(['CÓDIGO CLIENTE', 'CLIENTE'])[col_data_fat].max().reset_index()
+                        
+                        # 3. Calcular a diferença de dias
+                        hoje_alerta = datetime.now(fuso_br).replace(tzinfo=None)
+                        ultima_compra['Dias Sem Comprar'] = (hoje_alerta - ultima_compra[col_data_fat]).dt.days
+                        
+                        # 4. Filtrar quem está acima de 30 dias
+                        clientes_criticos = ultima_compra[ultima_compra['Dias Sem Comprar'] > 30].sort_values(by='Dias Sem Comprar', ascending=False)
+                        
+                        if not clientes_criticos.empty:
+                            st.error(f"Existem **{len(clientes_criticos)}** clientes que não compram há mais de um mês!")
+                            
+                            # Formatação para exibição
+                            clientes_criticos[col_data_fat] = clientes_criticos[col_data_fat].dt.strftime('%d/%m/%Y')
+                            st.dataframe(
+                                clientes_criticos[['CÓDIGO CLIENTE', 'CLIENTE', col_data_fat, 'Dias Sem Comprar']],
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "Dias Sem Comprar": st.column_config.NumberColumn(format="%d dias ⏳")
+                                }
+                            )
+                        else:
+                            st.success("✅ Todos os clientes ativos compraram nos últimos 30 dias.")
+                    else:
+                        st.info("Sem histórico de faturamento encontrado para este vendedor.")
+                except Exception as e:
+                    st.warning(f"Não foi possível processar o alerta de compras: {e}")
+        # -------------------------------------------------------
     
     if df_base is not None:
         # Mapeamento das colunas da BASE
