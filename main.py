@@ -1285,16 +1285,22 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         if df_param_metas is not None:
             df_param_metas.columns = [str(c).strip() for c in df_param_metas.columns]
-            # Usa o nome exato EscrV
             df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
-            df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
+            
+            # Ajuste para exibir 60% em vez de 0.6%
+            metas_raw = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
+            df_param_metas['META_COB'] = metas_raw.apply(lambda x: x * 100 if x <= 1.0 else x)
+            
             df_param_metas['EscrV'] = df_param_metas['EscrV'].astype(str).str.strip()
 
         if df_metas_cob is not None:
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
-            df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
+            
+            # Ajuste similar para a aba de metas por vendedor
+            metas_vend_raw = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
+            df_metas_cob['META'] = metas_vend_raw.apply(lambda x: x * 100 if x <= 1.0 else x)
 
     except Exception as e:
         st.error(f"Erro no processamento das abas: {e}")
@@ -1308,7 +1314,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
         c0, c2, c3 = st.columns(3)
         
         with c0:
-            # Referência direta à coluna EscrV
             sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
         
         with c2:
@@ -1330,7 +1335,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
                 
-                # Busca na PARAM_METAS usando EscrV
                 dados_meta = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())]
                 base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
                 meta_val = dados_meta['META_COB'].mean() if not dados_meta.empty else 0
@@ -1350,7 +1354,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}")
             m2.metric("🏪 Positivados", positivacao)
             with m3:
-                # Mostra os estados filtrados
                 estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
