@@ -1463,41 +1463,54 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("### 📥 Exportar Relatório")
         col_btn1, col_btn2, _ = st.columns([1, 1, 2])
 
-        # --- FUNÇÃO EXCEL (COM FORMATAÇÃO DE CÉLULAS) ---
+        # --- PREPARAÇÃO DOS FILTROS PARA O EXCEL ---
+        # Criamos um pequeno DataFrame com o resumo dos filtros selecionados
+        filtros_selecionados = {
+            "Filtro": ["Estado", "Supervisor", "Vendedor"],
+            "Valores": [
+                ", ".join(sel_estado) if sel_estado else "Todos",
+                ", ".join(sel_supervisor) if sel_supervisor else "Todos",
+                ", ".join(sel_vendedor) if sel_vendedor else "Todos"
+            ]
+        }
+        df_filtros = pd.DataFrame(filtros_selecionados)
+
+        # --- FUNÇÃO EXCEL ---
         buffer_excel = io.BytesIO()
-        # Criamos uma cópia para não alterar a visualização da tela ao preparar o Excel
         df_excel = df_final_h.copy()
 
-        # Ajuste para o Excel entender porcentagem (dividir por 100 os campos que já estão em 0-100)
+        # Ajuste de porcentagem para o Excel
         cols_pct = ['META COBERTURA', 'ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)']
         for col in cols_pct:
             df_excel[col] = df_excel[col] / 100
 
         with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
+            # 1. Planilha Principal
             df_excel.to_excel(writer, index=False, sheet_name='Desempenho')
+            
+            # 2. Planilha de Filtros (O que foi selecionado nos Slicers)
+            df_filtros.to_excel(writer, index=False, sheet_name='Filtros Aplicados')
             
             workbook  = writer.book
             worksheet = writer.sheets['Desempenho']
+            ws_filtros = writer.sheets['Filtros Aplicados']
 
-            # Definição dos formatos
+            # Formatos
             format_pct = workbook.add_format({'num_format': '0.0%', 'align': 'center'})
             format_num = workbook.add_format({'num_format': '#,##0', 'align': 'right'})
+            format_header = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
 
-            # Aplicar formatos às colunas (ajuste as letras das colunas conforme sua tabela)
-            # Dica: A=0, B=1, C=2...
-            # META COBERTURA (Coluna B / Índice 1)
-            worksheet.set_column(1, 1, 15, format_pct)
+            # Aplicar formatos na aba principal
+            worksheet.set_column(1, 1, 15, format_pct)  # Meta Cob
+            worksheet.set_column(2, 7, 15, format_num)  # Valores
+            worksheet.set_column(9, 9, 20, format_pct)  # Atig 25
+            worksheet.set_column(11, 11, 20, format_pct) # Atig 26
+            worksheet.set_column(8, 8, 15, format_num)  # Cresc 25
+            worksheet.set_column(10, 10, 15, format_num) # Cresc 26
             
-            # Formato de número para as colunas centrais (milhar)
-            worksheet.set_column(2, 7, 15, format_num)
-            
-            # ATINGIMENTO 2025 (Coluna J / Índice 9) e 2026 (Coluna L / Índice 11)
-            worksheet.set_column(9, 9, 20, format_pct)
-            worksheet.set_column(11, 11, 20, format_pct)
-            
-            # Demais colunas de crescimento (índices 8 e 10) como número
-            worksheet.set_column(8, 8, 15, format_num)
-            worksheet.set_column(10, 10, 15, format_num)
+            # Estilizar aba de filtros para ficar organizado
+            ws_filtros.set_column(0, 0, 20, format_header)
+            ws_filtros.set_column(1, 1, 60)
 
         with col_btn1:
             st.download_button(
@@ -1507,16 +1520,26 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 mime="application/vnd.ms-excel"
             )
 
-        # --- FUNÇÃO PDF ---
+        # --- FUNÇÃO PDF (ADICIONANDO FILTROS NO TOPO) ---
         def generate_pdf(data):
             pdf = FPDF(orientation='L', unit='mm', format='A4')
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 12)
-            pdf.cell(0, 10, "Relatorio de Desempenho de Vendas", ln=True, align='C')
-            pdf.set_font("Arial", size=7)
             
+            # Título
+            pdf.set_font("Arial", 'B', 14)
+            pdf.cell(0, 10, "Relatorio de Desempenho de Vendas", ln=True, align='C')
+            
+            # Informações dos Filtros no PDF
+            pdf.set_font("Arial", 'I', 8)
+            texto_filtros = f"Filtros - Estado: {filtros_selecionados['Valores'][0]} | " \
+                            f"Supervisor: {filtros_selecionados['Valores'][1]} | " \
+                            f"Vendedor: {filtros_selecionados['Valores'][2]}"
+            pdf.cell(0, 8, texto_filtros, ln=True, align='L')
+            pdf.ln(2)
+            
+            # Tabela
+            pdf.set_font("Arial", size=7)
             cols = data.columns.tolist()
-            # Ajuste de largura das colunas para caber tudo no A4 Paisagem
             for col in cols:
                 pdf.cell(23, 8, str(col)[:14], border=1, align='C')
             pdf.ln()
@@ -1537,7 +1560,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         with col_btn2:
             try:
-                # Usamos o df_final_h original para o PDF pois ele já está com os números cheios
                 pdf_bytes = generate_pdf(df_final_h)
                 st.download_button(
                     label="📄 Baixar PDF",
