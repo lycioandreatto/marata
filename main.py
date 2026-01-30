@@ -1250,7 +1250,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
-            # --- FUNÇÃO DE AGRUPAMENTO (LÓGICA PARA O FATURADO) ---
+            # --- FUNÇÃO DE AGRUPAMENTO PADRONIZADA ---
             def aplicar_agrupamento_custom(item):
                 item = str(item).strip().upper()
                 mapeamento = {
@@ -1264,23 +1264,25 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 }
                 return mapeamento.get(item, item)
             
+            # Aplica no faturado
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
 
-        # --- PROCESSAMENTO LISTA FIXA (USANDO HIERARQUIA 2 DA ABA SKUS) ---
+        # --- PROCESSAMENTO LISTA FIXA (ABA SKUS - HIERARQUIA DE PRODUTOS 2) ---
         lista_hierarquia_oficial = []
         if df_skus is not None and not df_skus.empty:
             df_skus.columns = [str(c).strip() for c in df_skus.columns]
-            if 'HIERARQUIA DE PRODUTOS 2' in df_skus.columns:
-                # Pega os valores únicos da sua nova coluna exclusiva
-                lista_hierarquia_oficial = sorted([str(x).strip().upper() for x in df_skus['HIERARQUIA DE PRODUTOS 2'].dropna().unique()])
+            nome_col_sku = 'Hierarquia de produtos 2'
+            if nome_col_sku in df_skus.columns:
+                # IMPORTANTE: Aplicamos o agrupamento na lista oficial também para os nomes baterem
+                df_skus['FAMILIA_TRATADA'] = df_skus[nome_col_sku].apply(aplicar_agrupamento_custom)
+                lista_hierarquia_oficial = sorted(df_skus['FAMILIA_TRATADA'].dropna().unique().tolist())
 
         # --- PROCESSAMENTO METAS ---
         if df_param_metas is not None and not df_param_metas.empty:
             df_param_metas.columns = [str(c).strip().upper() for c in df_param_metas.columns]
             df_param_metas['ANALISTA'] = df_param_metas['ANALISTA'].astype(str).str.strip().str.upper()
             df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
-            df_param_metas['META_COB'] = df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.').str.strip()
-            df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'], errors='coerce').fillna(0)
+            df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
 
         if df_metas_cob is not None and not df_metas_cob.empty:
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
@@ -1362,28 +1364,27 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 </div>
                 """, unsafe_allow_html=True)
 
-            # --- 3. TABELA DE HIERARQUIA (USANDO HIERARQUIA 2 COMO BASE) ---
+            # --- 3. TABELA DE HIERARQUIA (MATCH CORRIGIDO) ---
             st.markdown("### 📈 Desempenho por Hierarquia")
             
-            # Agrupa o faturado atual
+            # Agrupar faturado
             df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
                 'QTD_VENDAS': 'sum', 
                 col_k: 'nunique'
             }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'})
 
             if lista_hierarquia_oficial:
-                # Criamos o esqueleto baseado na coluna 'Hierarquia 2'
+                # Esqueleto com a lista tratada da coluna 'Hierarquia de produtos 2'
                 df_esqueleto = pd.DataFrame(lista_hierarquia_oficial, columns=['HIERARQUIA'])
                 
-                # Merge: traz o faturado para dentro da lista oficial
+                # Merge garantindo que os nomes tratados se encontrem
                 df_final_h = pd.merge(df_esqueleto, df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
                 df_final_h = df_final_h.sort_values(by='Volume', ascending=False)
                 
-                # Formatação para exibição
                 st.dataframe(df_final_h.style.format({
                     'Volume': '{:,.0f}',
                     'Positivação': '{:,.0f}'
                 }), use_container_width=True, hide_index=True)
             else:
-                st.warning("A coluna 'Hierarquia 2' não foi encontrada na aba SKUS.")
+                st.warning("Verifique se a coluna 'Hierarquia de produtos 2' existe na aba SKUS.")
                 st.dataframe(df_f_agrupado, use_container_width=True)
