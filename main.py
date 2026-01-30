@@ -947,29 +947,39 @@ elif menu == "📋 Novo Agendamento":
                         st.table(pendencias_passadas[['DATA', 'CLIENTE', 'STATUS']].sort_values(by='DATA'))
 
         # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
-        if ven_sel != "Selecione..." and not bloqueado:
-            clientes_f = df_base[df_base[col_ven_base] == ven_sel]
-            if clientes_f.empty and ven_sel == user_atual:
-                clientes_f = df_base[df_base[col_sup_base] == user_atual]
+if ven_sel != "Selecione..." and not bloqueado:
+    # 1. Filtra os clientes do vendedor ou supervisor
+    clientes_f = df_base[df_base[col_ven_base] == ven_sel]
+    if clientes_f.empty and ven_sel == user_atual:
+        clientes_f = df_base[df_base[col_sup_base] == user_atual]
 
-            if 'VENDEDOR' not in df_agenda.columns: df_agenda['VENDEDOR'] = ""
+    # --- NOVIDADE: DEDUPLICAÇÃO PELO CÓDIGO DO CLIENTE ---
+    # Mantemos apenas a primeira ocorrência de cada cliente para evitar duplicidade na agenda
+    # 'Cliente' aqui parece ser a coluna com o código (ex: 12345)
+    clientes_f = clientes_f.drop_duplicates(subset=['Cliente'], keep='first')
 
-            codigos_agendados = df_agenda[
-                (df_agenda['VENDEDOR'] == ven_sel) & 
-                (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
-            ]['CÓDIGO CLIENTE'].unique()
-            
-            clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
-            
-            # --- MÉTRICAS DE ENGAJAMENTO ---
-            m1, m2, m3, m4 = st.columns(4)
-            n_total = len(clientes_f)
-            n_agendados = len(codigos_agendados)
-            n_pend_metric = len(clientes_pendentes)
-            m1.metric("Clientes na Base", n_total)
-            m2.metric("Já Agendados", n_agendados)
-            m3.metric("Faltando", n_pend_metric)
-            m4.metric("% Adesão", f"{(n_agendados/n_total*100 if n_total>0 else 0):.1f}%")
+    if 'VENDEDOR' not in df_agenda.columns: 
+        df_agenda['VENDEDOR'] = ""
+
+    # 2. Identifica quem já está agendado
+    codigos_agendados = df_agenda[
+        (df_agenda['VENDEDOR'] == ven_sel) & 
+        (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
+    ]['CÓDIGO CLIENTE'].unique()
+    
+    # 3. Clientes que ainda não possuem agendamento
+    clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
+    
+    # --- MÉTRICAS DE ENGAJAMENTO ---
+    m1, m2, m3, m4 = st.columns(4)
+    n_total = len(clientes_f) # Agora contará clientes únicos
+    n_agendados = len(codigos_agendados)
+    n_pend_metric = len(clientes_pendentes)
+    
+    m1.metric("Clientes Únicos", n_total)
+    m2.metric("Já Agendados", n_agendados)
+    m3.metric("Faltando", n_pend_metric)
+    m4.metric("% Adesão", f"{(n_agendados/n_total*100 if n_total>0 else 0):.1f}%")
             
             # Identificação dos vínculos para salvar
             try:
