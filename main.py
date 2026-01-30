@@ -1223,8 +1223,28 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         st.warning("Agenda vazia.")
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
+# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 elif menu_interna == "📊 Desempenho de Vendas":
+    
+    # Usamos a variável is_admin que você já definiu no seu sistema de acesso
+    if not is_admin:
+        st.header("📊 Desempenho de Vendas")
+        st.warning("🚀 **Página em Desenvolvimento**")
+        # st.session_state.usuario é onde seu sistema guarda o nome logado
+        st.info(f"Olá **{st.session_state.usuario}**, esta funcionalidade está sendo finalizada e será liberada em breve para todos.")
+        st.stop() 
+
+    # --- SE PASSAR PELA TRAVA (OU SEJA, É ADMIN), EXECUTA O CONTEÚDO ---
     st.header("📊 Desempenho de Vendas (Faturado)")
+    
+    try:
+        # 1. Leitura das abas
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+        # ... resto do código ...
+        
+    except Exception as e:
+        st.error(f"Erro no processamento: {e}")
+        st.stop()
     
     try:
         # 1. Leitura das abas
