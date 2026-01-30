@@ -1335,30 +1335,44 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # ... (Mantém o código anterior igual até o Merge Final)
 
-        # 1. Primeiro, garantimos que a base_total seja um número válido para o cálculo
+      # --- PROCESSAMENTO FINAL DA TABELA ---
+        
+        # 1. Definir a base de cálculo (pega a base_total que você já calculou acima)
         valor_base_calculo = base_total if base_total > 0 else 0
 
-        # Merge Final
+        # 2. Merge Final (Unindo todas as métricas)
         df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
         df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left')
         df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
         df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-        # --- CÁLCULO DA META EM VALOR ABSOLUTO ---
-        # Multiplica a % da meta pela base de clientes filtrada do vendedor/equipe
-        df_final_h['META CLIENTES ABS'] = (df_final_h['META COBERTURA'] / 100) * valor_base_calculo
+        # 3. Criar a coluna de Meta Absoluta (Meta % * Base de Clientes)
+        # Dividimos por 100 pois no seu código você multiplicou a meta por 100 para exibição
+        df_final_h['META ABSOLUTA'] = (df_final_h['META COBERTURA'] / 100) * valor_base_calculo
         
-        df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'})
+        # 4. Ajustar nomes para exibição
+        df_final_h = df_final_h.rename(columns={
+            'HIERARQUIA': 'HIERARQUIA DE PRODUTOS',
+            'CLIENTES': 'LOJAS POSITIVADAS'
+        })
         
-        # Reordenação: Substituímos a exibição da meta percentual pela meta absoluta (ou mantemos ambas se desejar)
-        # Ajustei aqui para aparecer a 'META CLIENTES ABS' no lugar que você pediu
-        df_final_h = df_final_h[['HIERARQUIA DE PRODUTOS', 'META CLIENTES ABS', 'POSITIVAÇÃO', 'CLIENTES', 'META 2025', 'META 2026', 'VOLUME']]
+        # 5. Seleção rigorosa das colunas (Garantindo que os nomes existem)
+        colunas_exibicao = [
+            'HIERARQUIA DE PRODUTOS', 
+            'META ABSOLUTA', 
+            'LOJAS POSITIVADAS', 
+            'META 2025', 
+            'META 2026', 
+            'VOLUME'
+        ]
         
+        df_exibir = df_final_h[colunas_exibicao].copy()
+        
+        # 6. Renderização da Tabela
         st.dataframe(
-            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
-                'META CLIENTES ABS': lambda x: f"{x:,.0f}".replace(",", "."), # Exibe como número inteiro de clientes
-                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."), 
-                'CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."),
+            df_exibir.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
+                'META ABSOLUTA': lambda x: f"{x:,.0f}".replace(",", "."),
+                'LOJAS POSITIVADAS': lambda x: f"{x:,.0f}".replace(",", "."),
                 'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
                 'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
                 'VOLUME': lambda x: f"{x:,.0f}".replace(",", ".")
