@@ -1015,7 +1015,7 @@ elif menu == "📋 Novo Agendamento":
                         key=f"qtd_{id_vendedor}"
                     )
                     
-                   # Formulário com KEY única para evitar erros de ID duplicado
+                  # Formulário com KEY única
                     with st.form(key=f"form_novo_v_{id_vendedor}"):
                         cols_datas = st.columns(qtd_visitas)
                         datas_sel = []
@@ -1029,16 +1029,15 @@ elif menu == "📋 Novo Agendamento":
                                 )
                                 datas_sel.append(d)
                         
-                       if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
-                            # 1. Limpeza e preparação
+                        # O BOTÃO PRECISA ESTAR EXATAMENTE AQUI (DENTRO DO WITH)
+                        if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
+                            # 1. Preparação
                             cod_c, nom_c = cliente_sel.split(" - ", 1)
                             cod_c = str(cod_c).strip()
                             
-                            # --- TRAVA DE SEGURANÇA FINAL (ANTI-DUPLICIDADE) ---
-                            # Relemos a agenda rapidinho para ver se ninguém salvou isso nos últimos segundos
+                            # --- TRAVA DE SEGURANÇA (LÊ A PLANILHA NA HORA) ---
                             df_verificacao = conn.read(spreadsheet=url_planilha, worksheet="AGENDA", ttl=0)
                             
-                            # Verifica se já existe esse código para esse vendedor com status Planejado/Realizado
                             ja_existe = df_verificacao[
                                 (df_verificacao['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()) & 
                                 (df_verificacao['CÓDIGO CLIENTE'].astype(str).str.strip() == cod_c) &
@@ -1046,47 +1045,44 @@ elif menu == "📋 Novo Agendamento":
                             ]
 
                             if not ja_existe.empty:
-                                st.error(f"Opa! O cliente {nom_c} já foi agendado agora há pouco. Verifique sua agenda.")
+                                st.error(f"⚠️ O cliente {nom_c} já possui agendamento ativo!")
+                                st.cache_data.clear()
                                 time.sleep(2)
-                                st.cache_data.clear()
                                 st.rerun()
-                                st.stop() # Interrompe o salvamento duplicado aqui
-                            # ---------------------------------------------------
-
-                            agora = datetime.now(fuso_br)
-                            novas_linhas = []
-                            
-                            for i, dt in enumerate(datas_sel):
-                                nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
-                                novas_linhas.append({
-                                    "ID": nid, 
-                                    "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
-                                    "DATA": dt.strftime("%d/%m/%Y"),
-                                    "ANALISTA": analista_vinc, 
-                                    "SUPERVISOR": supervisor_vinc, 
-                                    "VENDEDOR": ven_sel,
-                                    "CÓDIGO CLIENTE": cod_c, 
-                                    "CLIENTE": nom_c, 
-                                    "JUSTIFICATIVA": "-", 
-                                    "STATUS": "Planejado",
-                                    "AGENDADO POR": user_atual 
-                                })
+                            else:
+                                agora = datetime.now(fuso_br)
+                                novas_linhas = []
                                 
-                            # Concatenar usando a versão mais recente da agenda
-                            df_final_a = pd.concat([
-                                df_verificacao.drop(columns=['LINHA'], errors='ignore'), 
-                                pd.DataFrame(novas_linhas)
-                            ], ignore_index=True)
-                            
-                            try:
-                                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-                                st.cache_data.clear()
-                                st.success(f"✅ Agendado com sucesso!")
-                                time.sleep(2) # Aumentei um pouco para garantir sincronia do Google
-                                st.rerun()
+                                for i, dt in enumerate(datas_sel):
+                                    nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
+                                    novas_linhas.append({
+                                        "ID": nid, 
+                                        "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
+                                        "DATA": dt.strftime("%d/%m/%Y"),
+                                        "ANALISTA": analista_vinc, 
+                                        "SUPERVISOR": supervisor_vinc, 
+                                        "VENDEDOR": ven_sel,
+                                        "CÓDIGO CLIENTE": cod_c, 
+                                        "CLIENTE": nom_c, 
+                                        "JUSTIFICATIVA": "-", 
+                                        "STATUS": "Planejado",
+                                        "AGENDADO POR": user_atual 
+                                    })
+                                    
+                                # 3. Atualização Final
+                                df_final_a = pd.concat([
+                                    df_verificacao.drop(columns=['LINHA'], errors='ignore'), 
+                                    pd.DataFrame(novas_linhas)
+                                ], ignore_index=True)
                                 
-                            except Exception as e:
-                                st.error(f"Erro ao salvar: {e}")
+                                try:
+                                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
+                                    st.cache_data.clear()
+                                    st.success(f"✅ Agendado com sucesso!")
+                                    time.sleep(1.5) 
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao salvar: {e}")
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
