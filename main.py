@@ -1271,7 +1271,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         lista_hierarquia_oficial = []
         if df_skus is not None and not df_skus.empty:
             df_skus.columns = [str(c).strip() for c in df_skus.columns]
-            nome_col_sku = 'Hierarquia de produtos 2'
+            nome_col_sku = 'HIERARQUIA DE PRODUTOS 2'
             if nome_col_sku in df_skus.columns:
                 # Tratamos a coluna e removemos duplicatas para ter apenas 1 linha por família
                 familias_unicas = df_skus[nome_col_sku].apply(aplicar_agrupamento_custom).dropna().unique()
@@ -1379,5 +1379,5 @@ elif menu_interna == "📊 Desempenho de Vendas":
                     'Positivação': '{:,.0f}'
                 }), use_container_width=True, hide_index=True)
             else:
-                st.warning("Lista oficial de hierarquias não gerada. Verifique a coluna 'Hierarquia de produtos 2'.")
+                st.warning("Lista oficial de hierarquias não gerada. Verifique a coluna 'HIERARQUIA DE PRODUTOS 2'.")
                 st.dataframe(df_f_agrupado, use_container_width=True)
