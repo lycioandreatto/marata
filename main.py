@@ -946,62 +946,53 @@ elif menu == "📋 Novo Agendamento":
                     with st.expander("Ver visitas pendentes de atualização"):
                         st.table(pendencias_passadas[['DATA', 'CLIENTE', 'STATUS']].sort_values(by='DATA'))
 
-      # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
+     # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
         if ven_sel != "Selecione..." and not bloqueado:
             
-            # 1. Filtramos a base e removemos duplicados do mesmo cliente para o mesmo vendedor
+            # 1. Definição da ID do Vendedor (ESSENCIAL PARA EVITAR O NAMEERROR)
+            id_vendedor = str(ven_sel).replace(" ", "_").replace(".", "_")
+            
+            # 2. Filtramos a base e removemos duplicados
             clientes_f = df_base[df_base[col_ven_base].astype(str).str.upper() == str(ven_sel).upper()].copy()
             
             if clientes_f.empty and str(ven_sel).upper() == str(user_atual).upper():
                 clientes_f = df_base[df_base[col_sup_base].astype(str).str.upper() == str(user_atual).upper()].copy()
 
-            # Remove duplicados da base (caso o cliente apareça 2x para o mesmo vendedor na planilha)
             clientes_f = clientes_f.drop_duplicates(subset=['Cliente'])
 
-            # 2. LIMPEZA DA AGENDA PARA COMPARAÇÃO
+            # 3. Limpeza da Agenda e Filtro de Pendentes
             if 'VENDEDOR' not in df_agenda.columns: df_agenda['VENDEDOR'] = ""
             
-            # Criamos uma lista de códigos já agendados, limpando espaços e garantindo que é string
             codigos_agendados = df_agenda[
                 (df_agenda['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()) & 
                 (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
             ]['CÓDIGO CLIENTE'].astype(str).str.strip().unique()
             
-            # 3. FILTRAGEM DE PENDENTES
             clientes_pendentes = clientes_f[
                 ~clientes_f['Cliente'].astype(str).str.strip().isin(codigos_agendados)
             ].copy()
             
             # --- MÉTRICAS ---
-            n_total = len(clientes_f)
-            n_agendados = len(codigos_agendados)
-            n_pend_metric = len(clientes_pendentes)
-            
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Clientes na Base", n_total)
-            m2.metric("Já Agendados", n_agendados)
-            m3.metric("Faltando", n_pend_metric)
-            m4.metric("% Adesão", f"{(n_agendados/n_total*100 if n_total>0 else 0):.1f}%")
+            m1.metric("Clientes na Base", len(clientes_f))
+            m2.metric("Já Agendados", len(codigos_agendados))
+            m3.metric("Faltando", len(clientes_pendentes))
+            m4.metric("% Adesão", f"{(len(codigos_agendados)/len(clientes_f)*100 if len(clientes_f)>0 else 0):.1f}%")
             
-            # Identificação dos vínculos para salvar
+            # Vínculos para salvar
             try:
                 amostra = clientes_f.iloc[0]
                 analista_vinc = str(amostra[col_ana_base]).upper()
                 supervisor_vinc = str(amostra[col_sup_base]).upper()
             except:
-                analista_vinc = "N/I"
-                supervisor_vinc = user_atual if ven_sel == user_atual else "N/I"
+                analista_vinc = "N/I"; supervisor_vinc = "N/I"
 
-            # --- LISTA PARA O SELECTBOX ---
-            lista_c = sorted(
-                clientes_pendentes.apply(lambda x: f"{str(x['Cliente']).strip()} - {x['Nome 1']}", axis=1).unique().tolist()
-            )
+            # 4. Lista para o Selectbox
+            lista_c = sorted(clientes_pendentes.apply(lambda x: f"{str(x['Cliente']).strip()} - {x['Nome 1']}", axis=1).unique().tolist())
             
             if not lista_c:
                 st.success(f"✅ Todos os clientes de {ven_sel} já foram agendados!")
             else:
-                # Adicionada KEY única para evitar StreamlitDuplicateElementId
-                id_vendedor = str(ven_sel).replace(" ", "_")
                 cliente_sel = st.selectbox(
                     "Selecione o Cliente (Apenas Pendentes):", 
                     ["Selecione..."] + lista_c,
@@ -1009,96 +1000,55 @@ elif menu == "📋 Novo Agendamento":
                 )
                 
                 if cliente_sel != "Selecione...":
-                    qtd_visitas = st.number_input(
-                        "Quantidade de visitas (Máx 4):", 
-                        min_value=1, max_value=4, value=1,
-                        key=f"qtd_{id_vendedor}"
-                    )
+                    qtd_visitas = st.number_input("Qtd Visitas:", 1, 4, 1, key=f"qtd_{id_vendedor}")
                     
-                  # --- FORMULÁRIO COM TRAVA ANTI-DUPLICIDADE DEFINITIVA ---
-with st.form(key=f"form_novo_v_{id_vendedor}"):
-    cols_datas = st.columns(qtd_visitas)
-    datas_sel = []
-    for i in range(qtd_visitas):
-        with cols_datas[i]:
-            d = st.date_input(
-                f"Data {i+1}:", 
-                value=hoje_dt, 
-                min_value=hoje_dt, 
-                key=f"d_{i}_{id_vendedor}"
-            )
-            datas_sel.append(d)
-    
-    btn_salvar = st.form_submit_button("💾 SALVAR AGENDAMENTOS")
+                    # --- FORMULÁRIO COM TRAVA ANTI-DUPLICIDADE ---
+                    with st.form(key=f"form_novo_v_{id_vendedor}"):
+                        cols_datas = st.columns(qtd_visitas)
+                        datas_sel = [cols_datas[i].date_input(f"Data {i+1}", value=hoje_dt, min_value=hoje_dt, key=f"d_{i}_{id_vendedor}") for i in range(qtd_visitas)]
+                        
+                        btn_salvar = st.form_submit_button("💾 SALVAR AGENDAMENTOS")
 
-# Lógica de processamento FORA do bloco with st.form para evitar conflitos de renderização
-if btn_salvar:
-    # 1. Criar um "Cadeado" no Session State para esta sessão
-    lock_key = f"lock_{id_vendedor}_{cliente_sel.split(' - ')[0]}"
-    
-    if st.session_state.get(lock_key, False):
-        st.warning("Processamento já realizado. Aguarde a atualização...")
-        st.stop()
-    
-    # Ativa o cadeado
-    st.session_state[lock_key] = True
+                    if btn_salvar:
+                        # Trava de Memória (Evita duplo clique)
+                        lock_key = f"lock_{id_vendedor}_{cliente_sel.split(' - ')[0]}"
+                        if st.session_state.get(lock_key, False):
+                            st.stop()
+                        st.session_state[lock_key] = True
 
-    # 2. Limpeza de dados
-    cod_c, nom_c = cliente_sel.split(" - ", 1)
-    cod_c = str(cod_c).strip()
+                        # Releitura em tempo real para garantir que não duplicou
+                        df_verif = conn.read(spreadsheet=url_planilha, worksheet="AGENDA", ttl=0)
+                        cod_c = cliente_sel.split(" - ")[0].strip()
+                        
+                        ja_foi = df_verif[
+                            (df_verif['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()) & 
+                            (df_verif['CÓDIGO CLIENTE'].astype(str).str.strip() == cod_c) &
+                            (df_verif['STATUS'].isin(['Planejado', 'Realizado']))
+                        ]
 
-    # 3. Releitura em Tempo Real (Sem Cache)
-    # Importante: Verifique se sua função conn.read aceita o parâmetro ttl
-    df_verificacao = conn.read(spreadsheet=url_planilha, worksheet="AGENDA", ttl=0)
-
-    # 4. Verificação de Existência (Evita salvar se já existir)
-    ja_existe = df_verificacao[
-        (df_verificacao['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()) & 
-        (df_verificacao['CÓDIGO CLIENTE'].astype(str).str.strip() == cod_c) &
-        (df_verificacao['STATUS'].isin(['Planejado', 'Realizado']))
-    ]
-
-    if not ja_existe.empty:
-        st.error(f"⚠️ O cliente {nom_c} já foi agendado anteriormente.")
-        st.session_state[lock_key] = False # Libera o cadeado em caso de erro
-        time.sleep(2)
-        st.rerun()
-    else:
-        # 5. Preparar Novas Linhas
-        agora = datetime.now(fuso_br)
-        novas_linhas = []
-        for i, dt in enumerate(datas_sel):
-            nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
-            novas_linhas.append({
-                "ID": nid, 
-                "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
-                "DATA": dt.strftime("%d/%m/%Y"),
-                "ANALISTA": analista_vinc, 
-                "SUPERVISOR": supervisor_vinc, 
-                "VENDEDOR": ven_sel,
-                "CÓDIGO CLIENTE": cod_c, 
-                "CLIENTE": nom_c, 
-                "JUSTIFICATIVA": "-", 
-                "STATUS": "Planejado",
-                "AGENDADO POR": user_atual 
-            })
-            
-        # 6. Atualização Final
-        df_final_a = pd.concat([
-            df_verificacao.drop(columns=['LINHA'], errors='ignore'), 
-            pd.DataFrame(novas_linhas)
-        ], ignore_index=True)
-        
-        try:
-            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-            st.cache_data.clear() # Limpa o cache para a próxima leitura vir correta
-            st.success("✅ Agendado com sucesso!")
-            
-            # Limpa o cadeado antes de recarregar
-            st.session_state[lock_key] = False
-            
-            time.sleep(1) 
-            st.rerun()
+                        if not ja_foi.empty:
+                            st.warning("Este cliente já foi agendado.")
+                            st.session_state[lock_key] = False
+                            st.rerun()
+                        else:
+                            agora = datetime.now(fuso_br)
+                            novas_linhas = []
+                            for i, dt in enumerate(datas_sel):
+                                nid = agora.strftime("%Y%m%d%H%M%S") + str(i)
+                                novas_linhas.append({
+                                    "ID": nid, "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), "DATA": dt.strftime("%d/%m/%Y"),
+                                    "ANALISTA": analista_vinc, "SUPERVISOR": supervisor_vinc, "VENDEDOR": ven_sel,
+                                    "CÓDIGO CLIENTE": cod_c, "CLIENTE": cliente_sel.split(" - ", 1)[1], 
+                                    "JUSTIFICATIVA": "-", "STATUS": "Planejado", "AGENDADO POR": user_atual 
+                                })
+                            
+                            df_final = pd.concat([df_verif.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final)
+                            st.cache_data.clear()
+                            st.success("✅ Agendado!")
+                            st.session_state[lock_key] = False
+                            time.sleep(1.5)
+                            st.rerun()
         except Exception as e:
             st.session_state[lock_key] = False # Libera o cadeado para tentar novamente
             st.error(f"Erro ao salvar: {e}")
