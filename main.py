@@ -1285,9 +1285,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if df_param_metas is not None:
             df_param_metas.columns = [str(c).strip() for c in df_param_metas.columns]
             df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
-            
             metas_raw = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
-            # Normaliza: se for 0.6 vira 60. Se for 60 continua 60.
             df_param_metas['META_COB'] = metas_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
             df_param_metas['EscrV'] = df_param_metas['EscrV'].astype(str).str.strip()
 
@@ -1295,7 +1293,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
-            
             metas_vend_raw = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
             df_metas_cob['META'] = metas_vend_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
 
@@ -1328,7 +1325,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             if not (sel_supervisor or sel_vendedor):
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
-                
                 dados_meta = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())]
                 base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
                 meta_val = dados_meta['META_COB'].mean() if not dados_meta.empty else 0
@@ -1342,14 +1338,19 @@ elif menu_interna == "📊 Desempenho de Vendas":
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
+            # --- CARDS COM FORMATO DE PONTO ---
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
-            m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}")
-            m2.metric("🏪 Positivados", positivacao)
+            
+            # Formatação de Volume Total e Positivados com ponto
+            vol_formatado = f"{df_f['QTD_VENDAS'].sum():,.0f}".replace(",", ".")
+            pos_formatado = f"{positivacao:,.0f}".replace(",", ".")
+            
+            m1.metric("📦 Volume Total", vol_formatado)
+            m2.metric("🏪 Positivados", pos_formatado)
+            
             with m3:
                 estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
-                # --- AQUI ESTÁ A MUDANÇA ---
-                # Substituímos a vírgula do padrão americano por ponto no formatador
                 base_formatada = f"{base_total:,.0f}".replace(",", ".")
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
@@ -1359,9 +1360,16 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 </div>
                 """, unsafe_allow_html=True)
 
+        # --- TABELA DE HIERARQUIA COM FORMATO DE PONTO ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
         df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-        # Ajuste também na tabela para usar ponto em vez de vírgula
-        st.dataframe(df_final_h.sort_values(by=['Volume'], ascending=False).style.format({'Volume': lambda x: f"{x:,.0f}".replace(",", "."), 'Positivação': lambda x: f"{x:,.0f}".replace(",", ".")}), use_container_width=True, hide_index=True)
+        st.dataframe(
+            df_final_h.sort_values(by=['Volume'], ascending=False).style.format({
+                'Volume': lambda x: f"{x:,.0f}".replace(",", "."), 
+                'Positivação': lambda x: f"{x:,.0f}".replace(",", ".")
+            }), 
+            use_container_width=True, 
+            hide_index=True
+        )
