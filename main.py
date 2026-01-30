@@ -926,6 +926,17 @@ elif menu == "📋 Novo Agendamento":
 
         # --- VERIFICAÇÃO DE PUNIÇÃO (TRAVA) ---
         bloqueado = False
+        # Inicialização para evitar NameError
+ven_sel = "Selecione..." 
+bloqueado = False 
+
+# Agora sim entram os filtros que definem o valor real
+if eh_gestao:
+    # Se você tiver um selectbox para escolher o vendedor, 
+    # certifique-se de que o resultado dele seja atribuído a 'ven_sel'
+    ven_sel = st.selectbox("Selecione o Vendedor:", ["Selecione..."] + lista_vendedores_opcoes)
+else:
+    ven_sel = user_atual
         if ven_sel != "Selecione...":
             hoje_dt = datetime.now(fuso_br).date()
             
