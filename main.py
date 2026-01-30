@@ -2868,28 +2868,29 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 return ''
             return ''
 
-        # Criando a visualização com ícones e barras
+        # --- EXIBIÇÃO DA TABELA COM FORMATAÇÃO PADRONIZADA ---
         st.dataframe(
             df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style
             .format({
                 'META COBERTURA': "{:.1f}%",
-                'META CLIENTES (ABS)': "{:,.0f}",
-                'POSITIVAÇÃO': "{:,.0f}",
-                'PENDÊNCIA CLIENTES': "{:,.0f}",
-                'META 2025': "{:,.0f}",
-                'META 2026': "{:,.0f}",
-                'VOLUME': "{:,.0f}",
-                'CRESCIMENTO 2025': "{:,.0f}",
-                'CRESCIMENTO 2026': "{:,.0f}",
+                'META CLIENTES (ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
+                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."),
+                'PENDÊNCIA CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."),
+                'META 2025': lambda x: f"{x:,.0f}".replace(",", "."), 
+                'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
+                'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
+                'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", "."),
+                'CRESCIMENTO 2026': lambda x: f"{x:,.0f}".replace(",", "."),
                 'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
                 'ATINGIMENTO % (VOL 2026)': "{:.1f}%"
             })
-            # 1. Cor vermelha para valores negativos (Crescimentos)
-            .applymap(aplicar_estilo, subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
-            # 2. Barras de progresso visuais para os Atingimentos
+            # Aplica cor vermelha apenas nos valores negativos das colunas de crescimento
+            .applymap(lambda v: 'color: #d63031; font-weight: bold;' if (isinstance(v, (int, float)) and v < 0) else '', 
+                      subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
+            # Adiciona barras de progresso visuais nas colunas de atingimento
             .bar(subset=['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)'], 
                  color=['#ffadad', '#72efdd'], align='mid', vmin=0, vmax=100)
-            # 3. Destacar pendência se for maior que zero
+            # Destaca a célula de pendência em amarelo se houver falta
             .apply(lambda x: ['background-color: #fff3cd' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
             use_container_width=True,
             hide_index=True
