@@ -1015,34 +1015,48 @@ elif menu == "📋 Novo Agendamento":
             ven_sel = user_atual
             st.info(f"Agendando para sua própria base: {user_atual}")
 
-        # --- NOVO BLOCO: ALERTA DE CLIENTES SEM COMPRA (+30 DIAS) ---
-        if ven_sel != "Selecione..." and df_fat is not None:
-            with st.expander("🚨 ALERTA: Clientes há mais de 30 dias sem comprar", expanded=False):
-                try:
-                    df_fat_tmp = df_fat.copy()
-                    col_dt = 'Data fat.'
-                    df_fat_tmp[col_dt] = pd.to_datetime(df_fat_tmp[col_dt], errors='coerce')
-                    
-                    # Filtra faturamento do vendedor selecionado
-                    fat_v = df_fat_tmp[df_fat_tmp['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
-                    
-                    if not fat_v.empty:
-                        # Pega a última compra
-                        ult_c = fat_v.groupby(['CÓDIGO CLIENTE', 'CLIENTE'])[col_dt].max().reset_index()
-                        hoje_ref = datetime.now(fuso_br).replace(tzinfo=None)
-                        ult_c['Dias'] = (hoje_ref - ult_c[col_dt]).dt.days
+       # --- NOVO BLOCO: ALERTA DE CLIENTES SEM COMPRA (+30 DIAS) ---
+        # Verificação blindada: checa se 'df_fat' existe na memória do app
+        if ven_sel != "Selecione..." and 'df_fat' in globals():
+            if df_fat is not None:
+                with st.expander("🚨 ALERTA: Clientes há mais de 30 dias sem comprar", expanded=False):
+                    try:
+                        df_fat_tmp = df_fat.copy()
+                        col_dt = 'Data fat.'
+                        # Converte para data garantindo que não dê erro com formatos estranhos
+                        df_fat_tmp[col_dt] = pd.to_datetime(df_fat_tmp[col_dt], dayfirst=True, errors='coerce')
                         
-                        # Filtra > 30 dias
-                        criticos = ult_c[ult_c['Dias'] > 30].sort_values(by='Dias', ascending=False)
+                        # Filtra faturamento do vendedor selecionado
+                        fat_v = df_fat_tmp[df_fat_tmp['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
                         
-                        if not criticos.empty:
-                            st.error(f"Atenção: {len(criticos)} clientes inativos há mais de 30 dias!")
-                            ult_c[col_dt] = ult_c[col_dt].dt.strftime('%d/%m/%Y')
-                            st.dataframe(criticos[['CÓDIGO CLIENTE', 'CLIENTE', 'Dias']], use_container_width=True, hide_index=True)
-                        else:
-                            st.success("✅ Todos os clientes compraram nos últimos 30 dias.")
-                except:
-                    pass # Silencia erro se colunas não baterem para não travar o app
+                        if not fat_v.empty:
+                            # Pega a última compra por cliente
+                            ult_c = fat_v.groupby(['CÓDIGO CLIENTE', 'CLIENTE'])[col_dt].max().reset_index()
+                            hoje_ref = datetime.now(fuso_br).replace(tzinfo=None)
+                            
+                            # Remove datas nulas antes do cálculo
+                            ult_c = ult_c.dropna(subset=[col_dt])
+                            ult_c['Dias'] = (hoje_ref - ult_c[col_dt]).dt.days
+                            
+                            # Filtra quem está há mais de 30 dias sumido
+                            criticos = ult_c[ult_c['Dias'] > 30].sort_values(by='Dias', ascending=False)
+                            
+                            if not criticos.empty:
+                                st.error(f"Atenção: {len(criticos)} clientes inativos há mais de 30 dias!")
+                                # Mostra a tabela para o vendedor/supervisor
+                                st.dataframe(
+                                    criticos[['CÓDIGO CLIENTE', 'CLIENTE', 'Dias']], 
+                                    use_container_width=True, 
+                                    hide_index=True,
+                                    column_config={
+                                        "Dias": st.column_config.NumberColumn("Dias Sem Comprar", format="%d ⏳")
+                                    }
+                                )
+                            else:
+                                st.success("✅ Todos os clientes ativos compraram nos últimos 30 dias.")
+                    except Exception as e:
+                        # Se der erro nas colunas, o app não trava, apenas não mostra o alerta
+                        st.info("Aguardando carregamento completo dos dados de faturamento...")
 
         # --- VERIFICAÇÃO DE PUNIÇÃO (TRAVA) ---
         if ven_sel != "Selecione...":
