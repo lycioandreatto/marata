@@ -16,11 +16,11 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
 MAPA_EMAILS = {
-    "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br"],
-    "THAIS": ["thais.oliveira@marata.com.br"],
-    "REGIANE": ["regiane.santana@marata.com.br"],
-    "ALLANA": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br"],
-    "ROBERIO": ["roberio@marata.com.br", "dione.lima@marata.com.br"]
+    "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br","marciajanaina@marata.com.br"],
+    "THAIS": ["thais.oliveira@marata.com.br","marciajanaina@marata.com.br"],
+    "REGIANE": ["regiane.santana@marata.com.br","marciajanaina@marata.com.br"],
+    "ALLANA": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br","marciajanaina@marata.com.br"],
+    "ROBERIO": ["roberio@marata.com.br", "dione.lima@marata.com.br","marciajanaina@marata.com.br"]
 }
 
 # E-mails que sempre recebem
