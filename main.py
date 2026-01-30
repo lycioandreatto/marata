@@ -1635,13 +1635,12 @@ elif menu_interna == "🔔 Aprovações":
         st.error("Você não tem permissão para acessar esta página.")
         st.stop()
 
-    # Filtrar apenas os pendentes e respeitar a hierarquia
-    if is_admin:
-        # Admin vê todos os pendentes
+    # Filtro de dados para a página (Respeitando a lista de diretoria se necessário)
+    diretoria = ["ALDO", "MARCIA"]
+    
+    if is_admin or user_atual.upper() in diretoria:
         df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
     else:
-        # Analista vê apenas os pendentes atribuídos a ele
-        # Certifique-se que a coluna 'ANALISTA' existe na sua planilha
         df_pendentes = df_agenda[(df_agenda['STATUS'] == "Pendente") & (df_agenda['ANALISTA'] == user_atual)].copy()
     
     if df_pendentes.empty:
@@ -1649,20 +1648,44 @@ elif menu_interna == "🔔 Aprovações":
     else:
         st.warning(f"Existem {len(df_pendentes)} agendamentos aguardando sua ação.")
         
+        # --- NOVO: BOTÕES DE AÇÃO EM MASSA ---
+        col_all1, col_all2 = st.columns(2)
+        
+        with col_all1:
+            if st.button("✅ APROVAR TODOS", use_container_width=True, type="primary"):
+                # Pega os IDs que estão aparecendo para este usuário
+                ids_para_aprovar = df_pendentes['ID'].tolist()
+                df_agenda.loc[df_agenda['ID'].isin(ids_para_aprovar), 'STATUS'] = "Planejado"
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                st.success(f"{len(ids_para_aprovar)} agendamentos aprovados de uma vez!")
+                st.cache_data.clear()
+                st.rerun()
+
+        with col_all2:
+            if st.button("❌ RECUSAR TODOS", use_container_width=True):
+                ids_para_recusar = df_pendentes['ID'].tolist()
+                df_agenda.loc[df_agenda['ID'].isin(ids_para_recusar), 'STATUS'] = "Recusado"
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                st.error(f"{len(ids_para_recusar)} agendamentos recusados de uma vez!")
+                st.cache_data.clear()
+                st.rerun()
+        
+        st.divider() # Linha divisória
+        
+        # --- LISTA INDIVIDUAL (EXPANDERS) ---
         for i, row in df_pendentes.iterrows():
             with st.expander(f"📍 {row['VENDEDOR']} -> {row['CLIENTE']} ({row['DATA']})"):
                 col1, col2 = st.columns(2)
                 
-                # Botão para Aprovar
+                # Botão para Aprovar Individual
                 if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}"):
-                    # Atualiza no DataFrame principal usando o ID único
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Planejado"
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
                     st.success(f"Agendamento de {row['CLIENTE']} aprovado!")
                     st.cache_data.clear()
                     st.rerun()
                 
-                # Botão para Recusar
+                # Botão para Recusar Individual
                 if col2.button("❌ Recusar", key=f"recus_{row['ID']}"):
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Recusado"
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
