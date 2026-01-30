@@ -1234,66 +1234,128 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
         df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
         
-        # [lista_hierarquia_fixa omitida para brevidade...]
+        lista_hierarquia_fixa = [
+            "ACHOCOLATADO", "ACUCAR", "ADOCANTE SACARINA", "ADOCANTE SUCRALOSE", "AZEITONA", 
+            "BALSAMICO", "BEBIDA MISTA", "CALDOS TABLETE", "CATCHUP", "CEBOLINHA", "COGUMELO", 
+            "DESCARTAVEIS", "ESPECIARIAS", "FARINHA DE TRIGO FD", "FARINHA DE TRIGO SC", 
+            "FARINHA LACTEA", "MACARRAO INSTANTANEO", "MARATINHO", "MILHO", "MILHO FARINHA GOTA", 
+            "MILHO FARINHA MARATA", "MILHO FLOCAO GOTA", "MILHO FLOCAO MARATA", "MILHO PIPOCA", 
+            "MINGAU", "MISTURA BOLO", "MOLHO PRONTO", "MOLHOS ALHO", "MOLHOS INGLES", 
+            "MOLHOS LIMAO", "MOLHOS PIMENTA", "MOLHOS PIMENTA 75ML", "MOLHOS SALSA", 
+            "MOLHOS SHOYO", "MOLHOS TEMPEROS CASEIROS", "OLEAGINOSAS", "PIMENTA CONSERVA", 
+            "PIPOCA PRONTA", "REFRESCO", "SALGADINHOS FARDO", "SALGADINHOS NACHOS", 
+            "SALGADINHOS PASTEIS", "SUCO D+ 1000ML", "SUCO D+ 200ML", "SUCO MARATA 1000ML", 
+            "SUCO MARATA 200ML", "TEMPERO COLORIFICO GOTA", "TEMPERO COLORIFICO MARATA", 
+            "TEMPERO CONDIMENTO GOTA", "TEMPERO CONDIMENTO MARATA", "TEMPERO EM PO", 
+            "VINAGRE", "VINAGRE ESPECIAL"
+        ]
+
+        # Tratamento básico de colunas e tipos
+        if df_meta_sistema is not None:
+            df_meta_sistema.columns = [str(c).strip() for c in df_meta_sistema.columns]
+            df_meta_sistema['RG'] = df_meta_sistema['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            df_meta_sistema['QTD'] = pd.to_numeric(df_meta_sistema['QTD'], errors='coerce').fillna(0)
+            if 'HIERARQUIA DE PRODUTOS' in df_meta_sistema.columns:
+                df_meta_sistema['HIERARQUIA DE PRODUTOS'] = df_meta_sistema['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
+
+        if df_2025 is not None:
+            df_2025.columns = [str(c).strip() for c in df_2025.columns]
+            df_2025['RG'] = df_2025['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            df_2025['QUANTIDADE'] = pd.to_numeric(df_2025['QUANTIDADE'], errors='coerce').fillna(0)
+            if 'HIERARQUIA DE PRODUTOS' in df_2025.columns:
+                df_2025['HIERARQUIA DE PRODUTOS'] = df_2025['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
 
         if df_faturado is not None and not df_faturado.empty:
+            df_faturado = df_faturado.dropna(how='all')
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
-            
-            # Padronização de nomes (Ajuste conforme sua planilha real)
-            df_faturado.rename(columns={
-                'Região de vendas': 'VENDEDOR_NOME',
-                'RG': 'VENDEDOR_COD', 
-                'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
-                'Hierarquia de produtos': 'HIERARQUIA'
-            }, inplace=True)
-
-            # --- GARANTINDO A COLUNA SUPERVISOR ---
-            # Primeiro, limpamos os nomes no df_base (sua tabela de relação analista/supervisor)
-            df_base.columns = [str(c).strip().upper() for c in df_base.columns]
-            df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
-            
-            # Garantimos que os nomes dos vendedores estão limpos para o merge
-            df_faturado['VENDEDOR_NOME'] = df_faturado['VENDEDOR_NOME'].astype(str).str.strip()
-            df_relacao['VENDEDOR'] = df_relacao['VENDEDOR'].astype(str).str.strip()
-
-            # Merge para trazer Supervisor e Analista
-            df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
-            
-            # Se após o merge as colunas não existirem (vendedor não encontrado), criamos elas
-            if 'SUPERVISOR' not in df_faturado.columns:
-                df_faturado['SUPERVISOR'] = 'NÃO CADASTRADO'
-            if 'ANALISTA' not in df_faturado.columns:
-                df_faturado['ANALISTA'] = 'NÃO CADASTRADO'
-
-            df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
+            df_faturado.rename(columns={'Região de vendas': 'VENDEDOR_NOME', 'RG': 'VENDEDOR_COD', 'Qtd Vendas (S/Dec)': 'QTD_VENDAS', 'Hierarquia de produtos': 'HIERARQUIA'}, inplace=True)
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
+            df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
-        # [Tratamento das outras abas igual ao código anterior...]
+        # Processamento META COBERTURA (Tratamento de % e Numérico)
+        if df_metas_cob is not None:
+            df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
+            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
+            df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+            if 'HIERARQUIA DE PRODUTOS' in df_metas_cob.columns:
+                df_metas_cob['HIERARQUIA DE PRODUTOS'] = df_metas_cob['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
+            if 'META COBERTURA' in df_metas_cob.columns:
+                metas_cob_item = pd.to_numeric(df_metas_cob['META COBERTURA'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
+                # Garante que se vier 0.28 vire 28
+                df_metas_cob['META COBERTURA'] = metas_cob_item.apply(lambda x: x * 100 if 0 < x <= 1.0 else x)
 
     except Exception as e:
-        st.error(f"Erro no processamento: {e}")
+        st.error(f"Erro no processamento das abas: {e}")
         st.stop()
 
     if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
         
+        # --- Filtros ---
         st.markdown("### 🔍 Filtros")
         c0, c2, c3 = st.columns(3)
-        
-        with c0:
-            # Verifica se EscrV existe antes de filtrar
-            lista_estados = sorted(df_f['EscrV'].dropna().unique()) if 'EscrV' in df_f.columns else []
-            sel_estado = st.multiselect("Estado", lista_estados)
-        
-        with c2:
+        with c0: sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
+        with c2: 
             df_temp_sup = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
-            # O erro acontecia aqui. Agora garantimos que 'SUPERVISOR' existe.
-            opcoes_sup = sorted(df_temp_sup['SUPERVISOR'].dropna().unique())
-            sel_supervisor = st.multiselect("Supervisor", opcoes_sup)
-            
+            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()) if 'SUPERVISOR' in df_temp_sup.columns else [])
         with c3:
             df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
             sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
 
-        # [Restante do código de processamento e tabela...]
+        if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
+        if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
+        if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
+            
+        vendedores_ids = df_f['VENDEDOR_COD'].unique()
+
+        # --- Cálculo da Base Total (O "Multiplicador") ---
+        if not df_f.empty:
+            if not (sel_supervisor or sel_vendedor):
+                # Se não tem vendedor/sup selecionado, usa a base do Estado (Param Metas)
+                dados_meta_filtro = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())] if df_param_metas is not None else pd.DataFrame()
+                base_total = dados_meta_filtro['BASE'].sum() if not dados_meta_filtro.empty else 1
+            else:
+                # Se tem seleção, usa a soma da base dos vendedores selecionados
+                dados_meta_filtro = df_metas_cob[df_metas_cob['RG'].isin([str(x) for x in vendedores_ids])]
+                base_total = dados_meta_filtro['BASE'].unique().sum() if not dados_meta_filtro.empty else 1
+
+        st.markdown("### 📈 Desempenho por Hierarquia")
+        
+        # 1. Agrupamento do Faturado (Realizado)
+        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVAÇÃO'}).reset_index()
+
+        # 2. Agrupamento das Metas Sistema e 2025
+        df_ms_agrupado = df_meta_sistema.groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_meta_sistema is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
+        df_25_agrupado = df_2025.groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_2025 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
+
+        # 3. Cruzamento Cobertura (% de Meta por produto)
+        df_metas_sub = df_metas_cob[df_metas_cob['RG'].isin([str(x) for x in vendedores_ids])] if not df_f.empty else df_metas_cob
+        df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'})
+
+        # 4. Merge Final
+        df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
+        df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left')
+        df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left')
+        df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
+        
+        # --- O CÁLCULO QUE VOCÊ PEDIU ---
+        # Multiplica o % da meta pela base total filtrada (Ex: 28% de 500 clientes)
+        df_final_h['META (VALOR ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
+        
+        # Reordenação e nomes finais
+        df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'})
+        df_final_h = df_final_h[['HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META (VALOR ABS)', 'POSITIVAÇÃO', 'META 2025', 'META 2026', 'VOLUME']]
+        
+        st.dataframe(
+            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
+                'META COBERTURA': lambda x: f"{x:,.1f}%",
+                'META (VALOR ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
+                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."), 
+                'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
+                'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
+                'VOLUME': lambda x: f"{x:,.0f}".replace(",", ".")
+            }), 
+            use_container_width=True, 
+            hide_index=True
+        )
