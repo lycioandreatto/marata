@@ -1015,74 +1015,93 @@ elif menu == "📋 Novo Agendamento":
                         key=f"qtd_{id_vendedor}"
                     )
                     
-                  # Formulário com KEY única
-                    with st.form(key=f"form_novo_v_{id_vendedor}"):
-                        cols_datas = st.columns(qtd_visitas)
-                        datas_sel = []
-                        for i in range(qtd_visitas):
-                            with cols_datas[i]:
-                                d = st.date_input(
-                                    f"Data {i+1}:", 
-                                    value=hoje_dt, 
-                                    min_value=hoje_dt, 
-                                    key=f"d_{i}_{id_vendedor}"
-                                )
-                                datas_sel.append(d)
-                        
-                        # O BOTÃO PRECISA ESTAR EXATAMENTE AQUI (DENTRO DO WITH)
-                        if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
-                            # 1. Preparação
-                            cod_c, nom_c = cliente_sel.split(" - ", 1)
-                            cod_c = str(cod_c).strip()
-                            
-                            # --- TRAVA DE SEGURANÇA (LÊ A PLANILHA NA HORA) ---
-                            df_verificacao = conn.read(spreadsheet=url_planilha, worksheet="AGENDA", ttl=0)
-                            
-                            ja_existe = df_verificacao[
-                                (df_verificacao['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()) & 
-                                (df_verificacao['CÓDIGO CLIENTE'].astype(str).str.strip() == cod_c) &
-                                (df_verificacao['STATUS'].isin(['Planejado', 'Realizado']))
-                            ]
+                  # --- FORMULÁRIO COM TRAVA ANTI-DUPLICIDADE DEFINITIVA ---
+with st.form(key=f"form_novo_v_{id_vendedor}"):
+    cols_datas = st.columns(qtd_visitas)
+    datas_sel = []
+    for i in range(qtd_visitas):
+        with cols_datas[i]:
+            d = st.date_input(
+                f"Data {i+1}:", 
+                value=hoje_dt, 
+                min_value=hoje_dt, 
+                key=f"d_{i}_{id_vendedor}"
+            )
+            datas_sel.append(d)
+    
+    btn_salvar = st.form_submit_button("💾 SALVAR AGENDAMENTOS")
 
-                            if not ja_existe.empty:
-                                st.error(f"⚠️ O cliente {nom_c} já possui agendamento ativo!")
-                                st.cache_data.clear()
-                                time.sleep(2)
-                                st.rerun()
-                            else:
-                                agora = datetime.now(fuso_br)
-                                novas_linhas = []
-                                
-                                for i, dt in enumerate(datas_sel):
-                                    nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
-                                    novas_linhas.append({
-                                        "ID": nid, 
-                                        "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
-                                        "DATA": dt.strftime("%d/%m/%Y"),
-                                        "ANALISTA": analista_vinc, 
-                                        "SUPERVISOR": supervisor_vinc, 
-                                        "VENDEDOR": ven_sel,
-                                        "CÓDIGO CLIENTE": cod_c, 
-                                        "CLIENTE": nom_c, 
-                                        "JUSTIFICATIVA": "-", 
-                                        "STATUS": "Planejado",
-                                        "AGENDADO POR": user_atual 
-                                    })
-                                    
-                                # 3. Atualização Final
-                                df_final_a = pd.concat([
-                                    df_verificacao.drop(columns=['LINHA'], errors='ignore'), 
-                                    pd.DataFrame(novas_linhas)
-                                ], ignore_index=True)
-                                
-                                try:
-                                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-                                    st.cache_data.clear()
-                                    st.success(f"✅ Agendado com sucesso!")
-                                    time.sleep(1.5) 
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar: {e}")
+# Lógica de processamento FORA do bloco with st.form para evitar conflitos de renderização
+if btn_salvar:
+    # 1. Criar um "Cadeado" no Session State para esta sessão
+    lock_key = f"lock_{id_vendedor}_{cliente_sel.split(' - ')[0]}"
+    
+    if st.session_state.get(lock_key, False):
+        st.warning("Processamento já realizado. Aguarde a atualização...")
+        st.stop()
+    
+    # Ativa o cadeado
+    st.session_state[lock_key] = True
+
+    # 2. Limpeza de dados
+    cod_c, nom_c = cliente_sel.split(" - ", 1)
+    cod_c = str(cod_c).strip()
+
+    # 3. Releitura em Tempo Real (Sem Cache)
+    # Importante: Verifique se sua função conn.read aceita o parâmetro ttl
+    df_verificacao = conn.read(spreadsheet=url_planilha, worksheet="AGENDA", ttl=0)
+
+    # 4. Verificação de Existência (Evita salvar se já existir)
+    ja_existe = df_verificacao[
+        (df_verificacao['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()) & 
+        (df_verificacao['CÓDIGO CLIENTE'].astype(str).str.strip() == cod_c) &
+        (df_verificacao['STATUS'].isin(['Planejado', 'Realizado']))
+    ]
+
+    if not ja_existe.empty:
+        st.error(f"⚠️ O cliente {nom_c} já foi agendado anteriormente.")
+        st.session_state[lock_key] = False # Libera o cadeado em caso de erro
+        time.sleep(2)
+        st.rerun()
+    else:
+        # 5. Preparar Novas Linhas
+        agora = datetime.now(fuso_br)
+        novas_linhas = []
+        for i, dt in enumerate(datas_sel):
+            nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
+            novas_linhas.append({
+                "ID": nid, 
+                "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
+                "DATA": dt.strftime("%d/%m/%Y"),
+                "ANALISTA": analista_vinc, 
+                "SUPERVISOR": supervisor_vinc, 
+                "VENDEDOR": ven_sel,
+                "CÓDIGO CLIENTE": cod_c, 
+                "CLIENTE": nom_c, 
+                "JUSTIFICATIVA": "-", 
+                "STATUS": "Planejado",
+                "AGENDADO POR": user_atual 
+            })
+            
+        # 6. Atualização Final
+        df_final_a = pd.concat([
+            df_verificacao.drop(columns=['LINHA'], errors='ignore'), 
+            pd.DataFrame(novas_linhas)
+        ], ignore_index=True)
+        
+        try:
+            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
+            st.cache_data.clear() # Limpa o cache para a próxima leitura vir correta
+            st.success("✅ Agendado com sucesso!")
+            
+            # Limpa o cadeado antes de recarregar
+            st.session_state[lock_key] = False
+            
+            time.sleep(1) 
+            st.rerun()
+        except Exception as e:
+            st.session_state[lock_key] = False # Libera o cadeado para tentar novamente
+            st.error(f"Erro ao salvar: {e}")
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
