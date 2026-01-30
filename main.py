@@ -976,7 +976,8 @@ elif menu == "📊 Dashboard de Controle":
 elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
 
-    # --- BLOCO: ALERTA DE CLIENTES SEM COMPRA (+30 DIAS) ---
+
+# --- BLOCO: ALERTA DE CLIENTES SEM COMPRA (+30 DIAS) ---
         if df_fat is not None and ven_sel != "Selecione...":
             with st.expander("🚨 ALERTA: Clientes há mais de 30 dias sem comprar", expanded=False):
                 try:
