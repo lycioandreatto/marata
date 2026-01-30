@@ -1304,12 +1304,13 @@ elif menu_interna == "📊 Desempenho de Vendas":
     if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
         
-        # --- FILTROS ---
+        # --- FILTROS (REPLICANDO LÓGICA DE ESTADO PARA ANALISTA) ---
         st.markdown("### 🔍 Filtros")
         c0, c1, c2, c3 = st.columns(4)
         with c0:
             sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
         with c1:
+            # Se filtrar Estado, limita os Analistas. Se não, mostra todos.
             df_temp = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
             sel_analista = st.multiselect("Analista", sorted(df_temp['ANALISTA'].dropna().unique()))
         with c2:
@@ -1319,27 +1320,32 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
             sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
 
+        # Aplicação Real dos Filtros
         if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
         if sel_analista: df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
-        # --- LÓGICA DE POSITIVAÇÃO E METAS ---
+        # --- LÓGICA DE POSITIVAÇÃO E METAS UNIFICADA ---
         if not df_f.empty:
+            # A positivação agora é baseada SEMPRE no DataFrame já filtrado (que unifica Estado e Analista)
             if sel_supervisor or sel_vendedor:
                 positivacao = df_f[col_k].nunique()
             else:
+                # Remove SMX/STR apenas para visão macro (Estado/Analista)
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
 
-            # Cálculo de Base e Meta
-            analista_alvo = sel_analista[0].upper() if sel_analista else (df_f['ANALISTA'].iloc[0].upper() if 'ANALISTA' in df_f.columns else "")
-            
+            # Cálculo de Base e Meta unificado para Estado/Analista
             if not (sel_supervisor or sel_vendedor):
-                linha_meta = df_param_metas[df_param_metas['ANALISTA'] == analista_alvo]
+                # Se houver filtro de analista, usamos ele. Se não, pegamos o analista do estado filtrado.
+                analista_ref = sel_analista[0].upper() if sel_analista else df_f['ANALISTA'].iloc[0].upper()
+                linha_meta = df_param_metas[df_param_metas['ANALISTA'] == analista_ref]
+                
                 base_total = linha_meta['BASE'].iloc[0] if not linha_meta.empty else 1
                 meta_val = linha_meta['META_COB'].iloc[0] if not linha_meta.empty else 0
             else:
+                # Se for nível Supervisor/Vendedor, soma as bases individuais
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
                 dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
                 base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
@@ -1356,13 +1362,13 @@ elif menu_interna == "📊 Desempenho de Vendas":
             with m3:
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small style="color: #666;">COBERTURA (META VS REAL)</small><br>
+                    <small style="color: #666;">COBERTURA (SOMA ESTADO/ANALISTA)</small><br>
                     <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
                     Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>
                 """, unsafe_allow_html=True)
 
-        # --- TABELA DE HIERARQUIA ---
+        # --- TABELA DE HIERARQUIA (Sempre alinhada ao Volume Geral) ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
             'QTD_VENDAS': 'sum', 
