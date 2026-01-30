@@ -633,11 +633,27 @@ if menu == "📅 Agendamentos do Dia":
                         nova_just = st.text_input("Especifique o motivo:", value=val_atual_just if val_atual_just not in opcoes_just else "")
 
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
-                    lat_v = st.session_state.get('lat', 0)
-                    lon_v = st.session_state.get('lon', 0)
-                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', col_aprov_exec, col_just, 'COORDENADAS']] = [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}"]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                    st.success("Dados atualizados!"); time.sleep(1); st.rerun()
+    # 1. Tenta pegar a localização atual (certifique-se que ela existe no seu app)
+    lat_v = st.session_state.get('lat', 0)
+    lon_v = st.session_state.get('lon', 0)
+    
+    # 2. Lógica para calcular a distância (Exemplo)
+    distancia_calculada = 0
+    if lat_v != 0 and lon_v != 0:
+        # Aqui você precisaria das coordenadas do CLIENTE para comparar
+        # Se você tiver lat_cliente e lon_cliente:
+        # distancia_calculada = calcular_distancia(lat_v, lon_v, lat_cliente, lon_cliente)
+        pass
+
+    # 3. SALVAR (Adicionei a coluna DISTANCIA_LOG e COORDENADAS no mapeamento)
+    colunas_para_update = ['STATUS', col_aprov_exec, col_just, 'COORDENADAS', 'DISTANCIA_LOG']
+    valores_para_update = [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}", distancia_calculada]
+    
+    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), colunas_para_update] = valores_para_update
+    
+    # Enviar para a planilha
+    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+    st.success("Dados atualizados!"); time.sleep(1); st.rerun()
 
         # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
