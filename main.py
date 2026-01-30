@@ -1410,20 +1410,23 @@ elif menu_interna == "📊 Desempenho de Vendas":
         
         df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
         
-        # --- CÁLCULO DA PENDÊNCIA ---
-        # .clip(lower=0) garante que se a positivação superar a meta, a pendência mostre 0
+        # --- CÁLCULO DA PENDÊNCIA (CLIENTES) ---
         df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
 
-        # Reordenação final: PENDÊNCIA colocada após a POSITIVAÇÃO
+        # --- NOVO CÁLCULO: CRESCIMENTO 2025 (VOLUME - META 2025) ---
+        df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
+
+        # Reordenação final: CRESCIMENTO 2025 adicionado ao final
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 
             'META COBERTURA', 
             'META CLIENTES (ABS)',
             'POSITIVAÇÃO', 
-            'PENDÊNCIA CLIENTES',  # <-- Movida para depois da Positivação
+            'PENDÊNCIA CLIENTES',
             'META 2025', 
             'META 2026', 
-            'VOLUME'
+            'VOLUME',
+            'CRESCIMENTO 2025'  # <-- Nova coluna no final
         ]
         
         df_final_h = df_final_h[colunas_ordenadas]
@@ -1436,7 +1439,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'PENDÊNCIA CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."), 
                 'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
                 'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
-                'VOLUME': lambda x: f"{x:,.0f}".replace(",", ".")
+                'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
+                'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", ".") # <-- Formatação da nova coluna
             }), 
             use_container_width=True, 
             hide_index=True
