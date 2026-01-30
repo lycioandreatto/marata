@@ -1405,12 +1405,13 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
         df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-        # --- NOVO CÁLCULO DA META EM VALOR ABSOLUTO ---
-        df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
+        # --- CÁLCULO DA META EM VALOR ABSOLUTO ARREDONDADO PARA CIMA ---
+        import numpy as np
+        df_final_h['META CLIENTES (ABS)'] = np.ceil((df_final_h['META COBERTURA'] / 100) * base_total)
         
         df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
         
-        # Reordenação final das colunas com a nova coluna calculada
+        # Reordenação final
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 
             'META COBERTURA', 
