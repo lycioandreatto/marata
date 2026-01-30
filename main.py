@@ -408,7 +408,13 @@ elif is_supervisor:
 else:
     label_display = f"{user_atual} | VENDEDOR"; user_icon = "👤"; border_color = "#ff4b4b"
 
-# --- BARRA LATERAL (SIDEBAR) ---
+
+        opcoes_menu.append("📊 Dashboard de Controle")
+        
+    menu = st.selectbox("Menu Principal", opcoes_menu)
+    
+    # Padronização interna para o código (Ajustado para o Sininho)
+    if menu == texto_ver_agenda:# --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
     st.markdown(f"""
         <div class="user-card" style="border-left: 5px solid {border_color};">
@@ -417,6 +423,20 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
+    # --- NOVO: SINO DE NOTIFICAÇÃO (APENAS GESTORES) ---
+    if eh_gestao:
+        qtd_p = len(df_agenda[df_agenda['STATUS'] == "Pendente"]) if df_agenda is not None else 0
+        if qtd_p > 0:
+            # Exibe um alerta visual acima do menu
+            st.warning(f"🔔 {qtd_p} Agendamentos aguardando aprovação")
+            if st.button("Ir para Aprovações ⚖️", use_container_width=True):
+                st.session_state.pagina_atual = "Aprovações"
+                st.rerun()
+        else:
+            st.caption("✅ Nenhuma aprovação pendente")
+    
+    st.markdown("---") # Divisor visual
+
     # Texto dinâmico do menu conforme perfil
     if eh_gestao:
         texto_ver_agenda = "🔍 Agenda Geral"
@@ -425,22 +445,8 @@ with st.sidebar:
     else:
         texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
-    # --- NOVO: LÓGICA DE CONTAGEM PARA O SININHO ---
-    qtd_p = 0
-    if df_agenda is not None and not df_agenda.empty:
-        # Filtra apenas o que está como 'Pendente' na coluna STATUS
-        qtd_p = len(df_agenda[df_agenda['STATUS'] == "Pendente"])
-
-    # 1. Lista base de opções (acesso comum)
-    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento"]
-    
-    # 2. Adiciona Aprovações APENAS para Gestores
-    if eh_gestao:
-        label_aprovacoes = f"🔔 Aprovações ({qtd_p})" if qtd_p > 0 else "🔔 Aprovações"
-        opcoes_menu.append(label_aprovacoes)
-
-    # 3. Adiciona o restante das opções
-    opcoes_menu.append(texto_ver_agenda)
+    # Lista base de opções (Sem o sino aqui dentro)
+    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
     
     if user_atual.upper() == "LYCIO":
         opcoes_menu.append("📊 Desempenho de Vendas")
@@ -450,20 +456,28 @@ with st.sidebar:
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
-    # Padronização interna para o código (Ajustado para o Sininho)
-    if menu == texto_ver_agenda:
-        menu_interna = "🔍 Ver/Editar Minha Agenda"
-    elif menu.startswith("🔔 Aprovações"):
+    # Se o usuário escolher algo no menu, limpamos o estado de "Aprovações"
+    if "pagina_atual" not in st.session_state:
+        st.session_state.pagina_atual = "Menu"
+
+    # Lógica para definir qual página exibir
+    if st.session_state.pagina_atual == "Aprovações":
         menu_interna = "🔔 Aprovações"
     else:
-        menu_interna = menu
-    # Botão Sair
+        # Padronização interna para o código
+        if menu == texto_ver_agenda:
+            menu_interna = "🔍 Ver/Editar Minha Agenda"
+        else:
+            menu_interna = menu
+
+    # Botão Sair (mantive como estava)
     if st.button("Sair", key="btn_logout_sidebar"):
         if "user_marata" in cookies:
             del cookies["user_marata"]
             cookies.save()
         st.session_state.logado = False
         st.session_state.usuario = ""
+        st.session_state.pagina_atual = "Menu"
         st.cache_data.clear()
         st.rerun()
         
