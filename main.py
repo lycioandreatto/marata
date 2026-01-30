@@ -1372,6 +1372,72 @@ elif menu_interna == "📊 Desempenho de Vendas":
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
+            # --- CÁLCULOS PARA A TABELA DE RESUMO DE CRESCIMENTO ---
+            qtd_itens_total = len(df_final_h)
+            # Item atingido: aquele onde o Volume é maior ou igual à Meta 2025
+            itens_atingidos = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
+            itens_abaixo = qtd_itens_total - itens_atingidos
+            
+            meta_crescimento_fixa = 80  # Meta de 80% dos itens atingirem o crescimento
+            realizado_crescimento = (itens_atingidos / qtd_itens_total * 100) if qtd_itens_total > 0 else 0
+            falta_crescimento = max(0, meta_crescimento_fixa - realizado_crescimento)
+
+            st.markdown("---")
+            
+            # Criando as colunas: a primeira para a nova tabela e a segunda para o card de cobertura
+            col_resumo, col_cobertura = st.columns([1.2, 1])
+
+            with col_resumo:
+                # Criando a tabela de resumo estilo a imagem enviada
+                st.markdown(f"""
+                <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; border: 1px solid #ddd;">
+                    <tr style="background-color: #00b0f0; color: white; font-weight: bold; text-align: center;">
+                        <td colspan="2" style="padding: 5px; border: 1px solid #ddd;">CRESCIMENTO (Vs META 2025)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">QTD ITENS:</td>
+                        <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{qtd_itens_total}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">ITENS ATINGIDOS:</td>
+                        <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #28a745;">{itens_atingidos}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">ITENS ABAIXO:</td>
+                        <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #d63031;">{itens_abaixo}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">META:</td>
+                        <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{meta_crescimento_fixa}%</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">REALIZADO:</td>
+                        <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: {'#28a745' if realizado_crescimento >= meta_crescimento_fixa else '#e67e22'};">{realizado_crescimento:.0f}%</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">FALTAM:</td>
+                        <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #d63031;">{falta_crescimento:.0f}%</td>
+                    </tr>
+                </table>
+                """, unsafe_allow_html=True)
+
+            with col_cobertura:
+                # Mantendo o card de cobertura ao lado, formatado
+                base_fmt = f"{base_total:,.0f}".replace(",", ".")
+                atingido_fmt = f"{real_perc:.1f}".replace(".", ",") + "%"
+                
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; padding: 20px; border-radius: 8px; background-color: #f9f9f9; height: 100%;">
+                    <small style="color: #666;">COBERTURA ({estados_str})</small><br>
+                    <span style="font-size: 1.1em;">Base: <b>{base_fmt}</b> | Meta: <b>{meta_val:.0f}%</b></span><br><br>
+                    <span style="font-size: 0.9em;">Atingido:</span><br>
+                    <span style="color:{cor_indicador}; font-size: 2.2em; font-weight: bold;">{atingido_fmt}</span>
+                    <div style="margin-top: 10px; height: 10px; background-color: #eee; border-radius: 5px;">
+                        <div style="width: {min(real_perc, 100)}%; height: 100%; background-color: {cor_indicador}; border-radius: 5px;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
             m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}".replace(",", "."))
