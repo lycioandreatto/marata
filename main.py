@@ -1634,33 +1634,71 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 st.warning(f"Erro ao gerar PDF: {e}")
 
 # --- PÁGINA: APROVAÇÕES ---
-elif menu == "🔔 Aprovações":
+elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
     
-    # Filtrar apenas os pendentes
-    df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
-    
-    if df_pendentes.empty:
-        st.success("Não há agendamentos aguardando aprovação!")
+    # 1. Filtro de Segurança por Analista
+    if df_agenda is not None and not df_agenda.empty:
+        # Se for analista (e não for admin/diretoria), filtra apenas o que é dele
+        if is_analista and not (is_admin or is_diretoria):
+            df_pendentes = df_agenda[
+                (df_agenda['STATUS'] == "Pendente") & 
+                (df_agenda['SUPERVISOR'].str.upper() == user_atual.upper())
+            ].copy()
+        else:
+            # Lycio e Aldo veem todos os pendentes de todos os analistas
+            df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
     else:
-        # Mostrar quantos estão pendentes
+        df_pendentes = pd.DataFrame()
+
+    # 2. Exibição dos dados
+    if df_pendentes.empty:
+        st.success("Não há agendamentos aguardando sua aprovação!")
+        if st.button("Voltar ao Menu Principal"):
+            st.session_state.pagina_direta = None
+            st.rerun()
+    else:
         st.warning(f"Existem {len(df_pendentes)} agendamentos aguardando sua ação.")
         
+        # Botão para limpar a visualização forçada e voltar ao menu
+        if st.button("⬅️ Voltar para Agendamentos do Dia"):
+            st.session_state.pagina_direta = None
+            st.rerun()
+            
+        st.markdown("---")
+
         for i, row in df_pendentes.iterrows():
+            # Título do expander com Vendedor e Cliente
             with st.expander(f"📍 {row['VENDEDOR']} -> {row['CLIENTE']} ({row['DATA']})"):
+                st.write(f"**Cidade:** {row.get('CIDADE', 'Não informada')}")
+                st.write(f"**Solicitado por:** {row.get('AGENDADO POR', 'Não informado')}")
+                
                 col1, col2 = st.columns(2)
                 
                 # Botão para Aprovar
                 if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}"):
+                    # Muda status para Planejado (aparecerá na agenda do vendedor)
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Planejado"
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                    
+                    # Remove colunas calculadas antes de salvar na planilha para não dar erro
+                    df_para_salvar = df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
+                    
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_para_salvar)
+                    st.cache_data.clear()
                     st.success(f"Agendamento de {row['CLIENTE']} aprovado!")
+                    time.sleep(1)
                     st.rerun()
                 
                 # Botão para Recusar
                 if col2.button("❌ Recusar", key=f"recus_{row['ID']}"):
-                    # Aqui você pode deletar a linha ou mudar para "Recusado"
+                    # Muda status para Recusado
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Recusado"
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                    
+                    # Remove colunas calculadas antes de salvar
+                    df_para_salvar = df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
+                    
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_para_salvar)
+                    st.cache_data.clear()
                     st.error(f"Agendamento de {row['CLIENTE']} recusado.")
+                    time.sleep(1)
                     st.rerun()
