@@ -1405,16 +1405,21 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
         df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-        # --- NOVO CÁLCULO DA META EM VALOR ABSOLUTO ---
+       # --- NOVO CÁLCULO DA META EM VALOR ABSOLUTO ---
         df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
         
         df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
         
-        # Reordenação final das colunas com a nova coluna calculada
+        # --- CÁLCULO DA PENDÊNCIA (Subtração solicitada) ---
+        # Usamos .clip(lower=0) para que se a positivação for maior que a meta, a pendência seja 0 e não negativa
+        df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
+
+        # Reordenação final das colunas incluindo a nova PENDÊNCIA após a META CLIENTES (ABS)
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 
             'META COBERTURA', 
-            'META CLIENTES (ABS)', 
+            'META CLIENTES (ABS)',
+            'PENDÊNCIA CLIENTES',  # <-- Coluna inserida aqui
             'POSITIVAÇÃO', 
             'META 2025', 
             'META 2026', 
@@ -1427,6 +1432,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
                 'META COBERTURA': "{:.1f}%",
                 'META CLIENTES (ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
+                'PENDÊNCIA CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."), # <-- Formatação adicionada
                 'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."), 
                 'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
                 'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
