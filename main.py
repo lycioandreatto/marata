@@ -1405,51 +1405,57 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
         df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-      # --- NOVO CÁLCULO DA META EM VALOR ABSOLUTO ---
+      # --- CÁLCULOS FINAIS ---
         df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
-        
         df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
-        
-        # --- CÁLCULO DA PENDÊNCIA (CLIENTES) ---
         df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
 
-        # --- CÁLCULO: CRESCIMENTO 2025 E ATINGIMENTO 2025 ---
+        # Volume 2025
         df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
-        df_final_h['ATINGIMENTO % (VOL)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
+        df_final_h['ATINGIMENTO % (VOL 2025)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
-        # --- NOVO CÁLCULO: CRESCIMENTO 2026 (VOLUME - META 2026) ---
+        # Volume 2026
         df_final_h['CRESCIMENTO 2026'] = df_final_h['VOLUME'] - df_final_h['META 2026']
+        df_final_h['ATINGIMENTO % (VOL 2026)'] = (df_final_h['VOLUME'] / df_final_h['META 2026'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
-        # Reordenação final com todas as colunas
+        # Reordenação
         colunas_ordenadas = [
-            'HIERARQUIA DE PRODUTOS', 
-            'META COBERTURA', 
-            'META CLIENTES (ABS)',
-            'POSITIVAÇÃO', 
-            'PENDÊNCIA CLIENTES',
-            'META 2025', 
-            'META 2026', 
-            'VOLUME',
-            'CRESCIMENTO 2025',
-            'ATINGIMENTO % (VOL)',
-            'CRESCIMENTO 2026'  # <-- Nova coluna adicionada ao final de tudo
+            'HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 
+            'PENDÊNCIA CLIENTES', 'META 2025', 'META 2026', 'VOLUME', 
+            'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)', 'CRESCIMENTO 2026', 'ATINGIMENTO % (VOL 2026)'
         ]
-        
         df_final_h = df_final_h[colunas_ordenadas]
-        
+
+        # --- LÓGICA VISUAL (ESTILIZAÇÃO) ---
+        def aplicar_estilo(val):
+            if isinstance(val, (int, float)):
+                if val < 0: return 'color: #d63031; font-weight: bold;' # Vermelho para negativos
+                return ''
+            return ''
+
+        # Criando a visualização com ícones e barras
         st.dataframe(
-            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
+            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style
+            .format({
                 'META COBERTURA': "{:.1f}%",
-                'META CLIENTES (ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
-                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."), 
-                'PENDÊNCIA CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."), 
-                'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
-                'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
-                'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'ATINGIMENTO % (VOL)': "{:.1f}%",
-                'CRESCIMENTO 2026': lambda x: f"{x:,.0f}".replace(",", ".") # <-- Formatação da nova coluna
-            }), 
-            use_container_width=True, 
+                'META CLIENTES (ABS)': "{:,.0f}",
+                'POSITIVAÇÃO': "{:,.0f}",
+                'PENDÊNCIA CLIENTES': "{:,.0f}",
+                'META 2025': "{:,.0f}",
+                'META 2026': "{:,.0f}",
+                'VOLUME': "{:,.0f}",
+                'CRESCIMENTO 2025': "{:,.0f}",
+                'CRESCIMENTO 2026': "{:,.0f}",
+                'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
+                'ATINGIMENTO % (VOL 2026)': "{:.1f}%"
+            })
+            # 1. Cor vermelha para valores negativos (Crescimentos)
+            .applymap(aplicar_estilo, subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
+            # 2. Barras de progresso visuais para os Atingimentos
+            .bar(subset=['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)'], 
+                 color=['#ffadad', '#72efdd'], align='mid', vmin=0, vmax=100)
+            # 3. Destacar pendência se for maior que zero
+            .apply(lambda x: ['background-color: #fff3cd' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
+            use_container_width=True,
             hide_index=True
         )
