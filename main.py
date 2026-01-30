@@ -884,6 +884,67 @@ elif menu == "📊 Dashboard de Controle":
         except Exception as e:
             st.error(f"Erro no processamento de SKUS: {e}")
 
+        # --- NOVO BLOCO: RANKING DE ENGAJAMENTO (ACIMA DO MAPA) ---
+        st.markdown("---")
+        st.subheader("🏆 Ranking de Engajamento por Vendedor")
+        
+        # 1. Preparar dados para o Ranking
+        if not df_agenda.empty:
+            # Agrupar agendamentos realizados (Status = Realizado)
+            ranking_realizado = df_agenda[df_agenda['STATUS'] == "Realizado"].groupby('VENDEDOR').size().reset_index(name='Realizados')
+            
+            # Agrupar total de agendamentos feitos (Planejados + Realizados + Reagendados)
+            ranking_total = df_agenda.groupby('VENDEDOR').size().reset_index(name='Total Agendado')
+            
+            # Unir as métricas
+            df_ranking = pd.merge(ranking_total, ranking_realizado, on='VENDEDOR', how='left').fillna(0)
+            df_ranking['Realizados'] = df_ranking['Realizados'].astype(int)
+            
+            # Calcular % de Cumprimento
+            df_ranking['% Cumprimento'] = (df_ranking['Realizados'] / df_ranking['Total Agendado'] * 100).round(1)
+            
+            # Ordenar pelos que mais realizaram e depois pela taxa de cumprimento
+            df_ranking = df_ranking.sort_values(by=['Realizados', '% Cumprimento'], ascending=False).reset_index(drop=True)
+            
+            # Exibir a Tabela de Ranking
+            st.dataframe(
+                df_ranking, 
+                use_container_width=True, 
+                hide_index=False,
+                column_config={
+                    "VENDEDOR": "Vendedor",
+                    "Total Agendado": st.column_config.NumberColumn("Agendamentos", help="Total de clientes agendados"),
+                    "Realizados": st.column_config.NumberColumn("Visitas Realizadas", help="Visitas com status Realizado"),
+                    "% Cumprimento": st.column_config.ProgressColumn("Taxa de Sucesso", format="%.1f%%", min_value=0, max_value=100)
+                }
+            )
+        else:
+            st.info("Aguardando dados de agendamento para gerar o ranking.")
+
+        # --- MAPA DE CALOR (AGORA ABAIXO DO RANKING) ---
+        st.markdown("---")
+        st.subheader("🔥 Mapa de Calor")
+        tipo_mapa = st.radio("Selecione a camada:", ["Visitas Realizadas", "Faturamento (Pedidos)"], horizontal=True)
+        try:
+            import folium
+            from folium.plugins import HeatMap
+            from streamlit_folium import st_folium
+            
+            if tipo_mapa == "Visitas Realizadas":
+                df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
+            else:
+                df_mapa = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
+            
+            if not df_mapa.empty:
+                df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
+                m = folium.Map(location=[df_mapa['lat'].mean(), df_mapa['lon'].mean()], zoom_start=7, tiles="cartodbpositron")
+                HeatMap(df_mapa[['lat', 'lon']].dropna().values.tolist(), radius=15).add_to(m)
+                st_folium(m, width="100%", height=500, returned_objects=[])
+            else:
+                st.warning("Sem dados de coordenadas para exibir no mapa.")
+        except Exception as e: 
+            st.info(f"Erro ao carregar mapa: {e}")
+
         # --- MAPA DE CALOR ---
         st.markdown("---")
         st.subheader("🔥 Mapa de Calor")
