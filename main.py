@@ -639,31 +639,46 @@ if menu == "📅 Agendamentos do Dia":
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
                     st.success("Dados atualizados!"); time.sleep(1); st.rerun()
 
-        # --- BOTÃO ROTA FINALIZADA ---
+      # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
         if not df_dia.empty:
             if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                # ... (Lógica de envio de e-mail permanece igual ao seu código original) ...
                 try:
+                    # 1. Identificar Analista
                     analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual.upper()]['ANALISTA'].iloc[0].upper().strip()
                 except:
                     analista_encontrado = "NÃO LOCALIZADO"
 
+                    # 2. Montar lista de e-mails
                 lista_final = EMAILS_GESTAO.copy()
                 if analista_encontrado in MAPA_EMAILS:
                     lista_final.extend(MAPA_EMAILS[analista_encontrado])
                 string_destinatarios = ", ".join(lista_final)
 
+                # 3. Calcular métricas de faturamento (Hierarquias e SKUs)
+                # Filtramos apenas as visitas realizadas para somar o que foi faturado de fato
+                df_realizados = df_dia[df_dia['STATUS'] == "Realizado"]
+                
+                # Usamos .sum() para totalizar os valores das colunas
+                total_hierarquias = int(df_realizados['HIERARQUIA'].sum()) if 'HIERARQUIA' in df_realizados.columns else 0
+                total_skus = int(df_realizados['SKU'].sum()) if 'SKU' in df_realizados.columns else 0
+
+                # 4. Organizar o dicionário de resumo
                 resumo_dados = {
                     'total': len(df_dia),
-                    'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
+                    'realizados': len(df_realizados),
                     'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
-                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
+                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"]),
+                    'hierarquias': total_hierarquias, # Enviando nova info
+                    'skus': total_skus               # Enviando nova info
                 }
+
+                # 5. Cálculos de tempo e link
                 taxa_conversao = (resumo_dados['pedidos'] / resumo_dados['realizados'] * 100) if resumo_dados['realizados'] > 0 else 0
                 hora_finalizacao = datetime.now(fuso_br).strftime("%H:%M:%S")
                 link_mapas = f"https://www.google.com/maps?q={st.session_state.get('lat', 0)},{st.session_state.get('lon', 0)}"
 
+                # 6. Envio do E-mail
                 with st.spinner("Enviando resumo..."):
                     sucesso = enviar_resumo_rota(
                         destinatarios_lista=string_destinatarios,
@@ -674,14 +689,14 @@ if menu == "📅 Agendamentos do Dia":
                         hora=hora_finalizacao,
                         link=link_mapas
                     )
+                
                 if sucesso:
                     st.success("✅ Rota finalizada e resumo enviado!")
-                    #st.balloons()
+                    # st.balloons()
                 else:
-                    st.error("Falha ao enviar e-mail.")
-    else:
-        st.info("Nenhum agendamento para hoje.")
-                    
+                    st.error("Falha ao enviar e-mail. Verifique a conexão ou as configurações de e-mail.")
+        else:
+            st.info("Nenhum agendamento para hoje.")                    
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
     # Cabeçalho com Botão de Atualizar
