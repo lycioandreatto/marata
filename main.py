@@ -657,7 +657,7 @@ if menu == "📅 Agendamentos do Dia":
                     )
                 if sucesso:
                     st.success("✅ Rota finalizada e resumo enviado!")
-                    st.balloons()
+                    #st.balloons()
                 else:
                     st.error("Falha ao enviar e-mail.")
     else:
