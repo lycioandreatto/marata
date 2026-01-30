@@ -1225,15 +1225,33 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 elif menu_interna == "📊 Desempenho de Vendas":
-    st.header("📊 Desempenho de Vendas (Faturado)")
-    # 1. LISTA DE USUÁRIOS AUTORIZADOS (Coloque os e-mails ou logins aqui)
-    usuarios_com_acesso = ["lycio]
-     # 2. VERIFICAÇÃO (Ajuste 'usuario_email' para a chave que você usa no seu login)
-    usuario_atual = st.session_state.get('username') # ou st.session_state.get('username')
+    
+    # 1. LISTA DE USUÁRIOS AUTORIZADOS
+    # Adicione aqui os nomes de usuário exatamente como aparecem no seu login
+    usuarios_com_acesso = ["lycio", "admin"]
+
+    # 2. VERIFICAÇÃO DE SEGURANÇA
+    # Buscamos o usuário logado no session_state
+    usuario_atual = st.session_state.get('username')
+
     if usuario_atual not in usuarios_com_acesso:
+        st.header("📊 Desempenho de Vendas")
         st.warning("🚀 **Página em Desenvolvimento**")
-        st.info(f"Olá {usuario_atual}, esta funcionalidade está sendo finalizada e será liberada em breve para todos.")
-        st.stop() # Mata a execução aqui para usuários não autorizados
+        st.info(f"Olá **{usuario_atual}**, esta funcionalidade está sendo finalizada e será liberada em breve para todos.")
+        st.stop() # Interrompe o script para quem não for autorizado
+
+    # --- SE PASSAR PELA TRAVA, EXECUTA O RESTANTE ABAIXO ---
+    st.header("📊 Desempenho de Vendas (Faturado)")
+    
+    try:
+        # 1. Leitura das abas
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
+        df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
+        df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
+        df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
+        
+        # ... (todo o restante do seu código de processamento e tabelas aqui)
     
     try:
         # 1. Leitura das abas
