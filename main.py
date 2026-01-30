@@ -1293,7 +1293,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
             df_metas_cob['EscrV'] = df_metas_cob['EscrV'].astype(str).str.strip()
-            # AJUSTE AQUI: Usando .str.upper() para Series do Pandas
+            
             if 'HIERARQUIA DE PRODUTOS' in df_metas_cob.columns:
                 df_metas_cob['HIERARQUIA DE PRODUTOS'] = df_metas_cob['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
             
@@ -1369,25 +1369,30 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         st.markdown("### 📈 Desempenho por Hierarquia")
         
-        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
+        # Agrupamento das vendas e positivação
+        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'POSITIVAÇÃO', col_k: 'CLIENTES'}).reset_index()
         
+        # Cruzamento das metas
         df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
-        
-        # Cruzamento seguro: garantindo que as colunas existam antes do groupby
         if 'HIERARQUIA DE PRODUTOS' in df_metas_sub.columns and 'META COBERTURA' in df_metas_sub.columns:
             df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index()
-            df_metas_hierarquia.rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'META COBERTURA': 'Meta Cobertura'}, inplace=True)
+            df_metas_hierarquia.rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'META COBERTURA': 'META COBERTURA'}, inplace=True)
         else:
-            df_metas_hierarquia = pd.DataFrame(columns=['HIERARQUIA', 'Meta Cobertura'])
+            df_metas_hierarquia = pd.DataFrame(columns=['HIERARQUIA', 'META COBERTURA'])
 
+        # Merge final
         df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
         df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left').fillna(0)
         
+        # Ajuste de nomes e REORDENAÇÃO DAS COLUNAS
+        df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'})
+        df_final_h = df_final_h[['HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'POSITIVAÇÃO', 'CLIENTES']]
+        
         st.dataframe(
-            df_final_h.sort_values(by=['HIERARQUIA'], ascending=True).style.format({
-                'Volume': lambda x: f"{x:,.0f}".replace(",", "."), 
-                'Positivação': lambda x: f"{x:,.0f}".replace(",", "."),
-                'Meta Cobertura': lambda x: f"{x:,.1f}%"
+            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
+                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."), 
+                'CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."),
+                'META COBERTURA': lambda x: f"{x:,.1f}%"
             }), 
             use_container_width=True, 
             hide_index=True
