@@ -884,7 +884,7 @@ elif menu == "📊 Dashboard de Controle":
         except Exception as e:
             st.error(f"Erro no processamento de SKUS: {e}")
 
-        # --- NOVO BLOCO: RANKING DE ENGAJAMENTO (ACIMA DO MAPA) ---
+       # --- NOVO BLOCO: RANKING DE ENGAJAMENTO (ACIMA DO MAPA) ---
         st.markdown("---")
         st.subheader("🏆 Ranking de Engajamento por Vendedor")
         
@@ -893,7 +893,7 @@ elif menu == "📊 Dashboard de Controle":
             # Agrupar agendamentos realizados (Status = Realizado)
             ranking_realizado = df_agenda[df_agenda['STATUS'] == "Realizado"].groupby('VENDEDOR').size().reset_index(name='Realizados')
             
-            # Agrupar total de agendamentos feitos (Planejados + Realizados + Reagendados)
+            # Agrupar total de agendamentos feitos
             ranking_total = df_agenda.groupby('VENDEDOR').size().reset_index(name='Total Agendado')
             
             # Unir as métricas
@@ -903,23 +903,37 @@ elif menu == "📊 Dashboard de Controle":
             # Calcular % de Cumprimento
             df_ranking['% Cumprimento'] = (df_ranking['Realizados'] / df_ranking['Total Agendado'] * 100).round(1)
             
-            # Ordenar pelos que mais realizaram e depois pela taxa de cumprimento
+            # Ordenar (quem realizou mais ganha)
             df_ranking = df_ranking.sort_values(by=['Realizados', '% Cumprimento'], ascending=False).reset_index(drop=True)
+            
+            # 2. Criar a coluna de Posição com Troféus
+            def definir_posicao(idx):
+                if idx == 0: return "🥇 1º"
+                elif idx == 1: return "🥈 2º"
+                elif idx == 2: return "🥉 3º"
+                else: return f"{idx + 1}º"
+
+            df_ranking.insert(0, "POS", [definir_posicao(i) for i in range(len(df_ranking))])
             
             # Exibir a Tabela de Ranking
             st.dataframe(
                 df_ranking, 
                 use_container_width=True, 
-                hide_index=False,
+                hide_index=True, # Escondemos o índice original (0,1,2...)
                 column_config={
+                    "POS": "Posição",
                     "VENDEDOR": "Vendedor",
-                    "Total Agendado": st.column_config.NumberColumn("Agendamentos", help="Total de clientes agendados"),
-                    "Realizados": st.column_config.NumberColumn("Visitas Realizadas", help="Visitas com status Realizado"),
+                    "Total Agendado": st.column_config.NumberColumn("Agendamentos"),
+                    "Realizados": st.column_config.NumberColumn("Visitas Realizadas"),
                     "% Cumprimento": st.column_config.ProgressColumn("Taxa de Sucesso", format="%.1f%%", min_value=0, max_value=100)
                 }
             )
         else:
             st.info("Aguardando dados de agendamento para gerar o ranking.")
+
+        # --- MAPA DE CALOR (ABAIXO DO RANKING) ---
+        st.markdown("---")
+        # ... (segue o restante do seu código do mapa)
 
         # --- MAPA DE CALOR (AGORA ABAIXO DO RANKING) ---
         st.markdown("---")
