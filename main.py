@@ -1338,11 +1338,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-            # --- CARDS COM FORMATO DE PONTO ---
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
             
-            # Formatação de Volume Total e Positivados com ponto
             vol_formatado = f"{df_f['QTD_VENDAS'].sum():,.0f}".replace(",", ".")
             pos_formatado = f"{positivacao:,.0f}".replace(",", ".")
             
@@ -1360,13 +1358,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 </div>
                 """, unsafe_allow_html=True)
 
-        # --- TABELA DE HIERARQUIA COM FORMATO DE PONTO ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
         df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
         st.dataframe(
-            df_final_h.sort_values(by=['Volume'], ascending=False).style.format({
+            df_final_h.sort_values(by=['HIERARQUIA'], ascending=True).style.format({
                 'Volume': lambda x: f"{x:,.0f}".replace(",", "."), 
                 'Positivação': lambda x: f"{x:,.0f}".replace(",", ".")
             }), 
