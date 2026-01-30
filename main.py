@@ -1369,8 +1369,18 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         st.markdown("### 📈 Desempenho por Hierarquia")
         
-        # Agrupamento das vendas e positivação
-        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'POSITIVAÇÃO', col_k: 'CLIENTES'}).reset_index()
+        # Agrupamento das vendas e positivação (col_k = CLIENTES / QTD_VENDAS = VOLUME)
+        # Definindo colunas separadas para não confundir nomes
+        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
+            'QTD_VENDAS': 'sum', 
+            col_k: 'nunique'
+        }).rename(columns={
+            'QTD_VENDAS': 'VOLUME', 
+            col_k: 'CLIENTES'
+        }).reset_index()
+        
+        # Criando a coluna 'POSITIVAÇÃO' baseada no que você solicitou (geralmente é o número de clientes positivados)
+        df_f_agrupado['POSITIVAÇÃO'] = df_f_agrupado['CLIENTES']
         
         # Cruzamento das metas
         df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
@@ -1384,14 +1394,15 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
         df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left').fillna(0)
         
-        # Ajuste de nomes e REORDENAÇÃO DAS COLUNAS
+        # Ajuste de nomes e REORDENAÇÃO DAS COLUNAS (Volume por último)
         df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'})
-        df_final_h = df_final_h[['HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'POSITIVAÇÃO', 'CLIENTES']]
+        df_final_h = df_final_h[['HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'POSITIVAÇÃO', 'CLIENTES', 'VOLUME']]
         
         st.dataframe(
             df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
                 'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."), 
                 'CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."),
+                'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
                 'META COBERTURA': lambda x: f"{x:,.1f}%"
             }), 
             use_container_width=True, 
