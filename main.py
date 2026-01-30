@@ -1227,17 +1227,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 elif menu_interna == "📊 Desempenho de Vendas":
     st.header("📊 Desempenho de Vendas (Faturado)")
     
-    # Inicializamos os DataFrames para evitar erro de "variável não definida"
-    df_faturado = pd.DataFrame()
-    df_meta_lookup = pd.DataFrame()
-
     try:
         # 1. Leitura das abas
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
         df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
         
         if df_faturado is not None and not df_faturado.empty:
-            # Limpeza de colunas
+            # Limpeza e Padronização de Colunas
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
@@ -1246,18 +1242,18 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # Identificar a coluna K (Cliente)
+            # Identificar a coluna K (Cliente) dinamicamente
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
-            # Tratamento de tipos
+            # Tratamento de dados
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
-            # Merge com a base para trazer hierarquia de pessoal (Supervisor/Analista)
-            df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
+            # Trazer Supervisor da df_base
+            df_relacao = df_base[['VENDEDOR', 'SUPERVISOR']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
-            # Função de Agrupamento
+            # Função de Agrupamento Customizado
             def aplicar_agrupamento_custom(item):
                 item = str(item).strip().upper()
                 mapeamento = {
@@ -1273,7 +1269,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
             df_faturado['HIERARQUIA_AGRUPADA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
 
-            # Processamento de Metas
+            # Processamento de Metas Lookup
+            df_meta_lookup = pd.DataFrame()
             if df_metas_cob is not None and not df_metas_cob.empty:
                 df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
                 df_metas_cob['HIER_JOIN'] = df_metas_cob['HIERARQUIA DE PRODUTOS'].apply(aplicar_agrupamento_custom)
@@ -1284,79 +1281,82 @@ elif menu_interna == "📊 Desempenho de Vendas":
                         .str.replace('%', '', regex=False).str.replace(',', '.', regex=False).str.strip()
                     )
                     df_metas_cob['META_COB_NUM'] = pd.to_numeric(df_metas_cob['META_COB_NUM'], errors='coerce').fillna(0)
-                
                 df_meta_lookup = df_metas_cob[['ESCRV', 'HIER_JOIN', 'META_COB_NUM']].drop_duplicates()
 
-        # --- SÓ EXECUTA FILTROS E TABELA SE O DF_FATURADO EXISTIR ---
-        if not df_faturado.empty:
-            # SLICERS (Filtros Laterais)
-            st.sidebar.markdown("### 🔍 Filtros de Desempenho")
+            # --- SLICERS (FILTROS LATERAIS) ---
+            st.sidebar.markdown("### 🔍 Filtros de Vendas")
             
-            lista_analistas = sorted(df_faturado['ANALISTA'].dropna().unique())
-            sel_analista = st.sidebar.multiselect("Analista", lista_analistas)
-
+            # Filtro EscrV
+            lista_escritorios = sorted(df_faturado['EscrV'].dropna().unique())
+            sel_esc = st.sidebar.multiselect("Escritório (EscrV)", lista_escritorios)
+            
             df_f = df_faturado.copy()
-            if sel_analista:
-                df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
+            if sel_esc:
+                df_f = df_f[df_f['EscrV'].isin(sel_esc)]
 
-            lista_supervisores = sorted(df_f['SUPERVISOR'].dropna().unique())
-            sel_supervisor = st.sidebar.multiselect("Supervisor", lista_supervisores)
-            if sel_supervisor:
-                df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
+            # Filtro Supervisor
+            lista_super = sorted(df_f['SUPERVISOR'].dropna().unique())
+            sel_super = st.sidebar.multiselect("Supervisor", lista_super)
+            if sel_super:
+                df_f = df_f[df_f['SUPERVISOR'].isin(sel_super)]
 
+            # Filtro Vendedor
             lista_vendedores = sorted(df_f['VENDEDOR_NOME'].dropna().unique())
-            sel_vendedor = st.sidebar.multiselect("Vendedor", lista_vendedores)
-            if sel_vendedor:
-                df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
+            sel_vend = st.sidebar.multiselect("Vendedor", lista_vendedores)
+            if sel_vend:
+                df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vend)]
 
-            # ÁREA DE EXIBIÇÃO (Cards)
-            total_positivacao = df_f[col_k].nunique()
-            total_faturado = df_f['QTD_VENDAS'].sum()
+            # --- EXIBIÇÃO ---
+            if not df_f.empty:
+                # Cards de Resumo
+                total_posit = df_f[col_k].nunique()
+                total_vol = df_f['QTD_VENDAS'].sum()
 
-            c1, c2 = st.columns(2)
-            c1.metric("Clientes Positivados (Únicos)", f"{total_positivacao}")
-            c2.metric("Volume Faturado", f"{total_faturado:,.0f}")
+                c1, c2 = st.columns(2)
+                c1.metric("Positivação Total (Clientes)", f"{total_posit}")
+                c2.metric("Volume Total Faturado", f"{total_vol:,.0f}")
 
-            st.markdown("---")
-            st.markdown("### 📊 Tabela de Positivação por Hierarquia")
-            
-            # Agrupamento para a Tabela
-            df_h = df_f.groupby(['EscrV', 'HIERARQUIA_AGRUPADA']).agg({
-                'QTD_VENDAS': 'sum',
-                col_k: 'nunique'
-            }).reset_index()
+                st.markdown("---")
+                st.markdown("### 📊 Desempenho por Hierarquia")
+                
+                # Agrupamento para a Tabela
+                df_h = df_f.groupby(['EscrV', 'HIERARQUIA_AGRUPADA']).agg({
+                    'QTD_VENDAS': 'sum',
+                    col_k: 'nunique'
+                }).reset_index()
 
-            # Merge com Metas
-            if not df_meta_lookup.empty:
-                df_h = pd.merge(
-                    df_h, 
-                    df_meta_lookup, 
-                    left_on=['EscrV', 'HIERARQUIA_AGRUPADA'], 
-                    right_on=['ESCRV', 'HIER_JOIN'], 
-                    how='left'
-                ).fillna(0)
-            
-            # Tabela Final formatada
-            df_final = df_h.groupby('HIERARQUIA_AGRUPADA').agg({
-                'QTD_VENDAS': 'sum',
-                col_k: 'sum',
-                'META_COB_NUM': 'max' 
-            }).rename(columns={
-                'QTD_VENDAS': 'Volume', 
-                col_k: 'Positivação', 
-                'META_COB_NUM': 'Meta Cobertura'
-            }).sort_values(by='Volume', ascending=False)
+                # Merge com Metas
+                if not df_meta_lookup.empty:
+                    df_h = pd.merge(
+                        df_h, df_meta_lookup, 
+                        left_on=['EscrV', 'HIERARQUIA_AGRUPADA'], 
+                        right_on=['ESCRV', 'HIER_JOIN'], 
+                        how='left'
+                    ).fillna(0)
+                
+                # Consolidação para Tabela Final
+                df_final = df_h.groupby('HIERARQUIA_AGRUPADA').agg({
+                    'QTD_VENDAS': 'sum',
+                    col_k: 'sum',
+                    'META_COB_NUM': 'max'
+                }).rename(columns={
+                    'QTD_VENDAS': 'Volume', 
+                    col_k: 'Positivação', 
+                    'META_COB_NUM': 'Meta Cobertura'
+                }).sort_values(by='Volume', ascending=False)
 
-            st.dataframe(
-                df_final.style.format({
-                    'Meta Cobertura': '{:.1f}%', 
-                    'Volume': '{:,.0f}',
-                    'Positivação': '{:,.0f}'
-                }),
-                use_container_width=True
-            )
+                st.dataframe(
+                    df_final.style.format({
+                        'Meta Cobertura': '{:.1f}%', 
+                        'Volume': '{:,.0f}',
+                        'Positivação': '{:,.0f}'
+                    }),
+                    use_container_width=True
+                )
+            else:
+                st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            st.warning("A aba FATURADO está vazia ou não foi lida.")
+            st.error("Não foi possível carregar os dados da aba FATURADO.")
 
     except Exception as e:
-        st.error(f"Erro crítico no processamento: {e}")
+        st.error(f"Erro ao processar: {e}")
