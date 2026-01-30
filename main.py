@@ -594,7 +594,7 @@ if menu == "📅 Agendamentos do Dia":
                                       index=["PENDENTE", "OK", "REPROVADO"].index(sel_row[col_aprov_exec]) if sel_row[col_aprov_exec] in ["PENDENTE", "OK", "REPROVADO"] else 0, horizontal=True) if eh_gestao else sel_row[col_aprov_exec]
                 
                 with c3:
-                    opcoes_just = ["", "Cliente Fechado", "Proprietário Ausente", "Sem estoque para o pedido", "Reagendado a pedido do cliente", "Visita produtiva com pedido", "Visita improdutiva", "Outros (especificar)"]
+                    opcoes_just = ["", "Cliente Fechado", "Proprietário Ausente", "Cliente Estocado", "Reagendado a pedido do cliente", "Pedido Enviado", "Visita improdutiva", "Cliente Inadimplente","Outros (especificar)"]
                     val_atual_just = sel_row[col_just] if pd.notna(sel_row[col_just]) else ""
                     default_idx = opcoes_just.index(val_atual_just) if val_atual_just in opcoes_just else 0
                     nova_just = st.selectbox("Escolha a Justificativa:", opcoes_just, index=default_idx)
