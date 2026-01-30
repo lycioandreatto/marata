@@ -417,12 +417,25 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- NOVO: SINO DE NOTIFICAÇÃO (FLUTUANTE SOBRE O MENU) ---
+    # --- FILTRO DE PENDÊNCIAS POR ANALISTA ---
     if eh_gestao:
-        qtd_p = len(df_agenda[df_agenda['STATUS'] == "Pendente"]) if df_agenda is not None else 0
+        if df_agenda is not None and not df_agenda.empty:
+            # Se for Analista, filtra apenas o que é dele. Se for Admin/Diretoria, vê tudo.
+            if is_analista and not (is_admin or is_diretoria):
+                df_pendentes_contagem = df_agenda[
+                    (df_agenda['STATUS'] == "Pendente") & 
+                    (df_agenda['SUPERVISOR'].str.upper() == user_atual.upper())
+                ]
+            else:
+                df_pendentes_contagem = df_agenda[df_agenda['STATUS'] == "Pendente"]
+            
+            qtd_p = len(df_pendentes_contagem)
+        else:
+            qtd_p = 0
+
+        # Exibição do Sino
         if qtd_p > 0:
-            # Botão que funciona como o "Sino" flutuante
-            if st.button(f"🔔 {qtd_p} Pendências de Aprovação", use_container_width=True, type="primary"):
+            if st.button(f"🔔 {qtd_p} Suas Pendências", use_container_width=True, type="primary"):
                 st.session_state.pagina_direta = "🔔 Aprovações"
                 st.rerun()
         else:
@@ -436,7 +449,7 @@ with st.sidebar:
     else:
         texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
-    # 1. Lista base de opções (Aprovação removida daqui)
+    # 1. Lista base de opções
     opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
     
     if user_atual.upper() == "LYCIO":
@@ -447,18 +460,14 @@ with st.sidebar:
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
-    # Lógica de Navegação: Se clicou no sino, prioriza ele. Se mexeu no menu, limpa o clique do sino.
     if "pagina_direta" not in st.session_state:
         st.session_state.pagina_direta = None
 
-    # Se o usuário selecionar algo no menu principal, cancela a visualização forçada do sino
     if menu:
-        menu_selecionado = menu
-        # Se ele mudou o selectbox, desmarca o botão do sino
         if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia": 
              st.session_state.pagina_direta = None
 
-    # Padronização interna
+    # Define a página interna
     if st.session_state.pagina_direta:
         menu_interna = st.session_state.pagina_direta
     elif menu == texto_ver_agenda:
