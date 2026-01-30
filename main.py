@@ -425,9 +425,15 @@ with st.sidebar:
     else:
         texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
-    # ADICIONADO: "📊 Desempenho de Vendas" disponível para todos
-    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda, "📊 Desempenho de Vendas"]
+    # 1. Lista base de opções (acesso comum)
+    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
     
+    # 2. Trava de segurança: Desempenho de Vendas apenas para o Lycio
+    # Ajuste o nome "LYCIO" para como ele aparece exatamente no seu st.session_state.usuario
+    if user_atual.upper() == "LYCIO":
+        opcoes_menu.append("📊 Desempenho de Vendas")
+    
+    # 3. Opções exclusivas de Gestão/Admin
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
         
@@ -437,7 +443,7 @@ with st.sidebar:
     if menu == texto_ver_agenda:
         menu_interna = "🔍 Ver/Editar Minha Agenda"
     else:
-        menu_interna = menu # Aqui ele já vai aceitar "📊 Desempenho de Vendas"
+        menu_interna = menu 
 
     # Botão Sair
     if st.button("Sair", key="btn_logout_sidebar"):
@@ -456,16 +462,29 @@ with st.sidebar:
         st.markdown("---")
         st.subheader("🗑️ Limpeza em Massa")
         if df_agenda is not None and not df_agenda.empty:
-            lista_sups_limpar = sorted(df_agenda['SUPERVISOR'].unique())
+            # Filtro para evitar sups nulos ou duplicados no selectbox
+            df_limpeza = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
+            lista_sups_limpar = sorted([str(x) for x in df_limpeza['SUPERVISOR'].unique() if x])
+            
             sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups_limpar, key="sel_limpeza_admin")
 
             if sup_limpar != "Selecione...":
                 confirma = st.popover(f"⚠️ APAGAR: {sup_limpar}")
                 if confirma.button(f"Confirmar Exclusão de {sup_limpar}", key="btn_conf_limpeza"):
-                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].drop(columns=['LINHA'], errors='ignore')
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_rest)
+                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].copy()
+                    
+                    # Garante que não suba duplicados ao limpar
+                    df_rest = df_rest.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
+                    
+                    conn.update(
+                        spreadsheet=url_planilha, 
+                        worksheet="AGENDA", 
+                        data=df_rest.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
+                    )
                     st.cache_data.clear()
-                    st.success("Agenda limpa!"); time.sleep(1); st.rerun()
+                    st.success("Agenda limpa!")
+                    time.sleep(1)
+                    st.rerun()
 
 # --- TÍTULO CENTRAL NO TOPO ---
 st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>", unsafe_allow_html=True)
