@@ -502,6 +502,8 @@ if menu == "📅 Agendamentos do Dia":
     
     with col_btn:
         if st.button("🔄 Atualizar Agenda", key="btn_refresh_dia"):
+            # FORÇA A CAPTURA DO GPS AO ATUALIZAR
+            capturar_coordenadas() 
             st.cache_data.clear()
             st.rerun()
 
@@ -533,7 +535,7 @@ if menu == "📅 Agendamentos do Dia":
             else: 
                 df_dia = df_dia[df_dia['VENDEDOR'].astype(str).str.upper() == user_atual.upper()]
 
-        # IMPORTANTE: Resetar índice após filtrar o dia para o editor não se perder
+        # Resetar índice após filtrar o dia
         df_dia = df_dia.reset_index(drop=True)
 
         # --- MÉTRICAS ---
@@ -580,7 +582,7 @@ if menu == "📅 Agendamentos do Dia":
                 df_cidades = df_base[['Cliente', 'Local']].drop_duplicates(subset='Cliente').copy()
                 df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
                 df_dia.rename(columns={'Local': 'CIDADE'}, inplace=True)
-                df_dia = df_dia.reset_index(drop=True) # Reset após merge para segurança
+                df_dia = df_dia.reset_index(drop=True)
 
             def style_audit(row):
                 if row[col_aprov_exec] == "REPROVADO": return ['background-color: #FADBD8'] * len(row)
@@ -610,7 +612,7 @@ if menu == "📅 Agendamentos do Dia":
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 idx = marcados.index[0]
-                sel_row = df_dia.iloc[idx] # Agora o iloc funciona perfeitamente
+                sel_row = df_dia.iloc[idx]
                 st.markdown("---")
                 st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
                 
@@ -633,8 +635,12 @@ if menu == "📅 Agendamentos do Dia":
                         nova_just = st.text_input("Especifique o motivo:", value=val_atual_just if val_atual_just not in opcoes_just else "")
 
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
+                    # FORÇA A CAPTURA DO GPS ANTES DE SALVAR
+                    capturar_coordenadas() 
+                    
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
+                    
                     df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', col_aprov_exec, col_just, 'COORDENADAS']] = [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
                     st.success("Dados atualizados!"); time.sleep(1); st.rerun()
@@ -643,7 +649,9 @@ if menu == "📅 Agendamentos do Dia":
         st.markdown("---")
         if not df_dia.empty:
             if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                # ... (Lógica de envio de e-mail permanece igual ao seu código original) ...
+                # FORÇA A CAPTURA DO GPS PARA O RESUMO FINAL
+                capturar_coordenadas() 
+                
                 try:
                     analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual.upper()]['ANALISTA'].iloc[0].upper().strip()
                 except:
@@ -662,6 +670,8 @@ if menu == "📅 Agendamentos do Dia":
                 }
                 taxa_conversao = (resumo_dados['pedidos'] / resumo_dados['realizados'] * 100) if resumo_dados['realizados'] > 0 else 0
                 hora_finalizacao = datetime.now(fuso_br).strftime("%H:%M:%S")
+                
+                # Gera link do Google Maps com a coordenada capturada no momento
                 link_mapas = f"https://www.google.com/maps?q={st.session_state.get('lat', 0)},{st.session_state.get('lon', 0)}"
 
                 with st.spinner("Enviando resumo..."):
@@ -676,7 +686,6 @@ if menu == "📅 Agendamentos do Dia":
                     )
                 if sucesso:
                     st.success("✅ Rota finalizada e resumo enviado!")
-                    #st.balloons()
                 else:
                     st.error("Falha ao enviar e-mail.")
     else:
