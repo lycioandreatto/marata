@@ -1459,8 +1459,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             use_container_width=True,
             hide_index=True
         )
-
-st.dataframe# --- ÁREA DE EXPORTAÇÃO ---
+        # --- ÁREA DE EXPORTAÇÃO ---
         st.markdown("### 📥 Exportar Relatório")
         col_btn1, col_btn2, _ = st.columns([1, 1, 2])
 
@@ -1515,5 +1514,3 @@ st.dataframe# --- ÁREA DE EXPORTAÇÃO ---
                 )
             except:
                 st.warning("Erro ao gerar PDF (caractere especial).")
-
-
