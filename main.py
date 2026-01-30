@@ -1015,7 +1015,7 @@ elif menu == "📋 Novo Agendamento":
                         key=f"qtd_{id_vendedor}"
                     )
                     
-                    # Formulário com KEY única
+                   # Formulário com KEY única para evitar erros de ID duplicado
                     with st.form(key=f"form_novo_v_{id_vendedor}"):
                         cols_datas = st.columns(qtd_visitas)
                         datas_sel = []
@@ -1030,10 +1030,14 @@ elif menu == "📋 Novo Agendamento":
                                 datas_sel.append(d)
                         
                         if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
+                            # 1. Limpeza e preparação dos dados do cliente
                             cod_c, nom_c = cliente_sel.split(" - ", 1)
+                            cod_c = str(cod_c).strip() # Remove espaços invisíveis
+                            
                             agora = datetime.now(fuso_br)
                             novas_linhas = []
                             
+                            # 2. Construção das novas linhas de agendamento
                             for i, dt in enumerate(datas_sel):
                                 nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
                                 novas_linhas.append({
@@ -1050,12 +1054,30 @@ elif menu == "📋 Novo Agendamento":
                                     "AGENDADO POR": user_atual 
                                 })
                                 
-                            df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-                            st.cache_data.clear()
-                            st.success(f"✅ Agendado com sucesso!")
-                            time.sleep(1)
-                            st.rerun()
+                            # 3. Concatenar com a agenda atual e remover colunas fantasmas
+                            df_final_a = pd.concat([
+                                df_agenda.drop(columns=['LINHA'], errors='ignore'), 
+                                pd.DataFrame(novas_linhas)
+                            ], ignore_index=True)
+                            
+                            # 4. Atualização e Sincronização
+                            try:
+                                # Envia os dados para a planilha
+                                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
+                                
+                                # LIMPEZA DE CACHE: O segredo para não repetir a agenda na tela
+                                st.cache_data.clear()
+                                
+                                st.success(f"✅ Agendado com sucesso para {ven_sel}!")
+                                
+                                # Pausa de 1.5s: Essencial para o Google Sheets consolidar os dados
+                                time.sleep(1.5) 
+                                
+                                # Reinicia o app para ler a agenda nova e remover o cliente dos 'Pendentes'
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"Erro ao salvar: {e}")
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
