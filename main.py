@@ -12,6 +12,18 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
+def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
+    try:
+        if not all([lat1, lon1, lat2, lon2]) or lat1 == 0: return 0
+        R = 6371000 # Raio da Terra em metros
+        phi1, phi2 = np.radians(float(lat1)), np.radians(float(lat2))
+        dphi = np.radians(float(lat2) - float(lat1))
+        dlambda = np.radians(float(lon2) - float(lon1))
+        a = np.sin(dphi / 2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2)**2
+        return int(2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a)))
+    except:
+        return 0
+
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
 # --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
@@ -575,85 +587,69 @@ if menu == "📅 Agendamentos do Dia":
                             st.cache_data.clear(); st.success("Processado!"); time.sleep(1); st.rerun()
 
         # --- TABELA ---
-        if not df_dia.empty:
-            if df_base is not None:
-                df_cidades = df_base[['Cliente', 'Local']].drop_duplicates(subset='Cliente').copy()
-                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
-                df_dia.rename(columns={'Local': 'CIDADE'}, inplace=True)
-                df_dia = df_dia.reset_index(drop=True) # Reset após merge para segurança
+       if not df_dia.empty:
+        # Preparação das colunas de geolocalização se não existirem
+        if 'DISTANCIA_LOG' not in df_agenda.columns: df_agenda['DISTANCIA_LOG'] = 0
+        if 'COORDENADAS' not in df_agenda.columns: df_agenda['COORDENADAS'] = "0,0"
 
-            def style_audit(row):
-                if row[col_aprov_exec] == "REPROVADO": return ['background-color: #FADBD8'] * len(row)
-                if row[col_aprov_exec] == "OK": return ['background-color: #D4EFDF'] * len(row)
-                return [''] * len(row)
+        # Tabela com Editor
+        cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA', col_aprov_exec]
+        if eh_gestao: cols_v.insert(6, 'DISTANCIA_LOG')
+        
+        df_dia["EDITAR"] = False
+        edicao_dia = st.data_editor(
+            df_dia[[c for c in cols_v if c in df_dia.columns or c == "EDITAR"]],
+            key="audit_dia_v_corrigido",
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "EDITAR": st.column_config.CheckboxColumn("📝"),
+                "DISTANCIA_LOG": st.column_config.NumberColumn("Dist. (m)", format="%d m")
+            },
+            disabled=[c for c in cols_v if c not in ["EDITAR", col_aprov_exec]]
+        )
 
-            cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA', col_aprov_exec]
-            if eh_gestao: cols_v.insert(6, 'DISTANCIA_LOG')
+        marcados = edicao_dia[edicao_dia["EDITAR"] == True]
+        if not marcados.empty:
+            idx = marcados.index[0]
+            sel_row = df_dia.iloc[idx]
             
-            df_dia["EDITAR"] = False
-            df_display = df_dia[[c for c in cols_v if c in df_dia.columns or c == "EDITAR"]].copy()
-
-            edicao_dia = st.data_editor(
-                df_display.style.apply(style_audit, axis=1),
-                key="audit_dia_v2",
-                hide_index=True,
-                use_container_width=True,
-                column_config={
-                    "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    "JUSTIFICATIVA": st.column_config.TextColumn("MOTIVO/JUSTIF."),
-                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"])
-                },
-                disabled=[c for c in df_display.columns if c not in ["EDITAR", col_aprov_exec]]
-            )
-
-            # --- EDIÇÃO INDIVIDUAL ---
-            marcados = edicao_dia[edicao_dia["EDITAR"] == True]
-            if not marcados.empty:
-                idx = marcados.index[0]
-                sel_row = df_dia.iloc[idx] # Agora o iloc funciona perfeitamente
-                st.markdown("---")
-                st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
+            st.markdown("---")
+            st.subheader(f"⚙️ Atualizar Visita: {sel_row['CLIENTE']}")
+            
+            # Interface de salvamento
+            c1, c2 = st.columns(2)
+            with c1:
+                novo_status = st.selectbox("Status:", ["Planejado", "Realizado", "Reagendado"], 
+                                         index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
+            with c2:
+                # Busca coordenadas do cliente na base para calcular a distância
+                cliente_info = df_base[df_base['Cliente'] == sel_row['CÓDIGO CLIENTE']].iloc[0] if not df_base.empty else None
+                lat_cliente = cliente_info['LATITUDE'] if cliente_info is not None and 'LATITUDE' in cliente_info else 0
+                lon_cliente = cliente_info['LONGITUDE'] if cliente_info is not None and 'LONGITUDE' in cliente_info else 0
+            
+            if st.button("💾 CONFIRMAR VISITA (CAPTURAR GPS)"):
+                # Captura GPS atual
+                lat_v = st.session_state.get('lat', 0)
+                lon_v = st.session_state.get('lon', 0)
                 
-                c1, c2, c3 = st.columns([1, 1, 1.5])
-                with c1:
-                    st_list = ["Planejado", "Realizado", "Reagendado"]
-                    idx_st = st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0
-                    novo_status = st.selectbox("Status:", st_list, index=idx_st)
-                with c2:
-                    val_list = ["PENDENTE", "OK", "REPROVADO"]
-                    idx_val = val_list.index(sel_row[col_aprov_exec]) if sel_row[col_aprov_exec] in val_list else 0
-                    nova_val = st.radio("Validar:", val_list, index=idx_val, horizontal=True) if eh_gestao else sel_row[col_aprov_exec]
+                # Calcula distância em relação ao cliente
+                dist_m = calcular_distancia_precisa(lat_v, lon_v, lat_cliente, lon_cliente)
                 
-                with c3:
-                    opcoes_just = ["", "Cliente Fechado", "Proprietário Ausente", "Sem estoque para o pedido", "Reagendado a pedido do cliente", "Visita produtiva com pedido", "Visita improdutiva", "Outros (especificar)"]
-                    val_atual_just = sel_row[col_just] if pd.notna(sel_row[col_just]) else ""
-                    default_idx = opcoes_just.index(val_atual_just) if val_atual_just in opcoes_just else 0
-                    nova_just = st.selectbox("Escolha a Justificativa:", opcoes_just, index=default_idx)
-                    if nova_just == "Outros (especificar)":
-                        nova_just = st.text_input("Especifique o motivo:", value=val_atual_just if val_atual_just not in opcoes_just else "")
+                # Atualiza no DataFrame Principal
+                mask = df_agenda['ID'] == str(sel_row['ID'])
+                df_agenda.loc[mask, 'STATUS'] = novo_status
+                df_agenda.loc[mask, 'COORDENADAS'] = f"{lat_v}, {lon_v}"
+                df_agenda.loc[mask, 'DISTANCIA_LOG'] = dist_m
+                df_agenda.loc[mask, 'REGISTRO'] = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
 
-                if st.button("💾 SALVAR ATUALIZAÇÃO"):
-    # 1. Tenta pegar a localização atual (certifique-se que ela existe no seu app)
-    lat_v = st.session_state.get('lat', 0)
-    lon_v = st.session_state.get('lon', 0)
-    
-    # 2. Lógica para calcular a distância (Exemplo)
-    distancia_calculada = 0
-    if lat_v != 0 and lon_v != 0:
-        # Aqui você precisaria das coordenadas do CLIENTE para comparar
-        # Se você tiver lat_cliente e lon_cliente:
-        # distancia_calculada = calcular_distancia(lat_v, lon_v, lat_cliente, lon_cliente)
-        pass
-
-    # 3. SALVAR (Adicionei a coluna DISTANCIA_LOG e COORDENADAS no mapeamento)
-    colunas_para_update = ['STATUS', col_aprov_exec, col_just, 'COORDENADAS', 'DISTANCIA_LOG']
-    valores_para_update = [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}", distancia_calculada]
-    
-    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), colunas_para_update] = valores_para_update
-    
-    # Enviar para a planilha
-    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-    st.success("Dados atualizados!"); time.sleep(1); st.rerun()
+                # Salva na Planilha
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", 
+                            data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+                
+                st.success(f"✅ Visita registrada a {dist_m} metros do cliente!")
+                time.sleep(1)
+                st.rerun()
 
         # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
