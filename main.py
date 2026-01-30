@@ -625,7 +625,7 @@ if menu == "📅 Agendamentos do Dia":
                     nova_val = st.radio("Validar:", val_list, index=idx_val, horizontal=True) if eh_gestao else sel_row[col_aprov_exec]
                 
                 with c3:
-                    opcoes_just = ["", "Cliente Fechado", "Cliente Inadimplente", "Cliente Sem Limite de Crédito", "Reagendado a pedido do cliente", "Pedido enviado", "Visita improdutiva", "Outros (especificar)"]
+                    opcoes_just = ["", "Cliente Fechado", "Proprietário Ausente", "Sem estoque para o pedido", "Reagendado a pedido do cliente", "Visita produtiva com pedido", "Visita improdutiva", "Outros (especificar)"]
                     val_atual_just = sel_row[col_just] if pd.notna(sel_row[col_just]) else ""
                     default_idx = opcoes_just.index(val_atual_just) if val_atual_just in opcoes_just else 0
                     nova_just = st.selectbox("Escolha a Justificativa:", opcoes_just, index=default_idx)
@@ -807,7 +807,7 @@ elif menu == "📊 Dashboard de Controle":
                 df_conv['ÚLT. FAT.'] = pd.to_datetime(df_conv['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
                 df_view = df_conv[[col_cliente_base, col_nome_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']].copy()
-                df_view.columns = ['CÓDIGO', 'NOME', 'FAM. FAT', 'GAP FAM', 'SKUS FAT', 'GAP SKU', 'ÚLT. FAT.']
+                df_view.columns = ['CÓDIGO', 'NOME', 'FAM. ATUAIS', 'GAP FAM', 'SKU ATUAIS', 'GAP SKU', 'ÚLT. FAT.']
                 df_view.insert(0, "Selecionar", False)
 
                 edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True, key="editor_gap")
