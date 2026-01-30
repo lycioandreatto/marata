@@ -1227,20 +1227,17 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 elif menu_interna == "📊 Desempenho de Vendas":
     
     # 1. LISTA DE USUÁRIOS AUTORIZADOS
-    # Adicione aqui os nomes de usuário exatamente como aparecem no seu login
     usuarios_com_acesso = ["lycio", "admin"]
-
-    # 2. VERIFICAÇÃO DE SEGURANÇA
-    # Buscamos o usuário logado no session_state
     usuario_atual = st.session_state.get('username')
 
+    # 2. TRAVA DE SEGURANÇA
     if usuario_atual not in usuarios_com_acesso:
         st.header("📊 Desempenho de Vendas")
         st.warning("🚀 **Página em Desenvolvimento**")
-        st.info(f"Olá **{usuario_atual}**, esta funcionalidade está sendo finalizada e será liberada em breve para todos.")
-        st.stop() # Interrompe o script para quem não for autorizado
+        st.info(f"Olá **{usuario_atual}**, esta funcionalidade está sendo finalizada e será liberada em breve.")
+        st.stop() 
 
-    # --- SE PASSAR PELA TRAVA, EXECUTA O RESTANTE ABAIXO ---
+    # 3. SE PASSAR PELA TRAVA, EXECUTA O CONTEÚDO
     st.header("📊 Desempenho de Vendas (Faturado)")
     
     try:
@@ -1250,6 +1247,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
         df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
         df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
+        
+        # ... (Resto das configurações de lista_hierarquia_fixa e processamento) ...
+
+    except Exception as e:
+        st.error(f"Erro ao carregar os dados: {e}")
+        st.stop()
         
         # ... (todo o restante do seu código de processamento e tabelas aqui)
     
