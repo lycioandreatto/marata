@@ -1413,10 +1413,14 @@ elif menu_interna == "📊 Desempenho de Vendas":
         # --- CÁLCULO DA PENDÊNCIA (CLIENTES) ---
         df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
 
-        # --- NOVO CÁLCULO: CRESCIMENTO 2025 (VOLUME - META 2025) ---
+        # --- CÁLCULO: CRESCIMENTO 2025 (VALOR ABSOLUTO) ---
         df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
 
-        # Reordenação final: CRESCIMENTO 2025 adicionado ao final
+        # --- NOVO CÁLCULO: ATINGIMENTO % (DIVISÃO VOLUME / META 2025) ---
+        # Usamos np.where ou uma lógica simples para evitar divisão por zero
+        df_final_h['ATINGIMENTO % (VOL)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
+
+        # Reordenação final: ATINGIMENTO % colocado ao final
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 
             'META COBERTURA', 
@@ -1426,7 +1430,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
             'META 2025', 
             'META 2026', 
             'VOLUME',
-            'CRESCIMENTO 2025'  # <-- Nova coluna no final
+            'CRESCIMENTO 2025',
+            'ATINGIMENTO % (VOL)'  # <-- Nova coluna de percentual
         ]
         
         df_final_h = df_final_h[colunas_ordenadas]
@@ -1440,7 +1445,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
                 'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
                 'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
-                'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", ".") # <-- Formatação da nova coluna
+                'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", "."),
+                'ATINGIMENTO % (VOL)': "{:.1f}%" # <-- Formatação em percentual
             }), 
             use_container_width=True, 
             hide_index=True
