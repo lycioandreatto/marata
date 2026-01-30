@@ -1337,46 +1337,51 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
       # --- PROCESSAMENTO FINAL DA TABELA ---
         
-        # 1. Definir a base de cálculo (pega a base_total que você já calculou acima)
+       # --- PROCESSAMENTO FINAL BLINDADO ---
+        
+        # 1. Base de cálculo vinda das métricas de cima
         valor_base_calculo = base_total if base_total > 0 else 0
 
-        # 2. Merge Final (Unindo todas as métricas)
+        # 2. Merge Final
         df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
         df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left')
         df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
         df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-        # 3. Criar a coluna de Meta Absoluta (Meta % * Base de Clientes)
-        # Dividimos por 100 pois no seu código você multiplicou a meta por 100 para exibição
-        df_final_h['META ABSOLUTA'] = (df_final_h['META COBERTURA'] / 100) * valor_base_calculo
-        
-        # 4. Ajustar nomes para exibição
+        # 3. Cálculo da Meta Absoluta (Meta % * Base)
+        # Verificamos se 'META COBERTURA' existe para não quebrar
+        if 'META COBERTURA' in df_final_h.columns:
+            df_final_h['META CLIENTES ABS'] = (df_final_h['META COBERTURA'] / 100) * valor_base_calculo
+        else:
+            df_final_h['META CLIENTES ABS'] = 0
+
+        # 4. Renomear para o cabeçalho amigável
+        # Aqui renomeamos 'CLIENTES' (que veio do seu agrupamento lá atrás) para 'POSITIVADO'
         df_final_h = df_final_h.rename(columns={
             'HIERARQUIA': 'HIERARQUIA DE PRODUTOS',
-            'CLIENTES': 'LOJAS POSITIVADAS'
+            'CLIENTES': 'POSITIVADO'
         })
+
+        # 5. Lista de colunas que DESEJAMOS exibir
+        cols_desejadas = ['HIERARQUIA DE PRODUTOS', 'META CLIENTES ABS', 'POSITIVADO', 'META 2025', 'META 2026', 'VOLUME']
         
-        # 5. Seleção rigorosa das colunas (Garantindo que os nomes existem)
-        colunas_exibicao = [
-            'HIERARQUIA DE PRODUTOS', 
-            'META ABSOLUTA', 
-            'LOJAS POSITIVADAS', 
-            'META 2025', 
-            'META 2026', 
-            'VOLUME'
-        ]
-        
-        df_exibir = df_final_h[colunas_exibicao].copy()
-        
-        # 6. Renderização da Tabela
+        # 6. Filtro de segurança: só seleciona o que de fato existe no DataFrame
+        cols_existentes = [c for c in cols_desejadas if c in df_final_h.columns]
+        df_exibir = df_final_h[cols_existentes].copy()
+
+        # 7. Formatação dinâmica baseada no que existe
+        formatos = {
+            'META CLIENTES ABS': lambda x: f"{x:,.0f}".replace(",", "."),
+            'POSITIVADO': lambda x: f"{x:,.0f}".replace(",", "."),
+            'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
+            'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
+            'VOLUME': lambda x: f"{x:,.0f}".replace(",", ".")
+        }
+        # Filtra os formatos para aplicar apenas nas colunas presentes
+        formatos_ativos = {k: v for k, v in formatos.items() if k in df_exibir.columns}
+
         st.dataframe(
-            df_exibir.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
-                'META ABSOLUTA': lambda x: f"{x:,.0f}".replace(",", "."),
-                'LOJAS POSITIVADAS': lambda x: f"{x:,.0f}".replace(",", "."),
-                'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
-                'VOLUME': lambda x: f"{x:,.0f}".replace(",", ".")
-            }), 
+            df_exibir.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format(formatos_ativos), 
             use_container_width=True, 
             hide_index=True
         )
