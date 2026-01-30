@@ -12,18 +12,19 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
+# --- FUNÇÃO DE CÁLCULO (LINHA 16) ---
 def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
     try:
         def limpar_coord(v):
             if v is None or str(v).strip() == "" or str(v).lower() == "none":
                 return 0.0
-            # Remove espaços e troca vírgula por ponto
             return float(str(v).replace(',', '.').strip())
 
         l1, n1 = limpar_coord(lat1), limpar_coord(lon1)
         l2, n2 = limpar_coord(lat2), limpar_coord(lon2)
         
-        if l1 == 0 or l2 == 0: return 0
+        if l1 == 0 or l2 == 0: 
+            return 0
         
         R = 6371000 
         phi1, phi2 = np.radians(l1), np.radians(l2)
@@ -31,24 +32,10 @@ def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
         dlambda = np.radians(n2 - n1)
         a = np.sin(dphi / 2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2)**2
         return int(2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a)))
-    except:
-        return 0
-        
-        R = 6371000  # Raio da Terra em metros
-        phi1, phi2 = np.radians(l1), np.radians(l2)
-        dphi = np.radians(l2 - l1)
-        dlambda = np.radians(n2 - n1)
-        
-        a = np.sin(dphi / 2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2)**2
-        dist = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-        return int(dist) # Retorna metros inteiros
-    except Exception as e:
-        print(f"Erro no cálculo: {e}")
+    except Exception:
         return 0
 
-# --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
-
-# --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
+# --- MAPEAMENTO DE CONTATOS ---
 MAPA_EMAILS = {
     "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br"],
     "THAIS": ["thais.oliveira@marata.com.br"],
@@ -56,6 +43,7 @@ MAPA_EMAILS = {
     "ALLANA": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br"],
     "ROBERIO": ["roberio@marata.com.br", "dione.lima@marata.com.br"]
 }
+# ... Resto do seu código (enviar_resumo_rota, etc)
 
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
