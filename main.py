@@ -408,13 +408,7 @@ elif is_supervisor:
 else:
     label_display = f"{user_atual} | VENDEDOR"; user_icon = "👤"; border_color = "#ff4b4b"
 
-
-        opcoes_menu.append("📊 Dashboard de Controle")
-        
-    menu = st.selectbox("Menu Principal", opcoes_menu)
-    
-    # Padronização interna para o código (Ajustado para o Sininho)
-    if menu == texto_ver_agenda:# --- BARRA LATERAL (SIDEBAR) ---
+# --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
     st.markdown(f"""
         <div class="user-card" style="border-left: 5px solid {border_color};">
@@ -423,19 +417,16 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- NOVO: SINO DE NOTIFICAÇÃO (APENAS GESTORES) ---
+    # --- NOVO: SINO DE NOTIFICAÇÃO (FLUTUANTE SOBRE O MENU) ---
     if eh_gestao:
         qtd_p = len(df_agenda[df_agenda['STATUS'] == "Pendente"]) if df_agenda is not None else 0
         if qtd_p > 0:
-            # Exibe um alerta visual acima do menu
-            st.warning(f"🔔 {qtd_p} Agendamentos aguardando aprovação")
-            if st.button("Ir para Aprovações ⚖️", use_container_width=True):
-                st.session_state.pagina_atual = "Aprovações"
+            # Botão que funciona como o "Sino" flutuante
+            if st.button(f"🔔 {qtd_p} Pendências de Aprovação", use_container_width=True, type="primary"):
+                st.session_state.pagina_direta = "🔔 Aprovações"
                 st.rerun()
         else:
             st.caption("✅ Nenhuma aprovação pendente")
-    
-    st.markdown("---") # Divisor visual
 
     # Texto dinâmico do menu conforme perfil
     if eh_gestao:
@@ -445,7 +436,7 @@ with st.sidebar:
     else:
         texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
-    # Lista base de opções (Sem o sino aqui dentro)
+    # 1. Lista base de opções (Aprovação removida daqui)
     opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
     
     if user_atual.upper() == "LYCIO":
@@ -456,28 +447,33 @@ with st.sidebar:
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
-    # Se o usuário escolher algo no menu, limpamos o estado de "Aprovações"
-    if "pagina_atual" not in st.session_state:
-        st.session_state.pagina_atual = "Menu"
+    # Lógica de Navegação: Se clicou no sino, prioriza ele. Se mexeu no menu, limpa o clique do sino.
+    if "pagina_direta" not in st.session_state:
+        st.session_state.pagina_direta = None
 
-    # Lógica para definir qual página exibir
-    if st.session_state.pagina_atual == "Aprovações":
-        menu_interna = "🔔 Aprovações"
+    # Se o usuário selecionar algo no menu principal, cancela a visualização forçada do sino
+    if menu:
+        menu_selecionado = menu
+        # Se ele mudou o selectbox, desmarca o botão do sino
+        if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia": 
+             st.session_state.pagina_direta = None
+
+    # Padronização interna
+    if st.session_state.pagina_direta:
+        menu_interna = st.session_state.pagina_direta
+    elif menu == texto_ver_agenda:
+        menu_interna = "🔍 Ver/Editar Minha Agenda"
     else:
-        # Padronização interna para o código
-        if menu == texto_ver_agenda:
-            menu_interna = "🔍 Ver/Editar Minha Agenda"
-        else:
-            menu_interna = menu
+        menu_interna = menu
 
-    # Botão Sair (mantive como estava)
+    # Botão Sair
     if st.button("Sair", key="btn_logout_sidebar"):
         if "user_marata" in cookies:
             del cookies["user_marata"]
             cookies.save()
         st.session_state.logado = False
         st.session_state.usuario = ""
-        st.session_state.pagina_atual = "Menu"
+        st.session_state.pagina_direta = None
         st.cache_data.clear()
         st.rerun()
         
@@ -488,7 +484,6 @@ with st.sidebar:
         st.markdown("---")
         st.subheader("🗑️ Limpeza em Massa")
         if df_agenda is not None and not df_agenda.empty:
-            # Filtro para evitar sups nulos ou duplicados no selectbox
             df_limpeza = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
             lista_sups_limpar = sorted([str(x) for x in df_limpeza['SUPERVISOR'].unique() if x])
             
@@ -498,8 +493,6 @@ with st.sidebar:
                 confirma = st.popover(f"⚠️ APAGAR: {sup_limpar}")
                 if confirma.button(f"Confirmar Exclusão de {sup_limpar}", key="btn_conf_limpeza"):
                     df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].copy()
-                    
-                    # Garante que não suba duplicados ao limpar
                     df_rest = df_rest.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
                     
                     conn.update(
@@ -511,7 +504,6 @@ with st.sidebar:
                     st.success("Agenda limpa!")
                     time.sleep(1)
                     st.rerun()
-
 # --- TÍTULO CENTRAL NO TOPO ---
 st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>", unsafe_allow_html=True)
 st.markdown("---")
