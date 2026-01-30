@@ -1372,93 +1372,119 @@ elif menu_interna == "📊 Desempenho de Vendas":
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-            st.markdown("---")
-            m1, m2, m3 = st.columns([1, 1, 2])
-            m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}".replace(",", "."))
-            m2.metric("🏪 Positivados", f"{positivacao:,.0f}".replace(",", "."))
-            
-            with m3:
-                estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
-                
-                # Formatação dos valores para o padrão brasileiro
-                base_formatada = f"{base_total:,.0f}".replace(",", ".")
-                meta_formatada = f"{meta_val:.0f}%"
-                atingido_formatado = f"{real_perc:.1f}".replace(".", ",") + "%"
+        # --- PREPARAÇÃO DOS DADOS DA TABELA DETALHADA ---
+        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVADO_REAL'}).reset_index()
+        df_ms_agrupado = df_ms.groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_ms is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
+        df_25_agrupado = df_25.groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_25 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
+        df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
+        df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'}) if 'META COBERTURA' in df_metas_sub.columns else pd.DataFrame(columns=['HIERARQUIA', 'META COBERTURA'])
 
-                st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small style="color: #666;">COBERTURA ({estados_str})</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_formatada}</b> | Meta: <b>{meta_formatada}</b></span><br>
-                    Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{atingido_formatado}</span>
-                </div>
-                """, unsafe_allow_html=True)
-                # --- CÁLCULOS EXCLUSIVOS PARA O RESUMO DE CRESCIMENTO ---
-        # Garantimos que os cálculos ocorram antes da exibição
-        qtd_itens_total = len(df_final_h)
-        # Contamos quantos itens a coluna VOLUME é maior ou igual à META 2025
-        itens_atingidos = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
-        itens_abaixo = qtd_itens_total - itens_atingidos
+        df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
+        df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left')
+        df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
+        df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-        meta_crescimento_fixa = 80
-        realizado_crescimento = (itens_atingidos / qtd_itens_total * 100) if qtd_itens_total > 0 else 0
-        falta_crescimento = max(0, meta_crescimento_fixa - realizado_crescimento)
+        df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
+        df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
+        df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
+        df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
+        df_final_h['ATINGIMENTO % (VOL 2025)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
+        df_final_h['CRESCIMENTO 2026'] = df_final_h['VOLUME'] - df_final_h['META 2026']
+        df_final_h['ATINGIMENTO % (VOL 2026)'] = (df_final_h['VOLUME'] / df_final_h['META 2026'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
-        # --- ÁREA DE EXIBIÇÃO DO RESUMO ---
+        # --- NOVA TABELA RESUMIDA DE CRESCIMENTO ---
         st.markdown("---")
-        col_resumo, col_cobertura = st.columns([1.2, 1])
+        
+        # Cálculos para a tabela resumida
+        qtd_total_itens = len(df_final_h)
+        itens_atingiram = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
+        itens_abaixo = qtd_total_itens - itens_atingiram
+        meta_fixa_perc = 80
+        realizado_perc_resumo = (itens_atingiram / qtd_total_itens * 100) if qtd_total_itens > 0 else 0
+        falta_perc = max(0, meta_fixa_perc - realizado_perc_resumo)
 
-        with col_resumo:
+        col_res, col_cob = st.columns([1.5, 1])
+
+        with col_res:
             st.markdown(f"""
-            <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px; border: 1px solid #ddd;">
-                <tr style="background-color: #00b0f0; color: white; font-weight: bold; text-align: center;">
-                    <td colspan="2" style="padding: 5px; border: 1px solid #ddd;">CRESCIMENTO (Vs META 2025)</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">QTD ITENS:</td>
-                    <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{qtd_itens_total}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">ITENS ATINGIDOS:</td>
-                    <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #28a745;">{itens_atingidos}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">ITENS ABAIXO:</td>
-                    <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #d63031;">{itens_abaixo}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">META:</td>
-                    <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold;">{meta_crescimento_fixa}%</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">REALIZADO:</td>
-                    <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: {'#28a745' if realizado_crescimento >= meta_crescimento_fixa else '#e67e22'};">{realizado_crescimento:.0f}%</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid #ddd; background-color: #f9f9f9;">FALTAM:</td>
-                    <td style="padding: 5px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #d63031;">{falta_crescimento:.0f}%</td>
-                </tr>
-            </table>
+                <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px;">
+                    <tr style="background-color: #0070C0; color: white; font-weight: bold; text-align: center;">
+                        <td colspan="2" style="padding: 8px; border: 1px solid #dee2e6;">RESUMO DE CRESCIMENTO (Vs META 2025)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTOS ITENS TEM NO TOTAL</td>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{qtd_total_itens}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS QUE ATINGIRAM</td>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS ABAIXO DA META</td>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{itens_abaixo}</td>
+                    </tr>
+                    <tr style="background-color: #E7E6E6;">
+                        <td style="padding: 5px; border: 1px solid #dee2e6;">META FIXA</td>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{meta_fixa_perc}%</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">REALIZADO (%)</td>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: {'green' if realizado_perc_resumo >= meta_fixa_perc else '#e67e22'};">{realizado_perc_resumo:.1f}%</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTO FALTA (%)</td>
+                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{falta_perc:.1f}%</td>
+                    </tr>
+                </table>
             """, unsafe_allow_html=True)
 
-        with col_cobertura:
-            # Reutilizando variáveis de cobertura calculadas anteriormente no seu código
+        with col_cob:
+            estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
             base_fmt = f"{base_total:,.0f}".replace(",", ".")
             atingido_fmt = f"{real_perc:.1f}".replace(".", ",") + "%"
-            estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
-            
             st.markdown(f"""
-            <div style="border: 1px solid #ddd; padding: 20px; border-radius: 8px; background-color: #f9f9f9; height: 100%;">
-                <small style="color: #666;">COBERTURA ({estados_str})</small><br>
-                <span style="font-size: 1.1em;">Base: <b>{base_fmt}</b> | Meta: <b>{meta_val:.0f}%</b></span><br><br>
-                <span style="font-size: 0.9em;">Atingido:</span><br>
-                <span style="color:{cor_indicador}; font-size: 2.2em; font-weight: bold;">{atingido_fmt}</span>
-            </div>
+                <div style="border: 1px solid #ddd; padding: 18px; border-radius: 8px; background-color: #f9f9f9; height: 100%;">
+                    <small style="color: #666;">COBERTURA ({estados_str})</small><br>
+                    <span style="font-size: 1.1em;">Base: <b>{base_fmt}</b> | Meta: <b>{meta_val:.0f}%</b></span><br>
+                    Atingido: <span style="color:{cor_indicador}; font-size: 1.8em; font-weight: bold;">{atingido_fmt}</span>
+                </div>
             """, unsafe_allow_html=True)
 
         st.markdown("### 📈 Desempenho por Hierarquia")
-
-        st.markdown("### 📈 Desempenho por Hierarquia")
         
+        # --- TABELA DETALHADA ---
+        colunas_ordenadas = [
+            'HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 
+            'PENDÊNCIA CLIENTES', 'META 2025', 'META 2026', 'VOLUME', 
+            'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)', 'CRESCIMENTO 2026', 'ATINGIMENTO % (VOL 2026)'
+        ]
+        df_final_h = df_final_h[colunas_ordenadas]
+
+        def aplicar_estilo(val):
+            if isinstance(val, (int, float)) and val < 0: return 'color: #d63031; font-weight: bold;'
+            return ''
+
+        st.dataframe(
+            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style
+            .format({
+                'META COBERTURA': "{:.1f}%",
+                'META CLIENTES (ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
+                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."),
+                'PENDÊNCIA CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."),
+                'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
+                'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
+                'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
+                'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", "."),
+                'CRESCIMENTO 2026': lambda x: f"{x:,.0f}".replace(",", "."),
+                'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
+                'ATINGIMENTO % (VOL 2026)': "{:.1f}%"
+            })
+            .applymap(aplicar_estilo, subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
+            .bar(subset=['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)'], color=['#ffadad', '#72efdd'], align='mid', vmin=0, vmax=100)
+            .apply(lambda x: ['background-color: #fff3cd' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
+            use_container_width=True,
+            hide_index=True
+        )
         # Agrupamentos
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVADO_REAL'}).reset_index()
 
@@ -1495,7 +1521,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)', 'CRESCIMENTO 2026', 'ATINGIMENTO % (VOL 2026)'
         ]
         df_final_h = df_final_h[colunas_ordenadas]
-    
 
         # --- LÓGICA VISUAL (ESTILIZAÇÃO) ---
         def aplicar_estilo(val):
