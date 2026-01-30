@@ -948,30 +948,40 @@ elif menu == "📋 Novo Agendamento":
 
         # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
         if ven_sel != "Selecione..." and not bloqueado:
-            clientes_f = df_base[df_base[col_ven_base] == ven_sel]
+            # AJUSTE AQUI: Filtramos a base para pegar APENAS os clientes vinculados ao vendedor selecionado
+            # Isso elimina a duplicidade de clientes que pertencem a outros vendedores
+            clientes_f = df_base[df_base[col_ven_base].str.upper() == ven_sel.upper()].copy()
+            
             if clientes_f.empty and ven_sel == user_atual:
-                clientes_f = df_base[df_base[col_sup_base] == user_atual]
+                clientes_f = df_base[df_base[col_sup_base].str.upper() == user_atual.upper()].copy()
+
+            # Garantimos que mesmo que haja repetição interna na base para o MESMO vendedor, 
+            # pegaremos apenas um registro por código de cliente
+            clientes_f = clientes_f.drop_duplicates(subset=['Cliente'])
 
             if 'VENDEDOR' not in df_agenda.columns: df_agenda['VENDEDOR'] = ""
 
+            # Filtramos o que já foi agendado para este vendedor específico
             codigos_agendados = df_agenda[
-                (df_agenda['VENDEDOR'] == ven_sel) & 
+                (df_agenda['VENDEDOR'].str.upper() == ven_sel.upper()) & 
                 (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
             ]['CÓDIGO CLIENTE'].unique()
             
-            clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
+            # Filtramos os clientes da base desse vendedor que ainda não estão na agenda
+            clientes_pendentes = clientes_f[~clientes_f['Cliente'].astype(str).isin([str(c) for c in codigos_agendados])]
             
             # --- MÉTRICAS DE ENGAJAMENTO ---
             m1, m2, m3, m4 = st.columns(4)
             n_total = len(clientes_f)
             n_agendados = len(codigos_agendados)
             n_pend_metric = len(clientes_pendentes)
+            
             m1.metric("Clientes na Base", n_total)
             m2.metric("Já Agendados", n_agendados)
             m3.metric("Faltando", n_pend_metric)
             m4.metric("% Adesão", f"{(n_agendados/n_total*100 if n_total>0 else 0):.1f}%")
             
-            # Identificação dos vínculos para salvar
+            # Identificação dos vínculos para salvar (usando a base já filtrada do vendedor)
             try:
                 amostra = clientes_f.iloc[0]
                 analista_vinc = str(amostra[col_ana_base]).upper()
@@ -980,7 +990,8 @@ elif menu == "📋 Novo Agendamento":
                 analista_vinc = "N/I"
                 supervisor_vinc = user_atual if ven_sel == user_atual else "N/I"
 
-            lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
+            # Gera a lista final sem duplicatas para o Selectbox
+            lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).unique().tolist())
             
             if not lista_c:
                 st.success(f"✅ Todos os clientes de {ven_sel} já foram agendados!")
