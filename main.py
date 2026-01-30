@@ -1223,8 +1223,24 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         st.warning("Agenda vazia.")
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
+# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 elif menu_interna == "📊 Desempenho de Vendas":
+    # 1. LISTA DE USUÁRIOS AUTORIZADOS (Coloque os e-mails ou logins aqui)
+    usuarios_com_acesso = ["seu_email@empresa.com", "outro_admin@empresa.com"]
+
+    # 2. VERIFICAÇÃO (Ajuste 'usuario_email' para a chave que você usa no seu login)
+    usuario_atual = st.session_state.get('usuario_email') # ou st.session_state.get('username')
+
+    if usuario_atual not in usuarios_com_acesso:
+        st.warning("🚀 **Página em Desenvolvimento**")
+        st.info(f"Olá {usuario_atual}, esta funcionalidade está sendo finalizada pela equipe técnica e será liberada em breve para todos.")
+        st.stop() # Mata a execução aqui para usuários não autorizados
+
+    # --- ABAIXO DAQUI O CÓDIGO SÓ EXECUTA PARA QUEM ESTÁ NA LISTA ---
     st.header("📊 Desempenho de Vendas (Faturado)")
+    
+    try:
+        # Seu código de leitura de planilhas (df_faturado, df_metas, etc...)
     
     try:
         # 1. Leitura das abas
