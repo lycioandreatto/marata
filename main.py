@@ -1150,7 +1150,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         # --- 2. PREPARAÇÃO DE DATAS ---
         df_agenda['DT_COMPLETA'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
 
-        # --- 3. LÓGICA DE FILTRO POR HIERARQUIA ---
+        # --- 3. LÓGICA DE FILTRO POR HIERARQUIA E STATUS DE APROVAÇÃO ---
         if is_admin or is_diretoria:
             df_user = df_agenda.copy()
             st.info("💡 Visão de Administrador: Todos os registros exibidos.")
@@ -1160,6 +1160,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_user = df_agenda[df_agenda['SUPERVISOR'].astype(str).str.upper() == user_atual.upper()].copy()
         else:
             df_user = df_agenda[df_agenda['VENDEDOR'].astype(str).str.upper() == user_atual.upper()].copy()
+
+        # --- AQUI ESTÁ O AJUSTE SOLICITADO ---
+        # Removemos os pendentes da visualização da agenda (exceto para Admin se quiser manter a visão total)
+        # Se quiser que NINGUÉM veja na agenda antes de aprovar, remova o "if not is_admin"
+        if not (is_admin or is_diretoria):
+            df_user = df_user[df_user['STATUS'] != "Pendente"]
+        # ---------------------------------------
 
         df_user = df_user.reset_index(drop=True)
 
@@ -1186,7 +1193,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- 5. MÉTRICAS ---
             m1, m2, m3 = st.columns(3)
             m1.metric("📅 Total Agendado", len(df_user))
-            m2.metric("⏳ Total Pendente", len(df_user[df_user['STATUS'] == "Pendente"]))
+            # Ajustado para mostrar o que está planejado (já aprovado)
+            m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Planejado"]))
             m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
             st.markdown("---")
 
@@ -1205,6 +1213,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         df_agenda.loc[mask, 'OBS_GESTAO'] = obs_massa
                         if status_massa == "Reprovado":
                             df_agenda.loc[mask, 'STATUS'] = "Reprovado"
+                        else:
+                            # Se aprovado em massa, muda de Pendente para Planejado
+                            df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Planejado"
                         
                         df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
@@ -1212,11 +1223,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
-            
-            # Definindo as colunas para exibição (Incluindo Analista e Distância)
             cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
-            
-            # Filtra apenas as colunas que realmente existem no DF para evitar erro
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             edicao_user = st.data_editor(
@@ -1252,6 +1259,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['APROVACAO', 'OBS_GESTAO']] = [n_status, n_obs]
                             if n_status == "Reprovado":
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Reprovado"
+                            else:
+                                # Se aprovado individualmente, muda de Pendente para Planejado
+                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Planejado"
                             
                             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
                             st.cache_data.clear(); st.success("Salvo!"); time.sleep(1); st.rerun()
@@ -1261,6 +1271,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 with t2:
                     n_data = st.date_input("Nova Data:", value=datetime.now(), key="date_reag")
                     if st.button("Confirmar Reagendamento"):
+                        # Reagendamento volta para Planejado ou Pendente? 
+                        # Aqui mantive Planejado como estava no seu código original
                         df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Planejado", "Pendente"]
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
                         st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
