@@ -1029,15 +1029,33 @@ elif menu == "📋 Novo Agendamento":
                                 )
                                 datas_sel.append(d)
                         
-                        if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
-                            # 1. Limpeza e preparação dos dados do cliente
+                       if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
+                            # 1. Limpeza e preparação
                             cod_c, nom_c = cliente_sel.split(" - ", 1)
-                            cod_c = str(cod_c).strip() # Remove espaços invisíveis
+                            cod_c = str(cod_c).strip()
                             
+                            # --- TRAVA DE SEGURANÇA FINAL (ANTI-DUPLICIDADE) ---
+                            # Relemos a agenda rapidinho para ver se ninguém salvou isso nos últimos segundos
+                            df_verificacao = conn.read(spreadsheet=url_planilha, worksheet="AGENDA", ttl=0)
+                            
+                            # Verifica se já existe esse código para esse vendedor com status Planejado/Realizado
+                            ja_existe = df_verificacao[
+                                (df_verificacao['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()) & 
+                                (df_verificacao['CÓDIGO CLIENTE'].astype(str).str.strip() == cod_c) &
+                                (df_verificacao['STATUS'].isin(['Planejado', 'Realizado']))
+                            ]
+
+                            if not ja_existe.empty:
+                                st.error(f"Opa! O cliente {nom_c} já foi agendado agora há pouco. Verifique sua agenda.")
+                                time.sleep(2)
+                                st.cache_data.clear()
+                                st.rerun()
+                                st.stop() # Interrompe o salvamento duplicado aqui
+                            # ---------------------------------------------------
+
                             agora = datetime.now(fuso_br)
                             novas_linhas = []
                             
-                            # 2. Construção das novas linhas de agendamento
                             for i, dt in enumerate(datas_sel):
                                 nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
                                 novas_linhas.append({
@@ -1054,26 +1072,17 @@ elif menu == "📋 Novo Agendamento":
                                     "AGENDADO POR": user_atual 
                                 })
                                 
-                            # 3. Concatenar com a agenda atual e remover colunas fantasmas
+                            # Concatenar usando a versão mais recente da agenda
                             df_final_a = pd.concat([
-                                df_agenda.drop(columns=['LINHA'], errors='ignore'), 
+                                df_verificacao.drop(columns=['LINHA'], errors='ignore'), 
                                 pd.DataFrame(novas_linhas)
                             ], ignore_index=True)
                             
-                            # 4. Atualização e Sincronização
                             try:
-                                # Envia os dados para a planilha
                                 conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-                                
-                                # LIMPEZA DE CACHE: O segredo para não repetir a agenda na tela
                                 st.cache_data.clear()
-                                
-                                st.success(f"✅ Agendado com sucesso para {ven_sel}!")
-                                
-                                # Pausa de 1.5s: Essencial para o Google Sheets consolidar os dados
-                                time.sleep(1.5) 
-                                
-                                # Reinicia o app para ler a agenda nova e remover o cliente dos 'Pendentes'
+                                st.success(f"✅ Agendado com sucesso!")
+                                time.sleep(2) # Aumentei um pouco para garantir sincronia do Google
                                 st.rerun()
                                 
                             except Exception as e:
