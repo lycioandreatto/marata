@@ -1463,12 +1463,42 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("### 📥 Exportar Relatório")
         col_btn1, col_btn2, _ = st.columns([1, 1, 2])
 
-        # --- FUNÇÃO EXCEL ---
+        # --- FUNÇÃO EXCEL (COM FORMATAÇÃO DE CÉLULAS) ---
         buffer_excel = io.BytesIO()
+        # Criamos uma cópia para não alterar a visualização da tela ao preparar o Excel
+        df_excel = df_final_h.copy()
+
+        # Ajuste para o Excel entender porcentagem (dividir por 100 os campos que já estão em 0-100)
+        cols_pct = ['META COBERTURA', 'ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)']
+        for col in cols_pct:
+            df_excel[col] = df_excel[col] / 100
+
         with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
-            df_final_h.to_excel(writer, index=False, sheet_name='Desempenho')
-            writer.close()
-        
+            df_excel.to_excel(writer, index=False, sheet_name='Desempenho')
+            
+            workbook  = writer.book
+            worksheet = writer.sheets['Desempenho']
+
+            # Definição dos formatos
+            format_pct = workbook.add_format({'num_format': '0.0%', 'align': 'center'})
+            format_num = workbook.add_format({'num_format': '#,##0', 'align': 'right'})
+
+            # Aplicar formatos às colunas (ajuste as letras das colunas conforme sua tabela)
+            # Dica: A=0, B=1, C=2...
+            # META COBERTURA (Coluna B / Índice 1)
+            worksheet.set_column(1, 1, 15, format_pct)
+            
+            # Formato de número para as colunas centrais (milhar)
+            worksheet.set_column(2, 7, 15, format_num)
+            
+            # ATINGIMENTO 2025 (Coluna J / Índice 9) e 2026 (Coluna L / Índice 11)
+            worksheet.set_column(9, 9, 20, format_pct)
+            worksheet.set_column(11, 11, 20, format_pct)
+            
+            # Demais colunas de crescimento (índices 8 e 10) como número
+            worksheet.set_column(8, 8, 15, format_num)
+            worksheet.set_column(10, 10, 15, format_num)
+
         with col_btn1:
             st.download_button(
                 label="📊 Baixar Excel",
@@ -1479,32 +1509,35 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # --- FUNÇÃO PDF ---
         def generate_pdf(data):
-            pdf = FPDF(orientation='L', unit='mm', format='A4') # Paisagem para caber as colunas
+            pdf = FPDF(orientation='L', unit='mm', format='A4')
             pdf.add_page()
             pdf.set_font("Arial", 'B', 12)
-            pdf.cell(0, 10, "Relatório de Desempenho de Vendas", ln=True, align='C')
-            pdf.set_font("Arial", size=7) # Fonte menor para caber todas as colunas
+            pdf.cell(0, 10, "Relatorio de Desempenho de Vendas", ln=True, align='C')
+            pdf.set_font("Arial", size=7)
             
-            # Cabeçalhos
             cols = data.columns.tolist()
+            # Ajuste de largura das colunas para caber tudo no A4 Paisagem
             for col in cols:
-                pdf.cell(24, 8, str(col)[:15], border=1) # Limita largura da célula
+                pdf.cell(23, 8, str(col)[:14], border=1, align='C')
             pdf.ln()
             
-            # Dados
             for _, row in data.iterrows():
                 for col in cols:
                     val = row[col]
-                    # Formata números para o PDF
-                    if isinstance(val, (int, float)):
-                        val = f"{val:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                    pdf.cell(24, 7, str(val), border=1)
+                    if col in cols_pct:
+                        txt = f"{val:.1f}%".replace(".", ",")
+                    elif isinstance(val, (int, float)):
+                        txt = f"{val:,.0f}".replace(",", ".")
+                    else:
+                        txt = str(val)
+                    pdf.cell(23, 7, txt, border=1, align='R')
                 pdf.ln()
             
             return pdf.output(dest='S').encode('latin-1')
 
         with col_btn2:
             try:
+                # Usamos o df_final_h original para o PDF pois ele já está com os números cheios
                 pdf_bytes = generate_pdf(df_final_h)
                 st.download_button(
                     label="📄 Baixar PDF",
@@ -1512,5 +1545,5 @@ elif menu_interna == "📊 Desempenho de Vendas":
                     file_name="relatorio_desempenho.pdf",
                     mime="application/pdf"
                 )
-            except:
-                st.warning("Erro ao gerar PDF (caractere especial).")
+            except Exception as e:
+                st.warning(f"Erro ao gerar PDF: {e}")
