@@ -520,7 +520,7 @@ if menu == "📅 Agendamentos do Dia":
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
     
     if df_agenda is not None and not df_agenda.empty:
-        # --- PASSO 1: LIMPEZA DE DUPLICIDADES E RESET DE ÍNDICE ---
+        # --- PASSO 1: LIMPEZA ---
         df_agenda = df_agenda.drop_duplicates(
             subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'], 
             keep='first'
@@ -532,6 +532,8 @@ if menu == "📅 Agendamentos do Dia":
         
         if col_aprov_exec not in df_agenda.columns: df_agenda[col_aprov_exec] = "PENDENTE"
         if col_just not in df_agenda.columns: df_agenda[col_just] = ""
+        if 'DISTANCIA_LOG' not in df_agenda.columns: df_agenda['DISTANCIA_LOG'] = 0
+        if 'COORDENADAS' not in df_agenda.columns: df_agenda['COORDENADAS'] = "0,0"
 
         # --- PASSO 2: FILTROS DO DIA ---
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
@@ -545,20 +547,14 @@ if menu == "📅 Agendamentos do Dia":
             else: 
                 df_dia = df_dia[df_dia['VENDEDOR'].astype(str).str.upper() == user_atual.upper()]
 
-        # IMPORTANTE: Resetar índice após filtrar o dia para o editor não se perder
         df_dia = df_dia.reset_index(drop=True)
 
         # --- MÉTRICAS ---
-        t_hoje = len(df_dia)
-        t_realizado = len(df_dia[df_dia['STATUS'] == "Realizado"])
-        t_validado = len(df_dia[df_dia[col_aprov_exec] == "OK"])
-        t_reprovado = len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"])
-
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Aprovados p/ Hoje", t_hoje)
-        m2.metric("Realizados", t_realizado)
-        m3.metric("Validados", t_validado)
-        m4.metric("Reprovados", t_reprovado, delta_color="inverse")
+        m1.metric("Aprovados p/ Hoje", len(df_dia))
+        m2.metric("Realizados", len(df_dia[df_dia['STATUS'] == "Realizado"]))
+        m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
+        m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
         # --- PAINEL DE VALIDAÇÃO EM MASSA ---
         if eh_gestao and not df_dia.empty:
@@ -587,75 +583,74 @@ if menu == "📅 Agendamentos do Dia":
                             st.cache_data.clear(); st.success("Processado!"); time.sleep(1); st.rerun()
 
         # --- TABELA ---
-       if not df_dia.empty:
-        # Preparação das colunas de geolocalização se não existirem
-        if 'DISTANCIA_LOG' not in df_agenda.columns: df_agenda['DISTANCIA_LOG'] = 0
-        if 'COORDENADAS' not in df_agenda.columns: df_agenda['COORDENADAS'] = "0,0"
+        if not df_dia.empty:
+            # Merge para Cidade
+            if df_base is not None:
+                df_cidades = df_base[['Cliente', 'Local']].drop_duplicates(subset='Cliente').copy()
+                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
+                df_dia.rename(columns={'Local': 'CIDADE'}, inplace=True)
+                df_dia = df_dia.reset_index(drop=True)
 
-        # Tabela com Editor
-        cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA', col_aprov_exec]
-        if eh_gestao: cols_v.insert(6, 'DISTANCIA_LOG')
-        
-        df_dia["EDITAR"] = False
-        edicao_dia = st.data_editor(
-            df_dia[[c for c in cols_v if c in df_dia.columns or c == "EDITAR"]],
-            key="audit_dia_v_corrigido",
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "EDITAR": st.column_config.CheckboxColumn("📝"),
-                "DISTANCIA_LOG": st.column_config.NumberColumn("Dist. (m)", format="%d m")
-            },
-            disabled=[c for c in cols_v if c not in ["EDITAR", col_aprov_exec]]
-        )
+            df_dia["EDITAR"] = False
+            cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA', col_aprov_exec]
+            if eh_gestao: cols_v.insert(6, 'DISTANCIA_LOG')
+            
+            edicao_dia = st.data_editor(
+                df_dia[[c for c in cols_v if c in df_dia.columns or c == "EDITAR"]],
+                key="audit_dia_v_corrigido",
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "EDITAR": st.column_config.CheckboxColumn("📝"),
+                    "DISTANCIA_LOG": st.column_config.NumberColumn("Dist. (m)", format="%d m")
+                },
+                disabled=[c for c in cols_v if c not in ["EDITAR", col_aprov_exec]]
+            )
 
-        marcados = edicao_dia[edicao_dia["EDITAR"] == True]
-        if not marcados.empty:
-            idx = marcados.index[0]
-            sel_row = df_dia.iloc[idx]
-            
-            st.markdown("---")
-            st.subheader(f"⚙️ Atualizar Visita: {sel_row['CLIENTE']}")
-            
-            # Interface de salvamento
-            c1, c2 = st.columns(2)
-            with c1:
-                novo_status = st.selectbox("Status:", ["Planejado", "Realizado", "Reagendado"], 
-                                         index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
-            with c2:
-                # Busca coordenadas do cliente na base para calcular a distância
-                cliente_info = df_base[df_base['Cliente'] == sel_row['CÓDIGO CLIENTE']].iloc[0] if not df_base.empty else None
-                lat_cliente = cliente_info['LATITUDE'] if cliente_info is not None and 'LATITUDE' in cliente_info else 0
-                lon_cliente = cliente_info['LONGITUDE'] if cliente_info is not None and 'LONGITUDE' in cliente_info else 0
-            
-            if st.button("💾 CONFIRMAR VISITA (CAPTURAR GPS)"):
-                # Captura GPS atual
-                lat_v = st.session_state.get('lat', 0)
-                lon_v = st.session_state.get('lon', 0)
+            # --- EDIÇÃO INDIVIDUAL ---
+            marcados = edicao_dia[edicao_dia["EDITAR"] == True]
+            if not marcados.empty:
+                idx = marcados.index[0]
+                sel_row = df_dia.iloc[idx]
                 
-                # Calcula distância em relação ao cliente
-                dist_m = calcular_distancia_precisa(lat_v, lon_v, lat_cliente, lon_cliente)
+                st.markdown("---")
+                st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
                 
-                # Atualiza no DataFrame Principal
-                mask = df_agenda['ID'] == str(sel_row['ID'])
-                df_agenda.loc[mask, 'STATUS'] = novo_status
-                df_agenda.loc[mask, 'COORDENADAS'] = f"{lat_v}, {lon_v}"
-                df_agenda.loc[mask, 'DISTANCIA_LOG'] = dist_m
-                df_agenda.loc[mask, 'REGISTRO'] = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
+                c1, c2 = st.columns(2)
+                with c1:
+                    novo_status = st.selectbox("Status:", ["Planejado", "Realizado", "Reagendado"], 
+                                             index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
+                with c2:
+                    # Busca coordenadas do cliente na base
+                    cliente_info = df_base[df_base['Cliente'] == sel_row['CÓDIGO CLIENTE']].iloc[0] if not df_base.empty else None
+                    lat_c = cliente_info['LATITUDE'] if (cliente_info is not None and 'LATITUDE' in cliente_info) else 0
+                    lon_c = cliente_info['LONGITUDE'] if (cliente_info is not None and 'LONGITUDE' in cliente_info) else 0
 
-                # Salva na Planilha
-                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", 
-                            data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                
-                st.success(f"✅ Visita registrada a {dist_m} metros do cliente!")
-                time.sleep(1)
-                st.rerun()
+                nova_just = st.text_input("Justificativa:", value=str(sel_row[col_just]))
+
+                if st.button("💾 SALVAR ATUALIZAÇÃO E CAPTURAR GPS"):
+                    lat_v = st.session_state.get('lat', 0)
+                    lon_v = st.session_state.get('lon', 0)
+                    
+                    dist_m = calcular_distancia_precisa(lat_v, lon_v, lat_c, lon_c)
+                    
+                    mask = df_agenda['ID'] == str(sel_row['ID'])
+                    df_agenda.loc[mask, 'STATUS'] = novo_status
+                    df_agenda.loc[mask, col_just] = nova_just
+                    df_agenda.loc[mask, 'COORDENADAS'] = f"{lat_v}, {lon_v}"
+                    df_agenda.loc[mask, 'DISTANCIA_LOG'] = dist_m
+                    df_agenda.loc[mask, 'REGISTRO'] = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
+
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+                    st.success(f"✅ Visita salva! Distância: {dist_m}m")
+                    time.sleep(1)
+                    st.rerun()
 
         # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
         if not df_dia.empty:
             if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                # ... (Lógica de envio de e-mail permanece igual ao seu código original) ...
+                # Lógica de e-mail (Mantida como a sua original)
                 try:
                     analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual.upper()]['ANALISTA'].iloc[0].upper().strip()
                 except:
@@ -688,7 +683,6 @@ if menu == "📅 Agendamentos do Dia":
                     )
                 if sucesso:
                     st.success("✅ Rota finalizada e resumo enviado!")
-                    #st.balloons()
                 else:
                     st.error("Falha ao enviar e-mail.")
     else:
