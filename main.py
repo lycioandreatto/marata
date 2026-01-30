@@ -978,40 +978,45 @@ elif menu == "📋 Novo Agendamento":
 
 
 # --- BLOCO: ALERTA DE CLIENTES SEM COMPRA (+30 DIAS) ---
-    if df_fat is not None and ven_sel != "Selecione...":
-        with st.expander("🚨 ALERTA: Clientes há mais de 30 dias sem comprar", expanded=False):
-            try:
-                df_fat_copy = df_fat.copy()
-                col_data_fat = 'Data fat.' 
-                df_fat_copy[col_data_fat] = pd.to_datetime(df_fat_copy[col_data_fat], errors='coerce')
-                
-                # Filtra o faturado pelo vendedor selecionado
-                fat_vendedor = df_fat_copy[df_fat_copy['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
-                
-                if not fat_vendedor.empty:
-                    # Agrupa para pegar a última compra
-                    ultima_compra = fat_vendedor.groupby(['CÓDIGO CLIENTE', 'CLIENTE'])[col_data_fat].max().reset_index()
-                    
-                    # Calcula dias (remove timezone para comparar)
-                    hoje_alerta = datetime.now(fuso_br).replace(tzinfo=None)
-                    ultima_compra['Dias Sem Comprar'] = (hoje_alerta - ultima_compra[col_data_fat]).dt.days
-                    
-                    clientes_criticos = ultima_compra[ultima_compra['Dias Sem Comprar'] > 30].sort_values(by='Dias Sem Comprar', ascending=False)
-                    
-                    if not clientes_criticos.empty:
-                        st.error(f"Atenção: {len(clientes_criticos)} clientes estão inativos há mais de 30 dias!")
-                        clientes_criticos[col_data_fat] = clientes_criticos[col_data_fat].dt.strftime('%d/%m/%Y')
-                        st.dataframe(
-                            clientes_criticos[['CÓDIGO CLIENTE', 'CLIENTE', col_data_fat, 'Dias Sem Comprar']],
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                    else:
-                        st.success("✅ Nenhum cliente com mais de 30 dias sem compra.")
-                else:
-                    st.info("Sem histórico de vendas para este vendedor.")
-            except Exception as e:
-                st.info("Selecione um vendedor para ver o alerta de inatividade.")
+        # Verificamos se a variável existe no sistema antes de usar
+        if 'df_fat' in locals() or 'df_fat' in globals():
+            if df_fat is not None and ven_sel != "Selecione...":
+                with st.expander("🚨 ALERTA: Clientes há mais de 30 dias sem comprar", expanded=False):
+                    try:
+                        df_fat_copy = df_fat.copy()
+                        # Ajuste exato do nome da coluna de data
+                        col_data_fat = 'Data fat.' 
+                        df_fat_copy[col_data_fat] = pd.to_datetime(df_fat_copy[col_data_fat], errors='coerce')
+                        
+                        # Filtra o faturado pelo vendedor selecionado
+                        fat_vendedor = df_fat_copy[df_fat_copy['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
+                        
+                        if not fat_vendedor.empty:
+                            # Agrupa para pegar a última compra por código e nome
+                            ultima_compra = fat_vendedor.groupby(['CÓDIGO CLIENTE', 'CLIENTE'])[col_data_fat].max().reset_index()
+                            
+                            # Calcula dias sem comprar
+                            hoje_alerta = datetime.now(fuso_br).replace(tzinfo=None)
+                            ultima_compra['Dias Sem Comprar'] = (hoje_alerta - ultima_compra[col_data_fat]).dt.days
+                            
+                            # Filtra inativos há mais de 30 dias
+                            clientes_criticos = ultima_compra[ultima_compra['Dias Sem Comprar'] > 30].sort_values(by='Dias Sem Comprar', ascending=False)
+                            
+                            if not clientes_criticos.empty:
+                                st.error(f"Atenção: {len(clientes_criticos)} clientes estão inativos há mais de 30 dias!")
+                                clientes_criticos[col_data_fat] = clientes_criticos[col_data_fat].dt.strftime('%d/%m/%Y')
+                                st.dataframe(
+                                    clientes_criticos[['CÓDIGO CLIENTE', 'CLIENTE', col_data_fat, 'Dias Sem Comprar']],
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+                            else:
+                                st.success("✅ Nenhum cliente com mais de 30 dias sem compra.")
+                        else:
+                            st.info("Sem histórico de faturamento para este vendedor.")
+                    except Exception as e:
+                        st.info("Selecione um vendedor para validar o histórico de compras.")
+        # -------------------------------------------------------
     # -------------------------------------------------------
         # -------------------------------------------------------
     
