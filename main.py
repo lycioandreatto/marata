@@ -1232,10 +1232,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
         df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
         
-        # Função de agrupamento segura (trata Nulos e Strings)
+        # --- FUNÇÃO DE AGRUPAMENTO (Blindada contra Nulos e Erros de Atributo) ---
         def aplicar_agrupamento_custom(item):
-            if pd.isna(item) or item == "": return "OUTROS"
-            item = str(item).strip().upper()
+            if item is None or pd.isna(item): 
+                return "OUTROS"
+            # Converte para string e limpa antes de transformar em maiúscula
+            item_str = str(item).strip().upper()
             mapeamento = {
                 'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
                 'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
@@ -1245,9 +1247,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA', 
                 'PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'
             }
-            return mapeamento.get(item, item)
+            return mapeamento.get(item_str, item_str)
 
-        # 2. Tratamento da aba FATURADO
+        # --- PROCESSAMENTO FATURADO ---
         if df_faturado is not None and not df_faturado.empty:
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
@@ -1256,55 +1258,59 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
-            
-            # Correção do erro .upper(): Usando .str.upper()
+
+            # CORREÇÃO DO ERRO: .str.upper() em vez de .upper()
             df_faturado['EscrV'] = df_faturado['EscrV'].astype(str).str.strip().upper()
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
-        # 3. Tratamento da aba META COBXPOSIT (Metas por Hierarquia)
-        if df_metas_cob is not None:
+        # --- PROCESSAMENTO METAS (META COBXPOSIT) ---
+        if df_metas_cob is not None and not df_metas_cob.empty:
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             
-            # Padroniza Estado e Hierarquia para o cruzamento
+            # Padronização de Colunas para evitar KeyError
             if 'EscrV' in df_metas_cob.columns:
                 df_metas_cob['EscrV'] = df_metas_cob['EscrV'].astype(str).str.strip().upper()
             
-            # Ajustando o nome da coluna conforme seu print (provavelmente 'META COBERTURA' ou 'META')
-            col_meta_nome = 'META COBERTURA' if 'META COBERTURA' in df_metas_cob.columns else 'META'
+            # Tratamento da Meta Cobertura (Removendo % e formatando número)
+            # No seu print, a coluna é 'META COBERTURA'
+            col_meta = 'META COBERTURA' if 'META COBERTURA' in df_metas_cob.columns else 'META'
             
-            if col_meta_nome in df_metas_cob.columns:
-                # Limpeza de % e conversão numérica
-                df_metas_cob['META_VALOR'] = (
-                    df_metas_cob[col_meta_nome].astype(str)
+            if col_meta in df_metas_cob.columns:
+                df_metas_cob['META_LIMPA'] = (
+                    df_metas_cob[col_meta].astype(str)
                     .str.replace('%', '', regex=False)
                     .str.replace(',', '.', regex=False)
                     .str.strip()
                 )
-                df_metas_cob['META_VALOR'] = pd.to_numeric(df_metas_cob['META_VALOR'], errors='coerce').fillna(0)
-                # Normaliza: se for 0.25 vira 25
-                df_metas_cob['META_VALOR'] = df_metas_cob['META_VALOR'].apply(lambda x: x * 100 if 0 < x <= 1 else x)
+                df_metas_cob['META_LIMPA'] = pd.to_numeric(df_metas_cob['META_LIMPA'], errors='coerce').fillna(0)
+                # Ajuste decimal: se for 0.15 vira 15.
+                df_metas_cob['META_LIMPA'] = df_metas_cob['META_LIMPA'].apply(lambda x: x * 100 if 0 < x <= 1 else x)
 
     except Exception as e:
         st.error(f"Erro no processamento das abas: {e}")
         st.stop()
 
+    # --- EXIBIÇÃO E FILTROS ---
     if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
         
-        # Filtros
         st.markdown("### 🔍 Filtros")
         c1, c2, c3 = st.columns(3)
-        with c1: sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].unique()))
+        with c1: 
+            sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].unique()))
         
         df_temp = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
-        with c2: sel_supervisor = st.multiselect("Supervisor", sorted(df_temp['SUPERVISOR'].dropna().unique()) if 'SUPERVISOR' in df_temp.columns else [])
+        with c2: 
+            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp['SUPERVISOR'].dropna().unique()) if 'SUPERVISOR' in df_temp.columns else [])
         
         df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
-        with c3: sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
+        with c3: 
+            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
 
+        # Aplicar Filtros
         if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
@@ -1312,34 +1318,35 @@ elif menu_interna == "📊 Desempenho de Vendas":
         # --- TABELA DE HIERARQUIA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         
-        # 1. Agrupar Realizado
+        # 1. Dados Reais
         df_real_h = df_f.groupby('HIERARQUIA').agg({
             'QTD_VENDAS': 'sum', 
             col_k: 'nunique'
         }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
 
-        # 2. Processar Metas Filtradas (Média por hierarquia dos estados selecionados)
-        estados_f = sel_estado if sel_estado else df_f['EscrV'].unique()
-        df_m_f = df_metas_cob[df_metas_cob['EscrV'].isin(estados_f)].copy()
+        # 2. Dados de Metas (Filtrado pelos estados selecionados)
+        est_alvo = sel_estado if sel_estado else df_f['EscrV'].unique()
+        df_m_f = df_metas_cob[df_metas_cob['EscrV'].isin(est_alvo)].copy()
         
         if not df_m_f.empty:
-            # Aplica o agrupamento customizado na coluna de hierarquia da meta também
-            col_hier_meta = 'HIERARQUIA DE PRODUTOS' if 'HIERARQUIA DE PRODUTOS' in df_m_f.columns else 'HIERARQUIA'
-            df_m_f['HIER_JOIN'] = df_m_f[col_hier_meta].apply(aplicar_agrupamento_custom)
+            # Hierarquia na aba de metas (No print parece ser 'Hierarquia de produtos')
+            col_h_meta = 'Hierarquia de produtos' if 'Hierarquia de produtos' in df_m_f.columns else 'HIERARQUIA'
+            df_m_f['HIER_JOIN'] = df_m_f[col_h_meta].apply(aplicar_agrupamento_custom)
             
-            df_meta_final = df_m_f.groupby('HIER_JOIN')['META_VALOR'].mean().reset_index()
-            df_meta_final.rename(columns={'HIER_JOIN': 'HIERARQUIA', 'META_VALOR': 'Meta Cobertura'}, inplace=True)
+            df_meta_h = df_m_f.groupby('HIER_JOIN')['META_LIMPA'].mean().reset_index()
+            df_meta_h.rename(columns={'HIER_JOIN': 'HIERARQUIA', 'META_LIMPA': 'Meta Cobertura'}, inplace=True)
         else:
-            df_meta_final = pd.DataFrame(columns=['HIERARQUIA', 'Meta Cobertura'])
+            df_meta_h = pd.DataFrame(columns=['HIERARQUIA', 'Meta Cobertura'])
 
-        # 3. Join Final com a Lista Fixa de Hierarquias
-        df_tabela = pd.DataFrame([h.upper() for h in lista_hierarquia_fixa], columns=['HIERARQUIA'])
-        df_tabela = pd.merge(df_tabela, df_real_h, on='HIERARQUIA', how='left')
-        df_tabela = pd.merge(df_tabela, df_meta_final, on='HIERARQUIA', how='left').fillna(0)
+        # 3. Join Final
+        # Garante que a lista fixa seja tratada como string individualmente
+        df_final = pd.DataFrame([str(h).upper() for h in lista_hierarquia_fixa], columns=['HIERARQUIA'])
+        df_final = pd.merge(df_final, df_real_h, on='HIERARQUIA', how='left')
+        df_final = pd.merge(df_final, df_meta_h, on='HIERARQUIA', how='left').fillna(0)
 
-        # 4. Formatação para exibição
+        # 4. Formatação e Exibição
         st.dataframe(
-            df_tabela.sort_values(by='HIERARQUIA').style.format({
+            df_final.sort_values(by='HIERARQUIA').style.format({
                 'Volume': "{:,.0f}",
                 'Positivação': "{:,.0f}",
                 'Meta Cobertura': "{:.1f}%"
