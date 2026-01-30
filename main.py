@@ -12,30 +12,28 @@ import time
 import os
 from streamlit_cookies_manager import EncryptedCookieManager
 
-# --- FUNÇÃO DE CÁLCULO (LINHA 16) ---
 def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
     try:
-        def limpar_coord(v):
-            if v is None or str(v).strip() == "" or str(v).lower() == "none":
-                return 0.0
-            return float(str(v).replace(',', '.').strip())
-
-        l1, n1 = limpar_coord(lat1), limpar_coord(lon1)
-        l2, n2 = limpar_coord(lat2), limpar_coord(lon2)
+        # Converte para float e trata erros de vírgula/ponto
+        l1, n1 = float(str(lat1).replace(',', '.')), float(str(lon1).replace(',', '.'))
+        l2, n2 = float(str(lat2).replace(',', '.')), float(str(lon2).replace(',', '.'))
         
-        if l1 == 0 or l2 == 0: 
-            return 0
+        if l1 == 0 or l2 == 0: return 0
         
-        R = 6371000 
+        R = 6371000  # Raio da Terra em metros
         phi1, phi2 = np.radians(l1), np.radians(l2)
         dphi = np.radians(l2 - l1)
         dlambda = np.radians(n2 - n1)
+        
         a = np.sin(dphi / 2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2)**2
-        return int(2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a)))
-    except Exception:
+        dist = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+        return int(dist)
+    except:
         return 0
 
-# --- MAPEAMENTO DE CONTATOS ---
+# --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
+
+# --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
 MAPA_EMAILS = {
     "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br"],
     "THAIS": ["thais.oliveira@marata.com.br"],
@@ -43,7 +41,6 @@ MAPA_EMAILS = {
     "ALLANA": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br"],
     "ROBERIO": ["roberio@marata.com.br", "dione.lima@marata.com.br"]
 }
-# ... Resto do seu código (enviar_resumo_rota, etc)
 
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
@@ -517,7 +514,6 @@ menu = menu_interna
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
-# --- PÁGINA: AGENDAMENTOS DO DIA ---
 if menu == "📅 Agendamentos do Dia":
     col_titulo, col_btn = st.columns([0.8, 0.2])
     with col_titulo:
@@ -567,17 +563,39 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
+        # --- PAINEL DE VALIDAÇÃO EM MASSA ---
+        if eh_gestao and not df_dia.empty:
+            with st.expander("⚡ Painel de Validação em Massa (Gestão)"):
+                c_m1, c_m2, c_m3, c_m4 = st.columns([1.2, 1.2, 1, 1])
+                with c_m1:
+                    sups = ["TODOS"] + sorted(list(df_dia['SUPERVISOR'].dropna().unique()))
+                    sel_sup = st.selectbox("Supervisor:", sups, key="mass_sup")
+                with c_m2:
+                    v_list = df_dia[df_dia['SUPERVISOR'] == sel_sup] if sel_sup != "TODOS" else df_dia
+                    vends = ["TODOS"] + sorted(list(v_list['VENDEDOR'].dropna().unique()))
+                    sel_vend = st.selectbox("Vendedor:", vends, key="mass_vend")
+                with c_m3:
+                    acao_mass = st.radio("Ação:", ["Dar OK", "REPROVAR"], horizontal=True)
+                with c_m4:
+                    st.write("")
+                    if st.button("🚀 EXECUTAR", use_container_width=True):
+                        df_m = df_dia[df_dia['STATUS'] == "Realizado"].copy()
+                        if sel_sup != "TODOS": df_m = df_m[df_m['SUPERVISOR'] == sel_sup]
+                        if sel_vend != "TODOS": df_m = df_m[df_m['VENDEDOR'] == sel_vend]
+                        ids_m = df_m['ID'].tolist()
+                        if ids_m:
+                            res = "OK" if acao_mass == "Dar OK" else "REPROVADO"
+                            df_agenda.loc[df_agenda['ID'].isin(ids_m), col_aprov_exec] = res
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+                            st.cache_data.clear(); st.success("Processado!"); time.sleep(1); st.rerun()
+
         # --- TABELA ---
         if not df_dia.empty:
+            # Merge para Cidade
             if df_base is not None:
-                # Merge seguro para Cidade
-                cols_base = df_base.columns.tolist()
-                col_cli_base = next((c for c in cols_base if c.upper() == "CLIENTE"), "Cliente")
-                col_loc_base = next((c for c in cols_base if c.upper() == "LOCAL"), "Local")
-                
-                df_cidades = df_base[[col_cli_base, col_loc_base]].drop_duplicates(subset=col_cli_base).copy()
-                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on=col_cli_base, how='left')
-                df_dia.rename(columns={col_loc_base: 'CIDADE'}, inplace=True)
+                df_cidades = df_base[['Cliente', 'Local']].drop_duplicates(subset='Cliente').copy()
+                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
+                df_dia.rename(columns={'Local': 'CIDADE'}, inplace=True)
                 df_dia = df_dia.reset_index(drop=True)
 
             df_dia["EDITAR"] = False
@@ -609,67 +627,71 @@ if menu == "📅 Agendamentos do Dia":
                 with c1:
                     novo_status = st.selectbox("Status:", ["Planejado", "Realizado", "Reagendado"], 
                                              index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
-                
-                nova_just = st.text_input("Justificativa:", value=str(sel_row.get(col_just, "")))
+                with c2:
+                    # Busca coordenadas do cliente na base
+                    cliente_info = df_base[df_base['Cliente'] == sel_row['CÓDIGO CLIENTE']].iloc[0] if not df_base.empty else None
+                    lat_c = cliente_info['LATITUDE'] if (cliente_info is not None and 'LATITUDE' in cliente_info) else 0
+                    lon_c = cliente_info['LONGITUDE'] if (cliente_info is not None and 'LONGITUDE' in cliente_info) else 0
+
+                nova_just = st.text_input("Justificativa:", value=str(sel_row[col_just]))
 
                 if st.button("💾 SALVAR ATUALIZAÇÃO E CAPTURAR GPS"):
-                    # 1. GPS Vendedor
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
                     
-                    # 2. GPS Cliente (Busca na coluna única "COORDENADAS")
-                    lat_c, lon_c = 0, 0
-                    if df_base is not None:
-                        cod_selecionado = str(sel_row['CÓDIGO CLIENTE']).strip()
-                        # Busca o cliente na BASE
-                        dados_cliente = df_base[df_base['Cliente'].astype(str).str.strip() == cod_selecionado]
-                        
-                        if not dados_cliente.empty:
-                            if "COORDENADAS" in dados_cliente.columns:
-                                val_coord = str(dados_cliente["COORDENADAS"].values[0])
-                                if "," in val_coord:
-                                    try:
-                                        # Divide "lat, lon" em duas partes
-                                        partes = val_coord.split(",")
-                                        lat_c = partes[0].strip()
-                                        lon_c = partes[1].strip()
-                                    except:
-                                        st.error("Erro ao processar formato da coluna COORDENADAS (esperado: lat, lon)")
-                            else:
-                                st.error("Coluna 'COORDENADAS' não encontrada na aba BASE.")
-
-                    # 3. Cálculo da Distância
                     dist_m = calcular_distancia_precisa(lat_v, lon_v, lat_c, lon_c)
                     
-                    # 4. Atualização
-                    mask = df_agenda['ID'].astype(str) == str(sel_row['ID'])
+                    mask = df_agenda['ID'] == str(sel_row['ID'])
                     df_agenda.loc[mask, 'STATUS'] = novo_status
                     df_agenda.loc[mask, col_just] = nova_just
                     df_agenda.loc[mask, 'COORDENADAS'] = f"{lat_v}, {lon_v}"
                     df_agenda.loc[mask, 'DISTANCIA_LOG'] = dist_m
                     df_agenda.loc[mask, 'REGISTRO'] = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
 
-                    try:
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", 
-                                    data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                        
-                        if dist_m == 0 and lat_c == 0:
-                            st.warning("Salvo, mas distância deu 0m (Coordenadas do cliente não encontradas).")
-                        else:
-                            st.success(f"✅ Visita salva! Distância: {dist_m}m")
-                        
-                        time.sleep(1)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar: {e}")
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+                    st.success(f"✅ Visita salva! Distância: {dist_m}m")
+                    time.sleep(1)
+                    st.rerun()
 
         # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
         if not df_dia.empty:
             if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                # Lógica de e-mail enviada anteriormente...
-                st.info("Processando encerramento...")
-                # (Mantenha aqui sua função enviar_resumo_rota)
+                # Lógica de e-mail (Mantida como a sua original)
+                try:
+                    analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual.upper()]['ANALISTA'].iloc[0].upper().strip()
+                except:
+                    analista_encontrado = "NÃO LOCALIZADO"
+
+                lista_final = EMAILS_GESTAO.copy()
+                if analista_encontrado in MAPA_EMAILS:
+                    lista_final.extend(MAPA_EMAILS[analista_encontrado])
+                string_destinatarios = ", ".join(lista_final)
+
+                resumo_dados = {
+                    'total': len(df_dia),
+                    'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
+                    'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
+                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
+                }
+                taxa_conversao = (resumo_dados['pedidos'] / resumo_dados['realizados'] * 100) if resumo_dados['realizados'] > 0 else 0
+                hora_finalizacao = datetime.now(fuso_br).strftime("%H:%M:%S")
+                link_mapas = f"https://www.google.com/maps?q={st.session_state.get('lat', 0)},{st.session_state.get('lon', 0)}"
+
+                with st.spinner("Enviando resumo..."):
+                    sucesso = enviar_resumo_rota(
+                        destinatarios_lista=string_destinatarios,
+                        vendedor=user_atual,
+                        dados_resumo=resumo_dados,
+                        nome_analista=analista_encontrado,
+                        taxa=taxa_conversao,
+                        hora=hora_finalizacao,
+                        link=link_mapas
+                    )
+                if sucesso:
+                    st.success("✅ Rota finalizada e resumo enviado!")
+                else:
+                    st.error("Falha ao enviar e-mail.")
     else:
         st.info("Nenhum agendamento para hoje.")
                     
