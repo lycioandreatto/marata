@@ -1136,9 +1136,16 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
                         st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
 
-            # --- TABELA ---
+            # --- RENDERIZAÇÃO DA TABELA ---
             df_user["AÇÃO"] = False
-            cols_display = ['AÇÃO', 'REGISTRO','DATA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'OBS_GESTAO']
+            
+            # Definimos as colunas básicas
+            cols_display = ['AÇÃO', 'REGISTRO', 'DATA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'OBS_GESTAO']
+            
+            # Adicionamos a DISTANCIA_LOG se ela existir no DataFrame
+            if 'DISTANCIA_LOG' in df_user.columns:
+                cols_display.append('DISTANCIA_LOG')
+
             df_display = df_user[[c for c in cols_display if c in df_user.columns]].copy()
 
             edicao_user = st.data_editor(
@@ -1146,7 +1153,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 key="edit_agenda_final", 
                 hide_index=True, 
                 use_container_width=True,
-                column_config={"AÇÃO": st.column_config.CheckboxColumn("📌")},
+                column_config={
+                    "AÇÃO": st.column_config.CheckboxColumn("📌"),
+                    "DISTANCIA_LOG": st.column_config.NumberColumn("Distância (m)", format="%d m")
+                },
                 disabled=[c for c in df_display.columns if c != "AÇÃO"]
             )
             
