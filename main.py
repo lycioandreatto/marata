@@ -1405,7 +1405,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
         df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-       # --- NOVO CÁLCULO DA META EM VALOR ABSOLUTO ---
+      # --- NOVO CÁLCULO DA META EM VALOR ABSOLUTO ---
         df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
         
         df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
@@ -1413,14 +1413,14 @@ elif menu_interna == "📊 Desempenho de Vendas":
         # --- CÁLCULO DA PENDÊNCIA (CLIENTES) ---
         df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
 
-        # --- CÁLCULO: CRESCIMENTO 2025 (VALOR ABSOLUTO) ---
+        # --- CÁLCULO: CRESCIMENTO 2025 E ATINGIMENTO 2025 ---
         df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
-
-        # --- NOVO CÁLCULO: ATINGIMENTO % (DIVISÃO VOLUME / META 2025) ---
-        # Usamos np.where ou uma lógica simples para evitar divisão por zero
         df_final_h['ATINGIMENTO % (VOL)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
-        # Reordenação final: ATINGIMENTO % colocado ao final
+        # --- NOVO CÁLCULO: CRESCIMENTO 2026 (VOLUME - META 2026) ---
+        df_final_h['CRESCIMENTO 2026'] = df_final_h['VOLUME'] - df_final_h['META 2026']
+
+        # Reordenação final com todas as colunas
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 
             'META COBERTURA', 
@@ -1431,7 +1431,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
             'META 2026', 
             'VOLUME',
             'CRESCIMENTO 2025',
-            'ATINGIMENTO % (VOL)'  # <-- Nova coluna de percentual
+            'ATINGIMENTO % (VOL)',
+            'CRESCIMENTO 2026'  # <-- Nova coluna adicionada ao final de tudo
         ]
         
         df_final_h = df_final_h[colunas_ordenadas]
@@ -1446,7 +1447,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
                 'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
                 'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'ATINGIMENTO % (VOL)': "{:.1f}%" # <-- Formatação em percentual
+                'ATINGIMENTO % (VOL)': "{:.1f}%",
+                'CRESCIMENTO 2026': lambda x: f"{x:,.0f}".replace(",", ".") # <-- Formatação da nova coluna
             }), 
             use_container_width=True, 
             hide_index=True
