@@ -14,11 +14,18 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
     try:
-        # Converte para float e trata erros de vírgula/ponto
-        l1, n1 = float(str(lat1).replace(',', '.')), float(str(lon1).replace(',', '.'))
-        l2, n2 = float(str(lat2).replace(',', '.')), float(str(lon2).replace(',', '.'))
+        # Limpeza total: converte para string, troca vírgula por ponto e então para float
+        def limpar_coord(v):
+            if v is None or str(v).strip() == "" or str(v).lower() == "none":
+                return 0.0
+            return float(str(v).replace(',', '.').strip())
+
+        l1, n1 = limpar_coord(lat1), limpar_coord(lon1)
+        l2, n2 = limpar_coord(lat2), limpar_coord(lon2)
         
-        if l1 == 0 or l2 == 0: return 0
+        # Se qualquer uma das coordenadas for zero, não há como calcular
+        if l1 == 0 or l2 == 0: 
+            return 0
         
         R = 6371000  # Raio da Terra em metros
         phi1, phi2 = np.radians(l1), np.radians(l2)
@@ -27,8 +34,9 @@ def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
         
         a = np.sin(dphi / 2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2)**2
         dist = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-        return int(dist)
-    except:
+        return int(dist) # Retorna metros inteiros
+    except Exception as e:
+        print(f"Erro no cálculo: {e}")
         return 0
 
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
@@ -614,7 +622,7 @@ if menu == "📅 Agendamentos do Dia":
                 disabled=[c for c in cols_v if c not in ["EDITAR", col_aprov_exec]]
             )
 
-            # --- EDIÇÃO INDIVIDUAL ---
+           # --- EDIÇÃO INDIVIDUAL ---
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 idx = marcados.index[0]
@@ -627,32 +635,56 @@ if menu == "📅 Agendamentos do Dia":
                 with c1:
                     novo_status = st.selectbox("Status:", ["Planejado", "Realizado", "Reagendado"], 
                                              index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']) if sel_row['STATUS'] in ["Planejado", "Realizado", "Reagendado"] else 0)
-                with c2:
-                    # Busca coordenadas do cliente na base
-                    cliente_info = df_base[df_base['Cliente'] == sel_row['CÓDIGO CLIENTE']].iloc[0] if not df_base.empty else None
-                    lat_c = cliente_info['LATITUDE'] if (cliente_info is not None and 'LATITUDE' in cliente_info) else 0
-                    lon_c = cliente_info['LONGITUDE'] if (cliente_info is not None and 'LONGITUDE' in cliente_info) else 0
-
-                nova_just = st.text_input("Justificativa:", value=str(sel_row[col_just]))
+                
+                nova_just = st.text_input("Justificativa:", value=str(sel_row.get(col_just, "")))
 
                 if st.button("💾 SALVAR ATUALIZAÇÃO E CAPTURAR GPS"):
+                    # 1. Captura GPS do Vendedor
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
                     
+                    # 2. Busca Coordenadas do Cliente na df_base
+                    lat_c, lon_c = 0, 0
+                    if df_base is not None:
+                        # Forçamos ambos os lados para STRING para garantir o cruzamento
+                        cod_selecionado = str(sel_row['CÓDIGO CLIENTE']).strip()
+                        dados_cliente = df_base[df_base['Cliente'].astype(str).str.strip() == cod_selecionado]
+                        
+                        if not dados_cliente.empty:
+                            # Tenta localizar as colunas de coordenada (independente de maiúsculo/minúsculo)
+                            col_lat = [c for c in df_base.columns if "LAT" in c.upper()][0]
+                            col_lon = [c for c in df_base.columns if "LON" in c.upper()][0]
+                            
+                            lat_c = dados_cliente[col_lat].values[0]
+                            lon_c = dados_cliente[col_lon].values[0]
+
+                    # 3. Calcula distância REAL
                     dist_m = calcular_distancia_precisa(lat_v, lon_v, lat_c, lon_c)
                     
-                    mask = df_agenda['ID'] == str(sel_row['ID'])
+                    # 4. Atualiza o DataFrame Principal (df_agenda)
+                    # Usamos o ID único para garantir que alteramos a linha certa
+                    mask = df_agenda['ID'].astype(str) == str(sel_row['ID'])
+                    
                     df_agenda.loc[mask, 'STATUS'] = novo_status
                     df_agenda.loc[mask, col_just] = nova_just
                     df_agenda.loc[mask, 'COORDENADAS'] = f"{lat_v}, {lon_v}"
                     df_agenda.loc[mask, 'DISTANCIA_LOG'] = dist_m
                     df_agenda.loc[mask, 'REGISTRO'] = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
 
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                    st.success(f"✅ Visita salva! Distância: {dist_m}m")
-                    time.sleep(1)
-                    st.rerun()
-
+                    # 5. Salva no Google Sheets
+                    try:
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", 
+                                    data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+                        
+                        if dist_m == 0:
+                            st.warning(f"Salvo, mas distância deu 0m. (Lat Cliente: {lat_c}, Lat Vendedor: {lat_v})")
+                        else:
+                            st.success(f"✅ Visita salva com sucesso! Distância: {dist_m} metros.")
+                        
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar na planilha: {e}")
         # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
         if not df_dia.empty:
