@@ -1379,11 +1379,17 @@ elif menu_interna == "📊 Desempenho de Vendas":
             
             with m3:
                 estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
+                
+                # Formatação dos valores para o padrão brasileiro
+                base_formatada = f"{base_total:,.0f}".replace(",", ".")
+                meta_formatada = f"{meta_val:.0f}%"
+                atingido_formatado = f"{real_perc:.1f}".replace(".", ",") + "%"
+
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
                     <small style="color: #666;">COBERTURA ({estados_str})</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.0f}%</b></span><br>
-                    Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
+                    <span style="font-size: 1.1em;">Base: <b>{base_formatada}</b> | Meta: <b>{meta_formatada}</b></span><br>
+                    Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{atingido_formatado}</span>
                 </div>
                 """, unsafe_allow_html=True)
 
