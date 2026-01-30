@@ -1208,7 +1208,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_user["AÇÃO"] = False
             
             # Definindo as colunas para exibição (Incluindo Analista e Distância)
-            cols_display = ['AÇÃO', 'DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
+            cols_display = ['AÇÃO', 'REGISTRO' ,'DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
             
             # Filtra apenas as colunas que realmente existem no DF para evitar erro
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
