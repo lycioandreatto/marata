@@ -1250,7 +1250,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             "VINAGRE", "VINAGRE ESPECIAL"
         ]
 
-        # Tratamento META SISTEMA
+        # Tratamento das Metas
         if df_meta_sistema is not None:
             df_meta_sistema.columns = [str(c).strip() for c in df_meta_sistema.columns]
             df_meta_sistema['RG'] = df_meta_sistema['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -1258,7 +1258,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             if 'HIERARQUIA DE PRODUTOS' in df_meta_sistema.columns:
                 df_meta_sistema['HIERARQUIA DE PRODUTOS'] = df_meta_sistema['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
 
-        # Tratamento META 2025
         if df_2025 is not None:
             df_2025.columns = [str(c).strip() for c in df_2025.columns]
             df_2025['RG'] = df_2025['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -1269,35 +1268,18 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if df_faturado is not None and not df_faturado.empty:
             df_faturado = df_faturado.dropna(how='all')
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
-            
-            df_faturado.rename(columns={
-                'Região de vendas': 'VENDEDOR_NOME',
-                'RG': 'VENDEDOR_COD', 
-                'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
-                'Hierarquia de produtos': 'HIERARQUIA'
-            }, inplace=True)
-
+            df_faturado.rename(columns={'Região de vendas': 'VENDEDOR_NOME','RG': 'VENDEDOR_COD','Qtd Vendas (S/Dec)': 'QTD_VENDAS','Hierarquia de produtos': 'HIERARQUIA'}, inplace=True)
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
             def aplicar_agrupamento_custom(item):
                 item = str(item).strip().upper()
-                mapeamento = {
-                    'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
-                    'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
-                    'MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO', 
-                    'MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO',
-                    'MOLHOS ALHO PICANTE': 'MOLHOS ALHO',
-                    'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA', 
-                    'PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'
-                }
+                mapeamento = {'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS','MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO','MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO','MOLHOS ALHO PICANTE': 'MOLHOS ALHO','PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA','PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'}
                 return mapeamento.get(item, item)
             
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
-            df_faturado['ANALISTA'] = df_faturado['ANALISTA'].fillna('NÃO CADASTRADO')
-            df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
         if df_param_metas is not None:
@@ -1310,15 +1292,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if df_metas_cob is not None:
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
-            df_metas_cob['EscrV'] = df_metas_cob['EscrV'].astype(str).str.strip()
-            if 'HIERARQUIA DE PRODUTOS' in df_metas_cob.columns:
-                df_metas_cob['HIERARQUIA DE PRODUTOS'] = df_metas_cob['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             metas_vend_raw = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
             df_metas_cob['META'] = metas_vend_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
-            if 'META COBERTURA' in df_metas_cob.columns:
-                metas_cob_item = pd.to_numeric(df_metas_cob['META COBERTURA'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
-                df_metas_cob['META COBERTURA'] = metas_cob_item.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
 
     except Exception as e:
         st.error(f"Erro no processamento das abas: {e}")
@@ -1331,26 +1307,17 @@ elif menu_interna == "📊 Desempenho de Vendas":
         
         st.markdown("### 🔍 Filtros")
         c0, c2, c3 = st.columns(3)
-        
-        with c0:
-            sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
-        
-        with c2:
+        with c0: sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
+        with c2: 
             df_temp_sup = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
             sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()))
-            
         with c3:
             df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
             sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
 
-        if sel_estado: 
-            df_f = df_f[df_f['EscrV'].isin(sel_estado)]
-            if df_ms is not None: df_ms = df_ms[df_ms['EscrV'].isin(sel_estado)]
-        if sel_supervisor: 
-            df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
-            if df_ms is not None: df_ms = df_ms[df_ms['EqvS'].isin(sel_supervisor)]
-        if sel_vendedor: 
-            df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
+        if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
+        if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
+        if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
             
         vendedores_ids = df_f['VENDEDOR_COD'].unique()
         if df_ms is not None: df_ms = df_ms[df_ms['RG'].isin(vendedores_ids)]
@@ -1372,7 +1339,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-        # --- PREPARAÇÃO DOS DADOS DA TABELA DETALHADA ---
+        # --- PREPARAÇÃO DOS DADOS (PROCESSA UMA VEZ SÓ) ---
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVADO_REAL'}).reset_index()
         df_ms_agrupado = df_ms.groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_ms is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
         df_25_agrupado = df_25.groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_25 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
@@ -1392,10 +1359,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final_h['CRESCIMENTO 2026'] = df_final_h['VOLUME'] - df_final_h['META 2026']
         df_final_h['ATINGIMENTO % (VOL 2026)'] = (df_final_h['VOLUME'] / df_final_h['META 2026'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
-        # --- NOVA TABELA RESUMIDA DE CRESCIMENTO ---
+        # --- ÁREA VISUAL: RESUMO ---
         st.markdown("---")
         
-        # Cálculos para a tabela resumida
         qtd_total_itens = len(df_final_h)
         itens_atingiram = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
         itens_abaixo = qtd_total_itens - itens_atingiram
@@ -1411,48 +1377,29 @@ elif menu_interna == "📊 Desempenho de Vendas":
                     <tr style="background-color: #0070C0; color: white; font-weight: bold; text-align: center;">
                         <td colspan="2" style="padding: 8px; border: 1px solid #dee2e6;">RESUMO DE CRESCIMENTO (Vs META 2025)</td>
                     </tr>
-                    <tr>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTOS ITENS TEM NO TOTAL</td>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{qtd_total_itens}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS QUE ATINGIRAM</td>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS ABAIXO DA META</td>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{itens_abaixo}</td>
-                    </tr>
-                    <tr style="background-color: #E7E6E6;">
-                        <td style="padding: 5px; border: 1px solid #dee2e6;">META FIXA</td>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{meta_fixa_perc}%</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">REALIZADO (%)</td>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: {'green' if realizado_perc_resumo >= meta_fixa_perc else '#e67e22'};">{realizado_perc_resumo:.1f}%</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTO FALTA (%)</td>
-                        <td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{falta_perc:.1f}%</td>
-                    </tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTOS ITENS TEM NO TOTAL</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{qtd_total_itens}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS QUE ATINGIRAM</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS ABAIXO DA META</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{itens_abaixo}</td></tr>
+                    <tr style="background-color: #E7E6E6;"><td style="padding: 5px; border: 1px solid #dee2e6;">META FIXA</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{meta_fixa_perc}%</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">REALIZADO (%)</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: {'green' if realizado_perc_resumo >= meta_fixa_perc else '#e67e22'};">{realizado_perc_resumo:.1f}%</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTO FALTA (%)</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{falta_perc:.1f}%</td></tr>
                 </table>
             """, unsafe_allow_html=True)
 
         with col_cob:
-            estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
             base_fmt = f"{base_total:,.0f}".replace(",", ".")
             atingido_fmt = f"{real_perc:.1f}".replace(".", ",") + "%"
             st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 18px; border-radius: 8px; background-color: #f9f9f9; height: 100%;">
-                    <small style="color: #666;">COBERTURA ({estados_str})</small><br>
+                    <small style="color: #666;">COBERTURA</small><br>
                     <span style="font-size: 1.1em;">Base: <b>{base_fmt}</b> | Meta: <b>{meta_val:.0f}%</b></span><br>
                     Atingido: <span style="color:{cor_indicador}; font-size: 1.8em; font-weight: bold;">{atingido_fmt}</span>
                 </div>
             """, unsafe_allow_html=True)
 
+        # --- EXIBIÇÃO DA TABELA DETALHADA (APENAS UMA VEZ) ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         
-        # --- TABELA DETALHADA ---
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 
             'PENDÊNCIA CLIENTES', 'META 2025', 'META 2026', 'VOLUME', 
@@ -1481,76 +1428,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             })
             .applymap(aplicar_estilo, subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
             .bar(subset=['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)'], color=['#ffadad', '#72efdd'], align='mid', vmin=0, vmax=100)
-            .apply(lambda x: ['background-color: #fff3cd' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
-            use_container_width=True,
-            hide_index=True
-        )
-        # Agrupamentos
-        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVADO_REAL'}).reset_index()
-
-        df_ms_agrupado = df_ms.groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_ms is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
-        df_25_agrupado = df_25.groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_25 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
-
-        # Cruzamento Cobertura
-        df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
-        df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'}) if 'META COBERTURA' in df_metas_sub.columns else pd.DataFrame(columns=['HIERARQUIA', 'META COBERTURA'])
-
-        # Merge Final
-        df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
-        df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left')
-        df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
-        df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
-        
-      # --- CÁLCULOS FINAIS ---
-        df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
-        df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
-        df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
-
-        # Volume 2025
-        df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
-        df_final_h['ATINGIMENTO % (VOL 2025)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
-
-        # Volume 2026
-        df_final_h['CRESCIMENTO 2026'] = df_final_h['VOLUME'] - df_final_h['META 2026']
-        df_final_h['ATINGIMENTO % (VOL 2026)'] = (df_final_h['VOLUME'] / df_final_h['META 2026'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
-
-        # Reordenação
-        colunas_ordenadas = [
-            'HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 
-            'PENDÊNCIA CLIENTES', 'META 2025', 'META 2026', 'VOLUME', 
-            'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)', 'CRESCIMENTO 2026', 'ATINGIMENTO % (VOL 2026)'
-        ]
-        df_final_h = df_final_h[colunas_ordenadas]
-
-        # --- LÓGICA VISUAL (ESTILIZAÇÃO) ---
-        def aplicar_estilo(val):
-            if isinstance(val, (int, float)):
-                if val < 0: return 'color: #d63031; font-weight: bold;' # Vermelho para negativos
-                return ''
-            return ''
-
-        # Criando a visualização com ícones, barras e formatação de milhar com ponto
-        st.dataframe(
-            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style
-            .format({
-                'META COBERTURA': "{:.1f}%",
-                'META CLIENTES (ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
-                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."),
-                'PENDÊNCIA CLIENTES': lambda x: f"{x:,.0f}".replace(",", "."),
-                'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
-                'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
-                'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'CRESCIMENTO 2026': lambda x: f"{x:,.0f}".replace(",", "."),
-                'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
-                'ATINGIMENTO % (VOL 2026)': "{:.1f}%"
-            })
-            # 1. Cor vermelha para valores negativos (Crescimentos)
-            .applymap(aplicar_estilo, subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
-            # 2. Barras de progresso visuais para os Atingimentos
-            .bar(subset=['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)'], 
-                 color=['#ffadad', '#72efdd'], align='mid', vmin=0, vmax=100)
-            # 3. Destacar pendência se for maior que zero (fundo amarelo)
             .apply(lambda x: ['background-color: #fff3cd' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
             use_container_width=True,
             hide_index=True
