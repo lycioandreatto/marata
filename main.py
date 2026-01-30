@@ -1270,23 +1270,51 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
 
-        # --- PROCESSAMENTO METAS (Ajustado para capturar META COBERTURA) ---
+       # --- PROCESSAMENTO METAS (Ajustado com Trava de Segurança) ---
         if df_metas_cob is not None and not df_metas_cob.empty:
-            # Criamos uma cópia para não estragar o processamento original do RG/BASE/META
-            df_m_aux = df_metas_cob.copy()
-            df_m_aux.columns = [str(c).strip() for c in df_m_aux.columns]
+            # 1. Limpeza bruta de colunas: remove espaços, tabs e quebras de linha
+            df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             
-            # Preparamos a coluna de Hierarquia na aba de metas para o cruzamento
+            # Criamos o auxiliar para a META COBERTURA
+            df_m_aux = df_metas_cob.copy()
+            
+            # Chave 1: Hierarquia de produtos
             if 'Hierarquia de produtos' in df_m_aux.columns:
                 df_m_aux['HIER_JOIN'] = df_m_aux['Hierarquia de produtos'].apply(aplicar_agrupamento_custom)
+            else:
+                st.error(f"Coluna 'Hierarquia de produtos' não achada na aba Metas. Colunas reais: {list(df_m_aux.columns)}")
+                st.stop()
+
+            # Chave 2: EscrV e META COBERTURA
+            # Verificamos se as outras duas existem antes de tentar o subset
+            cols_necessarias = ['EscrV', 'HIER_JOIN', 'META COBERTURA']
+            cols_faltantes = [c for c in cols_necessarias if c not in df_m_aux.columns]
             
-            # Limpeza da META COBERTURA
-            if 'META COBERTURA' in df_m_aux.columns:
+            if not cols_faltantes:
+                # Se tudo estiver ok, limpa a porcentagem
                 df_m_aux['META COBERTURA'] = (
                     df_m_aux['META COBERTURA'].astype(str)
                     .str.replace('%', '', regex=False).str.replace(',', '.', regex=False).str.strip()
                 )
                 df_m_aux['META COBERTURA'] = pd.to_numeric(df_m_aux['META COBERTURA'], errors='coerce').fillna(0)
+                
+                # Criamos o dataframe de lookup para o merge
+                df_meta_lookup = df_m_aux[cols_necessarias].drop_duplicates()
+            else:
+                st.error(f"Colunas faltantes na aba META COBXPOSIT: {cols_faltantes}")
+                st.stop()
+
+            # --- SEU PROCESSAMENTO ORIGINAL DE RG/BASE/META (Mantido) ---
+            # Aqui você usa .upper(), então temos que garantir que não conflite
+            df_metas_cob.columns = [str(c).upper() for c in df_metas_cob.columns]
+            if 'RG' not in df_metas_cob.columns: df_metas_cob.rename(columns={df_metas_cob.columns[0]: 'RG'}, inplace=True)
+            if 'BASE' not in df_metas_cob.columns: df_metas_cob.rename(columns={df_metas_cob.columns[1]: 'BASE'}, inplace=True)
+            if 'META' not in df_metas_cob.columns: df_metas_cob.rename(columns={df_metas_cob.columns[2]: 'META'}, inplace=True)
+            
+            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+            if 'META' in df_metas_cob.columns:
+                df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
 
             # Processamento original (RG, BASE, META) que você já tinha
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
