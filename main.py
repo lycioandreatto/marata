@@ -625,7 +625,7 @@ if menu == "📅 Agendamentos do Dia":
                     nova_val = st.radio("Validar:", val_list, index=idx_val, horizontal=True) if eh_gestao else sel_row[col_aprov_exec]
                 
                 with c3:
-                    opcoes_just = ["", "Cliente Fechado", "Proprietário Ausente", "Sem estoque para o pedido", "Reagendado a pedido do cliente", "Visita produtiva com pedido", "Visita improdutiva", "Outros (especificar)"]
+                    opcoes_just = ["", "Cliente Fechado", "Cliente Inadimplente", "Cliente Sem Limite de Crédito", "Reagendado a pedido do cliente", "Pedido enviado", "Visita improdutiva", "Outros (especificar)"]
                     val_atual_just = sel_row[col_just] if pd.notna(sel_row[col_just]) else ""
                     default_idx = opcoes_just.index(val_atual_just) if val_atual_just in opcoes_just else 0
                     nova_just = st.selectbox("Escolha a Justificativa:", opcoes_just, index=default_idx)
