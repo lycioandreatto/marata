@@ -14,13 +14,20 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
     try:
-        if not all([lat1, lon1, lat2, lon2]) or lat1 == 0: return 0
-        R = 6371000 # Raio da Terra em metros
-        phi1, phi2 = np.radians(float(lat1)), np.radians(float(lat2))
-        dphi = np.radians(float(lat2) - float(lat1))
-        dlambda = np.radians(float(lon2) - float(lon1))
+        # Converte para float e trata erros de vírgula/ponto
+        l1, n1 = float(str(lat1).replace(',', '.')), float(str(lon1).replace(',', '.'))
+        l2, n2 = float(str(lat2).replace(',', '.')), float(str(lon2).replace(',', '.'))
+        
+        if l1 == 0 or l2 == 0: return 0
+        
+        R = 6371000  # Raio da Terra em metros
+        phi1, phi2 = np.radians(l1), np.radians(l2)
+        dphi = np.radians(l2 - l1)
+        dlambda = np.radians(n2 - n1)
+        
         a = np.sin(dphi / 2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2)**2
-        return int(2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a)))
+        dist = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+        return int(dist)
     except:
         return 0
 
