@@ -14,18 +14,25 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 def calcular_distancia_precisa(lat1, lon1, lat2, lon2):
     try:
-        # Limpeza total: converte para string, troca vírgula por ponto e então para float
         def limpar_coord(v):
             if v is None or str(v).strip() == "" or str(v).lower() == "none":
                 return 0.0
+            # Remove espaços e troca vírgula por ponto
             return float(str(v).replace(',', '.').strip())
 
         l1, n1 = limpar_coord(lat1), limpar_coord(lon1)
         l2, n2 = limpar_coord(lat2), limpar_coord(lon2)
         
-        # Se qualquer uma das coordenadas for zero, não há como calcular
-        if l1 == 0 or l2 == 0: 
-            return 0
+        if l1 == 0 or l2 == 0: return 0
+        
+        R = 6371000 
+        phi1, phi2 = np.radians(l1), np.radians(l2)
+        dphi = np.radians(l2 - l1)
+        dlambda = np.radians(n2 - n1)
+        a = np.sin(dphi / 2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2)**2
+        return int(2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a)))
+    except:
+        return 0
         
         R = 6371000  # Raio da Terra em metros
         phi1, phi2 = np.radians(l1), np.radians(l2)
@@ -554,6 +561,7 @@ if menu == "📅 Agendamentos do Dia":
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
         df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
         
+        # Filtros de Hierarquia
         if not (is_admin or is_diretoria):
             if is_analista: 
                 df_dia = df_dia[df_dia['ANALISTA'].astype(str).str.upper() == user_atual.upper()]
@@ -599,7 +607,6 @@ if menu == "📅 Agendamentos do Dia":
 
         # --- TABELA ---
         if not df_dia.empty:
-            # Merge para Cidade
             if df_base is not None:
                 df_cidades = df_base[['Cliente', 'Local']].drop_duplicates(subset='Cliente').copy()
                 df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
@@ -622,7 +629,7 @@ if menu == "📅 Agendamentos do Dia":
                 disabled=[c for c in cols_v if c not in ["EDITAR", col_aprov_exec]]
             )
 
-           # --- EDIÇÃO INDIVIDUAL ---
+            # --- EDIÇÃO INDIVIDUAL ---
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 idx = marcados.index[0]
@@ -639,57 +646,52 @@ if menu == "📅 Agendamentos do Dia":
                 nova_just = st.text_input("Justificativa:", value=str(sel_row.get(col_just, "")))
 
                 if st.button("💾 SALVAR ATUALIZAÇÃO E CAPTURAR GPS"):
-                    # 1. Captura GPS do Vendedor
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
                     
-                    # 2. Busca Coordenadas do Cliente na df_base
                     lat_c, lon_c = 0, 0
                     if df_base is not None:
-                        # Forçamos ambos os lados para STRING para garantir o cruzamento
                         cod_selecionado = str(sel_row['CÓDIGO CLIENTE']).strip()
                         dados_cliente = df_base[df_base['Cliente'].astype(str).str.strip() == cod_selecionado]
                         
                         if not dados_cliente.empty:
-                            # Tenta localizar as colunas de coordenada (independente de maiúsculo/minúsculo)
-                            col_lat = [c for c in df_base.columns if "LAT" in c.upper()][0]
-                            col_lon = [c for c in df_base.columns if "LON" in c.upper()][0]
+                            # Busca segura de colunas para evitar IndexError
+                            cols_lat = [c for c in df_base.columns if "LAT" in c.upper()]
+                            cols_lon = [c for c in df_base.columns if "LON" in c.upper()]
                             
-                            lat_c = dados_cliente[col_lat].values[0]
-                            lon_c = dados_cliente[col_lon].values[0]
+                            if cols_lat and cols_lon:
+                                lat_c = dados_cliente[cols_lat[0]].values[0]
+                                lon_c = dados_cliente[cols_lon[0]].values[0]
+                            else:
+                                st.error("Colunas de Latitude/Longitude não encontradas na aba BASE.")
 
-                    # 3. Calcula distância REAL
                     dist_m = calcular_distancia_precisa(lat_v, lon_v, lat_c, lon_c)
                     
-                    # 4. Atualiza o DataFrame Principal (df_agenda)
-                    # Usamos o ID único para garantir que alteramos a linha certa
                     mask = df_agenda['ID'].astype(str) == str(sel_row['ID'])
-                    
                     df_agenda.loc[mask, 'STATUS'] = novo_status
                     df_agenda.loc[mask, col_just] = nova_just
                     df_agenda.loc[mask, 'COORDENADAS'] = f"{lat_v}, {lon_v}"
                     df_agenda.loc[mask, 'DISTANCIA_LOG'] = dist_m
                     df_agenda.loc[mask, 'REGISTRO'] = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
 
-                    # 5. Salva no Google Sheets
                     try:
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", 
                                     data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
                         
-                        if dist_m == 0:
-                            st.warning(f"Salvo, mas distância deu 0m. (Lat Cliente: {lat_c}, Lat Vendedor: {lat_v})")
+                        if dist_m == 0 and lat_c == 0:
+                            st.warning("Salvo, mas distância 0m (Cliente sem coordenada na BASE).")
                         else:
-                            st.success(f"✅ Visita salva com sucesso! Distância: {dist_m} metros.")
+                            st.success(f"✅ Visita salva! Distância: {dist_m}m")
                         
                         time.sleep(1)
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao salvar na planilha: {e}")
+                        st.error(f"Erro ao salvar: {e}")
+
         # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
         if not df_dia.empty:
             if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                # Lógica de e-mail (Mantida como a sua original)
                 try:
                     analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual.upper()]['ANALISTA'].iloc[0].upper().strip()
                 except:
