@@ -1459,3 +1459,61 @@ elif menu_interna == "📊 Desempenho de Vendas":
             use_container_width=True,
             hide_index=True
         )
+
+st.dataframe# --- ÁREA DE EXPORTAÇÃO ---
+        st.markdown("### 📥 Exportar Relatório")
+        col_btn1, col_btn2, _ = st.columns([1, 1, 2])
+
+        # --- FUNÇÃO EXCEL ---
+        buffer_excel = io.BytesIO()
+        with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
+            df_final_h.to_excel(writer, index=False, sheet_name='Desempenho')
+            writer.close()
+        
+        with col_btn1:
+            st.download_button(
+                label="📊 Baixar Excel",
+                data=buffer_excel.getvalue(),
+                file_name="relatorio_desempenho.xlsx",
+                mime="application/vnd.ms-excel"
+            )
+
+        # --- FUNÇÃO PDF ---
+        def generate_pdf(data):
+            pdf = FPDF(orientation='L', unit='mm', format='A4') # Paisagem para caber as colunas
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(0, 10, "Relatório de Desempenho de Vendas", ln=True, align='C')
+            pdf.set_font("Arial", size=7) # Fonte menor para caber todas as colunas
+            
+            # Cabeçalhos
+            cols = data.columns.tolist()
+            for col in cols:
+                pdf.cell(24, 8, str(col)[:15], border=1) # Limita largura da célula
+            pdf.ln()
+            
+            # Dados
+            for _, row in data.iterrows():
+                for col in cols:
+                    val = row[col]
+                    # Formata números para o PDF
+                    if isinstance(val, (int, float)):
+                        val = f"{val:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    pdf.cell(24, 7, str(val), border=1)
+                pdf.ln()
+            
+            return pdf.output(dest='S').encode('latin-1')
+
+        with col_btn2:
+            try:
+                pdf_bytes = generate_pdf(df_final_h)
+                st.download_button(
+                    label="📄 Baixar PDF",
+                    data=pdf_bytes,
+                    file_name="relatorio_desempenho.pdf",
+                    mime="application/pdf"
+                )
+            except:
+                st.warning("Erro ao gerar PDF (caractere especial).")
+
+
