@@ -1248,7 +1248,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
-            # Trazer Supervisor e Analista da base principal
+            # Trazer Supervisor e Analista da df_base (Relacionamento mestre)
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates()
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
@@ -1286,8 +1286,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.error(f"Erro ao processar dados: {e}")
         st.stop()
 
-    # --- FILTROS (SLICERS) ---
+    # --- SLICERS (FILTROS LATERAIS) ---
     st.sidebar.markdown("### 🔍 Filtros de Desempenho")
+    
     lista_analistas = sorted(df_faturado['ANALISTA'].dropna().unique())
     sel_analista = st.sidebar.multiselect("Analista", lista_analistas)
 
@@ -1305,26 +1306,28 @@ elif menu_interna == "📊 Desempenho de Vendas":
     if sel_vendedor:
         df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
-    # --- EXIBIÇÃO ---
+    # --- ÁREA DE EXIBIÇÃO ---
     if not df_f.empty:
-        # Cálculo de Positivação (Clientes únicos na coluna K)
+        # Cards de Resumo
         total_positivacao = df_f[col_k].nunique()
         total_faturado = df_f['QTD_VENDAS'].sum()
 
-        col1, col2 = st.columns(2)
-        col1.metric("Positivação Total (Clientes)", f"{total_positivacao}")
-        col2.metric("Volume Total Faturado", f"{total_faturado:,.0f}")
+        c1, c2 = st.columns(2)
+        c1.metric("Clientes Positivados (Total)", f"{total_positivacao}")
+        c2.metric("Volume Total Faturado", f"{total_faturado:,.0f}")
 
         st.markdown("---")
-        st.markdown("### 📈 Desempenho por Hierarquia")
         
-        # 1. Agrupamento por Escritório e Hierarquia para bater com a meta
+        # --- TABELINHA DE POSITIVAÇÃO E METAS ---
+        st.markdown("### 📊 Detalhamento por Hierarquia")
+        
+        # 1. Agrupamento base para a tabela
         df_h = df_f.groupby(['EscrV', 'HIERARQUIA_AGRUPADA']).agg({
             'QTD_VENDAS': 'sum',
             col_k: 'nunique'
         }).reset_index()
 
-        # 2. Merge com as metas
+        # 2. Join com as metas
         if not df_meta_lookup.empty:
             df_h = pd.merge(
                 df_h, 
@@ -1334,7 +1337,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 how='left'
             ).fillna(0)
         
-        # 3. Agrupamento Final para a Tabela de Visualização
+        # 3. Consolidação final para o usuário
         df_final = df_h.groupby('HIERARQUIA_AGRUPADA').agg({
             'QTD_VENDAS': 'sum',
             col_k: 'sum',
@@ -1345,9 +1348,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             'META_COB_NUM': 'Meta Cobertura %'
         }).sort_values(by='Volume Faturado', ascending=False)
 
-        # Cálculo da Cobertura Real (Exemplo: Posit / Meta se a meta fosse absoluta, 
-        # mas aqui mostramos a Meta do lado para comparação)
-        
         st.dataframe(
             df_final.style.format({
                 'Meta Cobertura %': '{:.1f}%', 
@@ -1357,4 +1357,4 @@ elif menu_interna == "📊 Desempenho de Vendas":
             use_container_width=True
         )
     else:
-        st.warning("Nenhum dado encontrado para os filtros selecionados.")
+        st.warning("Selecione os filtros ou verifique se há dados para os critérios escolhidos.")
