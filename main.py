@@ -1223,46 +1223,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         st.warning("Agenda vazia.")
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
-# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
-# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 elif menu_interna == "📊 Desempenho de Vendas":
-    
-    # 1. LISTA DE USUÁRIOS AUTORIZADOS (Sempre em minúsculas aqui)
-    usuarios_com_acesso = ["lycio", "admin"]
-
-    # 2. BUSCA O USUÁRIO E FAZ A LIMPEZA
-    # .strip() remove espaços e .lower() deixa tudo minúsculo
-    usuario_atual = str(st.session_state.get('username', '')).strip().lower()
-
-    # 3. VERIFICAÇÃO MELHORADA
-    if usuario_atual not in usuarios_com_acesso:
-        st.header("📊 Desempenho de Vendas")
-        st.warning("🚀 **Página em Desenvolvimento**")
-        st.info(f"Olá **{usuario_atual}**, seu acesso ainda não está liberado nesta aba.")
-        
-        # Log para você descobrir como o sistema está lendo seu nome:
-        st.write(f"DEBUG: O sistema te reconhece como: `{usuario_atual}`")
-        st.stop() 
-
-    # --- SE PASSAR, SEGUE O CÓDIGO ---
     st.header("📊 Desempenho de Vendas (Faturado)")
-    
-    try:
-        # Aqui continua seu código df_faturado = ...
-        # 1. Leitura das abas
-        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
-        df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
-        df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
-        df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
-        
-        # ... (Resto das configurações de lista_hierarquia_fixa e processamento) ...
-
-    except Exception as e:
-        st.error(f"Erro ao carregar os dados: {e}")
-        st.stop()
-        
-        # ... (todo o restante do seu código de processamento e tabelas aqui)
     
     try:
         # 1. Leitura das abas
