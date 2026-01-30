@@ -995,13 +995,6 @@ elif menu == "📋 Novo Agendamento":
             else:
                 cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
                 # ... (resto do formulário de salvar agendamento)
-            
-            if not lista_c:
-                st.success(f"✅ Todos os clientes de {ven_sel} já foram agendados!")
-            else:
-                cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
-                if cliente_sel != "Selecione...":
-                    qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
                     
                     with st.form("form_novo_v"):
                         cols_datas = st.columns(qtd_visitas)
