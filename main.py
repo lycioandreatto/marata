@@ -37,7 +37,7 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analist
         smtp_port = st.secrets["email"]["smtp_port"]
         
         msg = MIMEMultipart()
-        msg['From'] = f"MARATÁ <{email_origem}>"
+        msg['From'] = f"GESTÃO DE VISITAS PDV <{email_origem}>"
         msg['To'] = destinatarios_lista 
         msg['Subject'] = f"✅ Rota Finalizada - {vendedor} ({datetime.now().strftime('%d/%m')})"
 
