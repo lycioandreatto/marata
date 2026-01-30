@@ -1257,7 +1257,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'RG': 'VENDEDOR_COD', 
                 'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
                 'Hierarquia de produtos': 'HIERARQUIA',
-                'EscrV': 'ESTADO'  # Padronizando EscrV como ESTADO
+                'EscrV': 'ESTADO' 
             }, inplace=True)
 
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
@@ -1278,7 +1278,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
             
-            # Cruzamento com a base de relação para trazer Analista/Supervisor
+            # Trazer Analista/Supervisor apenas para filtros
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
             
@@ -1286,10 +1286,10 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
-        # --- PROCESSAMENTO PARAM_METAS (EVITANDO KEYERROR) ---
+        # --- PROCESSAMENTO PARAM_METAS (POR ESTADO) ---
         if df_param_metas is not None:
             df_param_metas.columns = [str(c).strip().upper() for c in df_param_metas.columns]
-            # Se a coluna de estado na aba for ESCRV, renomeamos para ESTADO para bater com o código
+            # Mapeia ESCRV para ESTADO na aba de parâmetros
             if 'ESCRV' in df_param_metas.columns:
                 df_param_metas.rename(columns={'ESCRV': 'ESTADO'}, inplace=True)
             
@@ -1303,7 +1303,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
 
     except Exception as e:
-        st.error(f"Erro no processamento de colunas: {e}")
+        st.error(f"Erro no processamento: {e}")
         st.stop()
 
     if df_faturado is not None and not df_faturado.empty:
@@ -1332,20 +1332,19 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # --- LÓGICA DE POSITIVAÇÃO E METAS ---
         if not df_f.empty:
-            # REGRA: Visão Estado/Analista NÃO CONTA "STR" e "SMX"
+            # REGRA: Visão Geral (Estado/Analista) NÃO CONTA "STR" e "SMX"
             if not (sel_supervisor or sel_vendedor):
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
                 
-                # BUSCA DE META: Independente de filtrar Analista ou Estado, ele busca a meta do Analista correspondente
-                # Isso garante que a soma seja a mesma para os dois.
-                analista_alvo = df_f['ANALISTA'].iloc[0].upper()
-                linha_meta = df_param_metas[df_param_metas['ANALISTA'] == analista_alvo]
+                # BUSCA META PELO ESTADO (PARAM_METAS agora usa ESTADO/ESCRV)
+                estado_alvo = df_f['ESTADO'].iloc[0]
+                linha_meta = df_param_metas[df_param_metas['ESTADO'] == estado_alvo]
                 
                 base_total = linha_meta['BASE'].sum() if not linha_meta.empty else 1
                 meta_val = linha_meta['META_COB'].mean() if not linha_meta.empty else 0
             else:
-                # Visão Supervisor/Vendedor conta tudo
+                # Visão Vendedor/Supervisor conta tudo
                 positivacao = df_f[col_k].nunique()
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
                 dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
@@ -1355,7 +1354,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
             cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-            # --- CARDS DE RESUMO ---
+            # --- CARDS ---
             st.markdown("---")
             m1, m2, m3 = st.columns([1, 1, 2])
             m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}")
@@ -1363,7 +1362,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             with m3:
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small style="color: #666;">COBERTURA (SOMA ESTADO/ANALISTA)</small><br>
+                    <small style="color: #666;">COBERTURA (BASEADA NO ESTADO: {df_f['ESTADO'].iloc[0]})</small><br>
                     <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
                     Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>
