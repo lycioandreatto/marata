@@ -1405,22 +1405,20 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
         df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
-      # --- NOVO CÁLCULO DA META EM VALOR ABSOLUTO ---
+      # --- CÁLCULOS DE COBERTURA (CLIENTES) ---
         df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
-        
         df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
-        
-        # --- CÁLCULO DA PENDÊNCIA (CLIENTES) ---
         df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
 
-        # --- CÁLCULO: CRESCIMENTO 2025 E ATINGIMENTO 2025 ---
+        # --- CÁLCULOS VOLUME 2025 ---
         df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
-        df_final_h['ATINGIMENTO % (VOL)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
+        df_final_h['ATINGIMENTO % (VOL 2025)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
-        # --- NOVO CÁLCULO: CRESCIMENTO 2026 (VOLUME - META 2026) ---
+        # --- CÁLCULOS VOLUME 2026 ---
         df_final_h['CRESCIMENTO 2026'] = df_final_h['VOLUME'] - df_final_h['META 2026']
+        df_final_h['ATINGIMENTO % (VOL 2026)'] = (df_final_h['VOLUME'] / df_final_h['META 2026'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
-        # Reordenação final com todas as colunas
+        # Reordenação final com TODAS as colunas solicitadas
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 
             'META COBERTURA', 
@@ -1431,8 +1429,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
             'META 2026', 
             'VOLUME',
             'CRESCIMENTO 2025',
-            'ATINGIMENTO % (VOL)',
-            'CRESCIMENTO 2026'  # <-- Nova coluna adicionada ao final de tudo
+            'ATINGIMENTO % (VOL 2025)',
+            'CRESCIMENTO 2026',
+            'ATINGIMENTO % (VOL 2026)' # <-- A última coluna agora é o atingimento 2026
         ]
         
         df_final_h = df_final_h[colunas_ordenadas]
@@ -1447,8 +1446,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
                 'VOLUME': lambda x: f"{x:,.0f}".replace(",", "."),
                 'CRESCIMENTO 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'ATINGIMENTO % (VOL)': "{:.1f}%",
-                'CRESCIMENTO 2026': lambda x: f"{x:,.0f}".replace(",", ".") # <-- Formatação da nova coluna
+                'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
+                'CRESCIMENTO 2026': lambda x: f"{x:,.0f}".replace(",", "."),
+                'ATINGIMENTO % (VOL 2026)': "{:.1f}%" # <-- Formatação final
             }), 
             use_container_width=True, 
             hide_index=True
