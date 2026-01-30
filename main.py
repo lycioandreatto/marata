@@ -1301,43 +1301,45 @@ elif menu_interna == "📊 Desempenho de Vendas":
     if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
         
-        # --- FILTROS ---
+        # --- FILTROS (Lógica de Cascata) ---
         st.markdown("### 🔍 Filtros")
         c0, c1, c2, c3 = st.columns(4)
+        
         with c0:
             sel_estado = st.multiselect("Estado", sorted(df_f['ESCRV'].dropna().unique()))
+        
         with c1:
-            df_temp = df_f[df_f['ESCRV'].isin(sel_estado)] if sel_estado else df_f
-            sel_analista = st.multiselect("Analista", sorted(df_temp['ANALISTA'].dropna().unique()))
+            # Filtra analistas baseada no estado
+            df_temp_analista = df_f[df_f['ESCRV'].isin(sel_estado)] if sel_estado else df_f
+            sel_analista = st.multiselect("Analista", sorted(df_temp_analista['ANALISTA'].dropna().unique()))
+            
         with c2:
-            df_temp = df_temp[df_temp['ANALISTA'].isin(sel_analista)] if sel_analista else df_temp
-            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp['SUPERVISOR'].dropna().unique()))
+            # Filtra supervisores baseada no analista (ou estado)
+            df_temp_sup = df_temp_analista[df_temp_analista['ANALISTA'].isin(sel_analista)] if sel_analista else df_temp_analista
+            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()))
+            
         with c3:
-            df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
-            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
+            # Filtra vendedores baseada no supervisor
+            df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
+            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
 
-        # Aplicação dos filtros no dataframe de faturamento
+        # --- APLICAÇÃO DOS FILTROS NO DATAFRAME DE RESULTADOS ---
+        # Removido o filtro de ANALISTA para não interferir na tabela
         if sel_estado: df_f = df_f[df_f['ESCRV'].isin(sel_estado)]
-        if sel_analista: df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
         # --- LÓGICA DE POSITIVAÇÃO E METAS ---
         if not df_f.empty:
-            # Determinamos quais estados estão no faturamento filtrado para buscar a meta
             estados_ativos = df_f['ESCRV'].unique()
             
             if not (sel_supervisor or sel_vendedor):
-                # Visão Macro (Estado/Analista)
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
-                
-                # Busca meta apenas baseada nos estados ativos, sem interferência de outros filtros
                 dados_meta = df_param_metas[df_param_metas['ESCRV'].isin(estados_ativos)]
                 base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
                 meta_val = dados_meta['META_COB'].mean() if not dados_meta.empty else 0
             else:
-                # Visão Micro (Supervisor/Vendedor)
                 positivacao = df_f[col_k].nunique()
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
                 dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
