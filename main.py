@@ -1643,68 +1643,76 @@ elif menu_interna == "📊 Desempenho de Vendas":
 elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
     
-    # 1. Filtro de Segurança por Analista
+    # 1. Filtro de Segurança por Analista / Gestão
     if df_agenda is not None and not df_agenda.empty:
-        # Se for analista (e não for admin/diretoria), filtra apenas o que é dele
+        # Se for analista (e não for admin/diretoria), filtra apenas registros sob sua supervisão
         if is_analista and not (is_admin or is_diretoria):
             df_pendentes = df_agenda[
                 (df_agenda['STATUS'] == "Pendente") & 
                 (df_agenda['SUPERVISOR'].str.upper() == user_atual.upper())
             ].copy()
         else:
-            # Lycio e Aldo veem todos os pendentes de todos os analistas
+            # LYCIO e ALDO possuem visão mestre e veem todas as pendências
             df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
     else:
         df_pendentes = pd.DataFrame()
 
-    # 2. Exibição dos dados
+    # 2. Interface de Usuário
     if df_pendentes.empty:
         st.success("Não há agendamentos aguardando sua aprovação!")
         if st.button("Voltar ao Menu Principal"):
             st.session_state.pagina_direta = None
             st.rerun()
     else:
-        st.warning(f"Existem {len(df_pendentes)} agendamentos aguardando sua ação.")
+        # Resumo de pendências
+        st.warning(f"Existem {len(df_pendentes)} solicitações aguardando sua ação.")
         
-        # Botão para limpar a visualização forçada e voltar ao menu
+        # Botão para retornar à visão geral
         if st.button("⬅️ Voltar para Agendamentos do Dia"):
             st.session_state.pagina_direta = None
             st.rerun()
             
         st.markdown("---")
 
+        # Lista de Cards de Aprovação
         for i, row in df_pendentes.iterrows():
-            # Título do expander com Vendedor e Cliente
-            with st.expander(f"📍 {row['VENDEDOR']} -> {row['CLIENTE']} ({row['DATA']})"):
-                st.write(f"**Cidade:** {row.get('CIDADE', 'Não informada')}")
-                st.write(f"**Solicitado por:** {row.get('AGENDADO POR', 'Não informado')}")
+            # Card expansível com informações principais
+            with st.expander(f"👤 {row['VENDEDOR']} ➡️ {row['CLIENTE']} ({row['DATA']})"):
+                col_info1, col_info2 = st.columns(2)
+                with col_info1:
+                    st.write(f"**📍 Cidade:** {row.get('CIDADE', 'Não informada')}")
+                    st.write(f"**🆔 Cód. Cliente:** {row.get('CÓDIGO CLIENTE', '---')}")
+                with col_info2:
+                    st.write(f"**📝 Solicitado por:** {row.get('AGENDADO POR', '---')}")
+                    st.write(f"**👔 Analista Responsável:** {row.get('SUPERVISOR', '---')}")
                 
-                col1, col2 = st.columns(2)
+                st.markdown("---")
+                col_btn1, col_btn2 = st.columns(2)
                 
-                # Botão para Aprovar
-                if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}"):
-                    # Muda status para Planejado (aparecerá na agenda do vendedor)
+                # AÇÃO: APROVAR
+                if col_btn1.button("✅ Aprovar Registro", key=f"aprov_{row['ID']}", use_container_width=True):
+                    # Altera o status para Planejado para entrar na rota do vendedor
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Planejado"
                     
-                    # Remove colunas calculadas antes de salvar na planilha para não dar erro
+                    # Limpeza técnica: remove colunas que o Streamlit cria para cálculos internos
                     df_para_salvar = df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
                     
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_para_salvar)
                     st.cache_data.clear()
-                    st.success(f"Agendamento de {row['CLIENTE']} aprovado!")
+                    st.success(f"Sucesso! Cliente {row['CLIENTE']} agora está na rota de {row['VENDEDOR']}.")
                     time.sleep(1)
                     st.rerun()
                 
-                # Botão para Recusar
-                if col2.button("❌ Recusar", key=f"recus_{row['ID']}"):
-                    # Muda status para Recusado
+                # AÇÃO: RECUSAR
+                if col_btn2.button("❌ Recusar Solicitação", key=f"recus_{row['ID']}", use_container_width=True):
+                    # Marca como Recusado (pode ser filtrado ou excluído depois)
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Recusado"
                     
-                    # Remove colunas calculadas antes de salvar
+                    # Limpeza técnica antes do update
                     df_para_salvar = df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
                     
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_para_salvar)
                     st.cache_data.clear()
-                    st.error(f"Agendamento de {row['CLIENTE']} recusado.")
+                    st.error(f"Solicitação de {row['CLIENTE']} foi recusada.")
                     time.sleep(1)
                     st.rerun()
