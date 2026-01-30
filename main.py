@@ -931,10 +931,6 @@ elif menu == "📊 Dashboard de Controle":
         else:
             st.info("Aguardando dados de agendamento para gerar o ranking.")
 
-        # --- MAPA DE CALOR (ABAIXO DO RANKING) ---
-        st.markdown("---")
-        # ... (segue o restante do seu código do mapa)
-
         # --- MAPA DE CALOR (AGORA ABAIXO DO RANKING) ---
         st.markdown("---")
         st.subheader("🔥 Mapa de Calor")
