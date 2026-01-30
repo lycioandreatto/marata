@@ -887,115 +887,144 @@ elif menu == "📊 Dashboard de Controle":
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
-    st.header("📋 Novo Agendamento de Visitas")
+    st.header("📋 Agendar Visita")
     
-    # 1. MAPEAMENTO DE COLUNAS (Garantindo que as variáveis existam antes do uso)
-    col_ana_base = next((c for c in df_base.columns if c.upper() == 'ANALISTA'), 'ANALISTA')
-    col_sup_base = next((c for c in df_base.columns if c.upper() == 'SUPERVISOR'), 'SUPERVISOR')
-    col_ven_base = next((c for c in df_base.columns if c.upper() == 'VENDEDOR'), 'VENDEDOR')
-    
-    # 2. DEFINIÇÃO DO VENDEDOR SELECIONADO (Define ven_sel aqui para evitar NameError)
-    if is_admin or is_diretoria:
-        lista_vendedores = sorted(df_base[col_ven_base].dropna().unique().tolist())
-        ven_sel = st.selectbox("Selecione o Vendedor:", ["Selecione..."] + lista_vendedores)
-    elif is_analista:
-        lista_vendedores = sorted(df_base[df_base[col_ana_base].astype(str).str.upper() == user_atual][col_ven_base].dropna().unique().tolist())
-        ven_sel = st.selectbox("Selecione o Vendedor da sua equipe:", ["Selecione..."] + lista_vendedores)
-    elif is_supervisor:
-        lista_vendedores = sorted(df_base[df_base[col_sup_base].astype(str).str.upper() == user_atual][col_ven_base].dropna().unique().tolist())
-        ven_sel = st.selectbox("Selecione o Vendedor da sua equipe:", ["Selecione..."] + lista_vendedores)
-    else:
-        ven_sel = user_atual
+    if df_base is not None:
+        # Mapeamento das colunas da BASE
+        col_ana_base = 'ANALISTA'
+        col_sup_base = 'SUPERVISOR'
+        col_ven_base = 'VENDEDOR' 
 
-    # Define variável de bloqueio caso não exista
-    bloqueado = False 
-    hoje_dt = datetime.now(fuso_br).date()
+        # --- LÓGICA DE FILTROS CASCATA ---
+        if is_admin or is_diretoria:
+            lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
+            ana_sel = st.selectbox("1. Filtrar por Analista:", ["Todos"] + lista_analistas)
+            df_sup_f = df_base if ana_sel == "Todos" else df_base[df_base[col_ana_base] == ana_sel]
+            lista_sups = sorted([str(s) for s in df_sup_f[col_sup_base].unique() if str(s).strip() and str(s).lower() != 'nan'])
+            sup_sel = st.selectbox("2. Filtrar por Supervisor:", ["Todos"] + lista_sups)
+            df_ven_f = df_sup_f if sup_sel == "Todos" else df_sup_f[df_sup_f[col_sup_base] == sup_sel]
+            vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
+            ven_sel = st.selectbox("3. Selecione o Vendedor:", ["Selecione..."] + vends)
 
-    # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
-    if ven_sel != "Selecione..." and not bloqueado:
-        # Filtro inicial por vendedor
-        clientes_f = df_base[df_base[col_ven_base] == ven_sel]
+        elif is_analista:
+            df_ana_f = df_base[df_base[col_ana_base].str.upper() == user_atual]
+            lista_sups = sorted([str(s) for s in df_ana_f[col_sup_base].unique() if str(s).strip()])
+            sup_sel = st.selectbox("1. Filtrar seu Supervisor:", ["Todos"] + lista_sups)
+            df_ven_f = df_ana_f if sup_sel == "Todos" else df_ana_f[df_ana_f[col_sup_base] == sup_sel]
+            vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
+            ven_sel = st.selectbox("2. Selecione o Vendedor:", ["Selecione..."] + vends)
+
+        elif any(df_base[col_sup_base].str.upper() == user_atual):
+            df_ven_f = df_base[df_base[col_sup_base].str.upper() == user_atual]
+            vends_equipe = [str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()]
+            lista_final_vends = sorted(list(set(vends_equipe + [user_atual])))
+            ven_sel = st.selectbox("Selecione para quem agendar:", ["Selecione..."] + lista_final_vends)
         
-        if clientes_f.empty and ven_sel == user_atual:
-            clientes_f = df_base[df_base[col_sup_base] == user_atual]
-
-        # --- LÓGICA DE DEDUPLICAÇÃO (SUA SOLICITAÇÃO) ---
-        # Mantém apenas um registro por código de cliente para evitar duplicatas na agenda
-        clientes_f = clientes_f.drop_duplicates(subset=['Cliente'], keep='first')
-
-        if 'VENDEDOR' not in df_agenda.columns: df_agenda['VENDEDOR'] = ""
-
-        # Códigos que já estão agendados (evita agendar o mesmo cliente 2x)
-        codigos_agendados = df_agenda[
-            (df_agenda['VENDEDOR'] == ven_sel) & 
-            (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
-        ]['CÓDIGO CLIENTE'].unique()
-        
-        clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
-        
-        # --- MÉTRICAS DE ENGAJAMENTO ---
-        m1, m2, m3, m4 = st.columns(4)
-        n_total = len(clientes_f)
-        n_agendados = len(codigos_agendados)
-        n_pend_metric = len(clientes_pendentes)
-        m1.metric("Clientes na Base", n_total)
-        m2.metric("Já Agendados", n_agendados)
-        m3.metric("Faltando", n_pend_metric)
-        m4.metric("% Adesão", f"{(n_agendados/n_total*100 if n_total>0 else 0):.1f}%")
-        
-        # Identificação dos vínculos para salvar
-        try:
-            amostra = clientes_f.iloc[0]
-            analista_vinc = str(amostra[col_ana_base]).upper()
-            supervisor_vinc = str(amostra[col_sup_base]).upper()
-        except:
-            analista_vinc = "N/I"
-            supervisor_vinc = user_atual if ven_sel == user_atual else "N/I"
-
-        lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
-        
-        if not lista_c:
-            st.success(f"✅ Todos os clientes de {ven_sel} já foram agendados!")
         else:
-            cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
-            if cliente_sel != "Selecione...":
-                qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
-                
-                with st.form("form_novo_v"):
-                    cols_datas = st.columns(qtd_visitas)
-                    datas_sel = []
-                    for i in range(qtd_visitas):
-                        with cols_datas[i]:
-                            d = st.date_input(f"Data {i+1}:", value=hoje_dt, min_value=hoje_dt, key=f"d_{i}")
-                            datas_sel.append(d)
+            ven_sel = user_atual
+            st.info(f"Agendando para sua própria base: {user_atual}")
+
+        # --- VERIFICAÇÃO DE PUNIÇÃO (TRAVA) ---
+        bloqueado = False
+        if ven_sel != "Selecione...":
+            hoje_dt = datetime.now(fuso_br).date()
+            
+            # Filtrar agendamentos passados do vendedor que ainda estão "Planejado"
+            df_verif = df_agenda[df_agenda['VENDEDOR'].str.upper() == ven_sel.upper()].copy()
+            
+            if not df_verif.empty:
+                df_verif['DT_OBJ'] = pd.to_datetime(df_verif['DATA'], format='%d/%m/%Y', errors='coerce').dt.date
+                pendencias_passadas = df_verif[
+                    (df_verif['DT_OBJ'] < hoje_dt) & 
+                    (df_verif['STATUS'] == "Planejado")
+                ]
+
+                if not pendencias_passadas.empty:
+                    bloqueado = True
+                    st.error(f"⚠️ **AGENDAMENTO BLOQUEADO PARA {ven_sel}**")
+                    st.warning(f"O colaborador possui {len(pendencias_passadas)} visitas de dias anteriores sem atualização de status. É necessário finalizar a rota dos dias passados (Realizado ou Justificado) antes de criar novos agendamentos.")
+                    with st.expander("Ver visitas pendentes de atualização"):
+                        st.table(pendencias_passadas[['DATA', 'CLIENTE', 'STATUS']].sort_values(by='DATA'))
+
+        # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
+        if ven_sel != "Selecione..." and not bloqueado:
+            clientes_f = df_base[df_base[col_ven_base] == ven_sel]
+            if clientes_f.empty and ven_sel == user_atual:
+                clientes_f = df_base[df_base[col_sup_base] == user_atual]
+
+            if 'VENDEDOR' not in df_agenda.columns: df_agenda['VENDEDOR'] = ""
+
+            codigos_agendados = df_agenda[
+                (df_agenda['VENDEDOR'] == ven_sel) & 
+                (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
+            ]['CÓDIGO CLIENTE'].unique()
+            
+            clientes_pendentes = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
+            
+            # --- MÉTRICAS DE ENGAJAMENTO ---
+            m1, m2, m3, m4 = st.columns(4)
+            n_total = len(clientes_f)
+            n_agendados = len(codigos_agendados)
+            n_pend_metric = len(clientes_pendentes)
+            m1.metric("Clientes na Base", n_total)
+            m2.metric("Já Agendados", n_agendados)
+            m3.metric("Faltando", n_pend_metric)
+            m4.metric("% Adesão", f"{(n_agendados/n_total*100 if n_total>0 else 0):.1f}%")
+            
+            # Identificação dos vínculos para salvar
+            try:
+                amostra = clientes_f.iloc[0]
+                analista_vinc = str(amostra[col_ana_base]).upper()
+                supervisor_vinc = str(amostra[col_sup_base]).upper()
+            except:
+                analista_vinc = "N/I"
+                supervisor_vinc = user_atual if ven_sel == user_atual else "N/I"
+
+            lista_c = sorted(clientes_pendentes.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
+            
+            if not lista_c:
+                st.success(f"✅ Todos os clientes de {ven_sel} já foram agendados!")
+            else:
+                cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
+                if cliente_sel != "Selecione...":
+                    qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
                     
-                    if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
-                        cod_c, nom_c = cliente_sel.split(" - ", 1)
-                        agora = datetime.now(fuso_br)
-                        novas_linhas = []
+                    with st.form("form_novo_v"):
+                        cols_datas = st.columns(qtd_visitas)
+                        datas_sel = []
+                        for i in range(qtd_visitas):
+                            with cols_datas[i]:
+                                # Trava de data: Não permite retroativo (min_value=hoje_dt)
+                                d = st.date_input(f"Data {i+1}:", value=hoje_dt, min_value=hoje_dt, key=f"d_{i}")
+                                datas_sel.append(d)
                         
-                        for i, dt in enumerate(datas_sel):
-                            nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
-                            novas_linhas.append({
-                                "ID": nid, 
-                                "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
-                                "DATA": dt.strftime("%d/%m/%Y"),
-                                "ANALISTA": analista_vinc, 
-                                "SUPERVISOR": supervisor_vinc, 
-                                "VENDEDOR": ven_sel,
-                                "CÓDIGO CLIENTE": cod_c, 
-                                "CLIENTE": nom_c, 
-                                "JUSTIFICATIVA": "-", 
-                                "STATUS": "Planejado",
-                                "AGENDADO POR": user_atual 
-                            })
+                        if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
+                            cod_c, nom_c = cliente_sel.split(" - ", 1)
+                            agora = datetime.now(fuso_br)
+                            novas_linhas = []
                             
-                        df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-                        st.cache_data.clear()
-                        st.success(f"✅ Agendado com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
+                            for i, dt in enumerate(datas_sel):
+                                nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
+                                novas_linhas.append({
+                                    "ID": nid, 
+                                    "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
+                                    "DATA": dt.strftime("%d/%m/%Y"),
+                                    "ANALISTA": analista_vinc, 
+                                    "SUPERVISOR": supervisor_vinc, 
+                                    "VENDEDOR": ven_sel,
+                                    "CÓDIGO CLIENTE": cod_c, 
+                                    "CLIENTE": nom_c, 
+                                    "JUSTIFICATIVA": "-", 
+                                    "STATUS": "Planejado",
+                                    "AGENDADO POR": user_atual 
+                                })
+                                
+                            df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
+                            st.cache_data.clear()
+                            st.success(f"✅ Agendado com sucesso!")
+                            time.sleep(1)
+                            st.rerun()
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
