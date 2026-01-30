@@ -1362,42 +1362,56 @@ elif menu_interna == "📊 Desempenho de Vendas":
         # --- ÁREA VISUAL: RESUMO ---
         st.markdown("---")
         
+        # Cálculos Meta 2025
         qtd_total_itens = len(df_final_h)
-        itens_atingiram = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
-        itens_abaixo = qtd_total_itens - itens_atingiram
-        meta_fixa_perc = 80
-        realizado_perc_resumo = (itens_atingiram / qtd_total_itens * 100) if qtd_total_itens > 0 else 0
-        falta_perc = max(0, meta_fixa_perc - realizado_perc_resumo)
+        itens_atingiram_25 = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
+        realizado_perc_25 = (itens_atingiram_25 / qtd_total_itens * 100) if qtd_total_itens > 0 else 0
+        falta_perc_25 = max(0, 80 - realizado_perc_25)
 
-        col_res, col_cob = st.columns([1.5, 1])
+        # Cálculos Meta 2026
+        itens_atingiram_26 = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2026']])
+        realizado_perc_26 = (itens_atingiram_26 / qtd_total_itens * 100) if qtd_total_itens > 0 else 0
+        falta_perc_26 = max(0, 80 - realizado_perc_26)
 
-        with col_res:
+        # Criando colunas: 2025 | 2026
+        col_res25, col_res26 = st.columns(2)
+
+        with col_res25:
             st.markdown(f"""
-                <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px;">
+                <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 12px;">
                     <tr style="background-color: #0070C0; color: white; font-weight: bold; text-align: center;">
-                        <td colspan="2" style="padding: 8px; border: 1px solid #dee2e6;">RESUMO DE CRESCIMENTO (Vs META 2025)</td>
+                        <td colspan="2" style="padding: 5px; border: 1px solid #dee2e6;">RESUMO CRESCIMENTO (Vs 2025)</td>
                     </tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTOS ITENS TEM NO TOTAL</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{qtd_total_itens}</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS QUE ATINGIRAM</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram}</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS ABAIXO DA META</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{itens_abaixo}</td></tr>
-                    <tr style="background-color: #E7E6E6;"><td style="padding: 5px; border: 1px solid #dee2e6;">META FIXA</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{meta_fixa_perc}%</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">REALIZADO (%)</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: {'green' if realizado_perc_resumo >= meta_fixa_perc else '#e67e22'};">{realizado_perc_resumo:.1f}%</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTO FALTA (%)</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{falta_perc:.1f}%</td></tr>
+                    <tr><td style="padding: 3px; border: 1px solid #dee2e6;">ITENS ATINGIRAM</td><td style="padding: 3px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram_25}</td></tr>
+                    <tr><td style="padding: 3px; border: 1px solid #dee2e6;">REALIZADO (%)</td><td style="padding: 3px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: {'green' if realizado_perc_25 >= 80 else '#e67e22'};">{realizado_perc_25:.1f}%</td></tr>
+                    <tr><td style="padding: 3px; border: 1px solid #dee2e6;">FALTA (%) PARA 80%</td><td style="padding: 3px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{falta_perc_25:.1f}%</td></tr>
                 </table>
             """, unsafe_allow_html=True)
 
-        with col_cob:
-            base_fmt = f"{base_total:,.0f}".replace(",", ".")
-            atingido_fmt = f"{real_perc:.1f}".replace(".", ",") + "%"
+        with col_res26:
             st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 18px; border-radius: 8px; background-color: #f9f9f9; height: 100%;">
-                    <small style="color: #666;">COBERTURA</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_fmt}</b> | Meta: <b>{meta_val:.0f}%</b></span><br>
-                    Atingido: <span style="color:{cor_indicador}; font-size: 1.8em; font-weight: bold;">{atingido_fmt}</span>
-                </div>
+                <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 12px;">
+                    <tr style="background-color: #2c3e50; color: white; font-weight: bold; text-align: center;">
+                        <td colspan="2" style="padding: 5px; border: 1px solid #dee2e6;">RESUMO CRESCIMENTO (Vs 2026)</td>
+                    </tr>
+                    <tr><td style="padding: 3px; border: 1px solid #dee2e6;">ITENS ATINGIRAM</td><td style="padding: 3px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram_26}</td></tr>
+                    <tr><td style="padding: 3px; border: 1px solid #dee2e6;">REALIZADO (%)</td><td style="padding: 3px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: {'green' if realizado_perc_26 >= 80 else '#e67e22'};">{realizado_perc_26:.1f}%</td></tr>
+                    <tr><td style="padding: 3px; border: 1px solid #dee2e6;">FALTA (%) PARA 80%</td><td style="padding: 3px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{falta_perc_26:.1f}%</td></tr>
+                </table>
             """, unsafe_allow_html=True)
 
-        # --- EXIBIÇÃO DA TABELA DETALHADA (APENAS UMA VEZ) ---
+        # Cobertura logo abaixo
+        st.write("")
+        base_fmt = f"{base_total:,.0f}".replace(",", ".")
+        atingido_fmt = f"{real_perc:.1f}".replace(".", ",") + "%"
+        st.markdown(f"""
+            <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px; background-color: #f9f9f9; text-align: center;">
+                <span style="color: #666; font-size: 0.9em;"><b>COBERTURA GERAL:</b> Base: {base_fmt} | Meta: {meta_val:.0f}% | 
+                Atingido: <span style="color:{cor_indicador}; font-weight: bold; font-size: 1.2em;">{atingido_fmt}</span></span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # --- EXIBIÇÃO DA TABELA DETALHADA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         
         colunas_ordenadas = [
