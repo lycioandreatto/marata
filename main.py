@@ -1015,6 +1015,35 @@ elif menu == "📋 Novo Agendamento":
             ven_sel = user_atual
             st.info(f"Agendando para sua própria base: {user_atual}")
 
+        # --- NOVO BLOCO: ALERTA DE CLIENTES SEM COMPRA (+30 DIAS) ---
+        if ven_sel != "Selecione..." and df_fat is not None:
+            with st.expander("🚨 ALERTA: Clientes há mais de 30 dias sem comprar", expanded=False):
+                try:
+                    df_fat_tmp = df_fat.copy()
+                    col_dt = 'Data fat.'
+                    df_fat_tmp[col_dt] = pd.to_datetime(df_fat_tmp[col_dt], errors='coerce')
+                    
+                    # Filtra faturamento do vendedor selecionado
+                    fat_v = df_fat_tmp[df_fat_tmp['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
+                    
+                    if not fat_v.empty:
+                        # Pega a última compra
+                        ult_c = fat_v.groupby(['CÓDIGO CLIENTE', 'CLIENTE'])[col_dt].max().reset_index()
+                        hoje_ref = datetime.now(fuso_br).replace(tzinfo=None)
+                        ult_c['Dias'] = (hoje_ref - ult_c[col_dt]).dt.days
+                        
+                        # Filtra > 30 dias
+                        criticos = ult_c[ult_c['Dias'] > 30].sort_values(by='Dias', ascending=False)
+                        
+                        if not criticos.empty:
+                            st.error(f"Atenção: {len(criticos)} clientes inativos há mais de 30 dias!")
+                            ult_c[col_dt] = ult_c[col_dt].dt.strftime('%d/%m/%Y')
+                            st.dataframe(criticos[['CÓDIGO CLIENTE', 'CLIENTE', 'Dias']], use_container_width=True, hide_index=True)
+                        else:
+                            st.success("✅ Todos os clientes compraram nos últimos 30 dias.")
+                except:
+                    pass # Silencia erro se colunas não baterem para não travar o app
+
         # --- VERIFICAÇÃO DE PUNIÇÃO (TRAVA) ---
         if ven_sel != "Selecione...":
             hoje_dt = datetime.now(fuso_br).date()
@@ -1040,7 +1069,7 @@ elif menu == "📋 Novo Agendamento":
             
             if 'VENDEDOR' not in df_agenda.columns: df_agenda['VENDEDOR'] = ""
 
-            # Normalização para comparação (evita duplicados por tipo de dado)
+            # Normalização
             df_agenda['CÓDIGO CLIENTE'] = df_agenda['CÓDIGO CLIENTE'].astype(str)
             clientes_f['Cliente'] = clientes_f['Cliente'].astype(str)
 
@@ -1075,7 +1104,6 @@ elif menu == "📋 Novo Agendamento":
                 if cliente_sel != "Selecione...":
                     qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
                     
-                    # Form com clear_on_submit para evitar re-processamento
                     with st.form("form_novo_v", clear_on_submit=True):
                         cols_datas = st.columns(qtd_visitas)
                         datas_sel = [cols_datas[i].date_input(f"Data {i+1}:", value=hoje_dt, min_value=hoje_dt, key=f"d_{i}") for i in range(qtd_visitas)]
@@ -1095,11 +1123,9 @@ elif menu == "📋 Novo Agendamento":
                                     "JUSTIFICATIVA": "-", "STATUS": "Planejado", "AGENDADO POR": user_atual 
                                 })
                             
-                            # --- O SEGREDO: IGNORAR DUPLICIDADE ANTES DE SALVAR ---
                             df_antigo = df_agenda.drop(columns=['LINHA'], errors='ignore').copy()
                             df_novo = pd.DataFrame(novas_linhas)
                             
-                            # Une os dados e remove duplicados baseados no Vendedor, Cliente e Data
                             df_final_a = pd.concat([df_antigo, df_novo], ignore_index=True)
                             df_final_a = df_final_a.drop_duplicates(subset=['VENDEDOR', 'CÓDIGO CLIENTE', 'DATA'], keep='first')
                             
