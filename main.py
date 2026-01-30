@@ -1250,119 +1250,86 @@ elif menu_interna == "📊 Desempenho de Vendas":
             "VINAGRE", "VINAGRE ESPECIAL"
         ]
 
-        # ... (Tratamentos de dados permanecem os mesmos até o agrupamento) ...
+        # ... (Mantém o tratamento inicial de colunas e nomes das abas conforme seu código) ...
 
-       # ... (Tratamento das abas e try/except acima permanecem iguais)
+        if df_faturado is not None and not df_faturado.empty:
+            # Inicialização das variáveis para evitar erro de definição
+            df_f = df_faturado.copy()
+            df_ms = df_meta_sistema.copy() if df_meta_sistema is not None else None
+            df_25 = df_2025.copy() if df_2025 is not None else None
+            base_total = 1
+            meta_val = 0
 
-    if df_faturado is not None and not df_faturado.empty:
-        # --- INICIALIZAÇÃO DAS VARIÁVEIS (Evita o erro "not defined") ---
-        df_f = df_faturado.copy()
-        df_ms = df_meta_sistema.copy() if df_meta_sistema is not None else None
-        df_25 = df_2025.copy() if df_2025 is not None else None
-        
-        # Inicializa base_total e meta_val com valores padrão para evitar erros de cálculo
-        base_total = 1 
-        meta_val = 0
-        
-        st.markdown("### 🔍 Filtros")
-        c0, c2, c3 = st.columns(3)
-        
-        with c0:
-            sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
-        
-        with c2:
-            df_temp_sup = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
-            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()))
+            # --- FILTROS ---
+            st.markdown("### 🔍 Filtros")
+            c0, c2, c3 = st.columns(3)
+            with c0: sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
+            with c2:
+                df_temp_sup = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
+                sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()))
+            with c3:
+                df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
+                sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
+
+            # Aplicação dos filtros
+            if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
+            if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
+            if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
             
-        with c3:
-            df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
-            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
+            vendedores_ids = df_f['VENDEDOR_COD'].unique()
 
-        # --- APLICAÇÃO DOS FILTROS ---
-        if sel_estado: 
-            df_f = df_f[df_f['EscrV'].isin(sel_estado)]
-            if df_ms is not None: df_ms = df_ms[df_ms['EscrV'].isin(sel_estado)]
-        if sel_supervisor: 
-            df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
-            if df_ms is not None: df_ms = df_ms[df_ms['EqvS'].isin(sel_supervisor)]
-        if sel_vendedor: 
-            df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
+            # Cálculo de Base e Metas Superiores
+            if not df_f.empty:
+                if not (sel_supervisor or sel_vendedor):
+                    df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
+                    positivacao_total = df_limpo[col_k].nunique()
+                    dados_meta = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())]
+                    base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
+                else:
+                    positivacao_total = df_f[col_k].nunique()
+                    dados_meta = df_metas_cob[df_metas_cob['RG'].isin([str(x) for x in vendedores_ids])]
+                    base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
+
+            # --- PROCESSAMENTO DA TABELA POR HIERARQUIA ---
+            st.markdown("### 📈 Desempenho por Hierarquia")
             
-        vendedores_ids = df_f['VENDEDOR_COD'].unique()
-        if df_ms is not None: df_ms = df_ms[df_ms['RG'].isin(vendedores_ids)]
-        if df_25 is not None: df_25 = df_25[df_25['RG'].isin(vendedores_ids)]
+            # Agrupamento Realizado
+            df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVAÇÃO'}).reset_index()
 
-        # --- LÓGICA DE MÉTRICAS SUPERIORES ---
-        if not df_f.empty:
-            if not (sel_supervisor or sel_vendedor):
-                df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
-                positivacao = df_limpo[col_k].nunique()
-                dados_meta = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())]
-                base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
-                meta_val = dados_meta['META_COB'].mean() if not dados_meta.empty else 0
-            else:
-                positivacao = df_f[col_k].nunique()
-                dados_meta = df_metas_cob[df_metas_cob['RG'].isin([str(x) for x in vendedores_ids])]
-                base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
-                meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
+            # Agrupamento Metas
+            df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
+            df_metas_h = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'})
+
+            # Merge e Cálculos
+            df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
+            df_final_h = pd.merge(df_final_h, df_metas_h, on='HIERARQUIA', how='left')
+            df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') if 'df_25_agrupado' in locals() else df_final_h
+            df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left') if 'df_ms_agrupado' in locals() else df_final_h
+            df_final_h = df_final_h.fillna(0)
+
+            # LÓGICA DE CÁLCULO SOLICITADA
+            import numpy as np
+            # 1. Meta Absoluta
+            df_final_h['META CLIENTES (ABS)'] = np.ceil((df_final_h['META COBERTURA'] / 100) * base_total)
             
-            real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
-            cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
+            # 2. Pendência (Meta - Realizado) -> Clip(lower=0) garante que se bater a meta, fica 0
+            df_final_h['PENDÊNCIA (FALTAM)'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
 
-            st.markdown("---")
-            m1, m2, m3 = st.columns([1, 1, 2])
-            m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}".replace(",", "."))
-            m2.metric("🏪 Positivados", f"{positivacao:,.0f}".replace(",", "."))
-            
-            with m3:
-                estados_str = ", ".join(map(str, df_f['EscrV'].unique()))
-                st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small style="color: #666;">COBERTURA ({estados_str})</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.0f}%</b></span><br>
-                    Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
-                </div>
-                """, unsafe_allow_html=True)
+            # Organização de Colunas
+            df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'})
+            ordem = ['HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 'PENDÊNCIA (FALTAM)', 'META 2025', 'META 2026', 'VOLUME']
+            df_final_h = df_final_h[[c for c in ordem if c in df_final_h.columns]]
 
-        # --- TABELA DE DESEMPENHO POR HIERARQUIA ---
-        st.markdown("### 📈 Desempenho por Hierarquia")
-        
-        # Agrupamentos (Agora garantidos porque df_f foi definido no topo)
-        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVADO_REAL'}).reset_index()
+            st.dataframe(
+                df_final_h.sort_values(by='HIERARQUIA DE PRODUTOS').style.format({
+                    'META COBERTURA': "{:.1f}%",
+                    'META CLIENTES (ABS)': "{:.0f}",
+                    'POSITIVAÇÃO': "{:.0f}",
+                    'PENDÊNCIA (FALTAM)': "{:.0f}",
+                    'VOLUME': "{:,.0f}"
+                }), 
+                use_container_width=True, hide_index=True
+            )
 
-        df_ms_agrupado = df_ms.groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_ms is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
-        df_25_agrupado = df_25.groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_25 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
-
-        # Cruzamento Cobertura
-        df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
-        df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'}) if 'META COBERTURA' in df_metas_sub.columns else pd.DataFrame(columns=['HIERARQUIA', 'META COBERTURA'])
-
-        # Merge Final
-        df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
-        df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left')
-        df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
-        df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
-        
-        # --- CÁLCULOS FINAIS ---
-        import numpy as np
-        df_final_h['META CLIENTES (ABS)'] = np.ceil((df_final_h['META COBERTURA'] / 100) * base_total)
-        df_final_h['PENDÊNCIA (FALTAM)'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVADO_REAL']).clip(lower=0)
-        
-        df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
-        
-        colunas_ordenadas = ['HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 'PENDÊNCIA (FALTAM)', 'META 2025', 'META 2026', 'VOLUME']
-        df_final_h = df_final_h[colunas_ordenadas]
-        
-        st.dataframe(
-            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style.format({
-                'META COBERTURA': "{:.1f}%",
-                'META CLIENTES (ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
-                'POSITIVAÇÃO': lambda x: f"{x:,.0f}".replace(",", "."), 
-                'PENDÊNCIA (FALTAM)': lambda x: f"{x:,.0f}".replace(",", "."),
-                'META 2025': lambda x: f"{x:,.0f}".replace(",", "."),
-                'META 2026': lambda x: f"{x:,.0f}".replace(",", "."),
-                'VOLUME': lambda x: f"{x:,.0f}".replace(",", ".")
-            }), 
-            use_container_width=True, 
-            hide_index=True
-        )
+    except Exception as e:
+        st.error(f"Erro no processamento das abas: {e}")
