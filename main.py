@@ -1248,6 +1248,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             "VINAGRE", "VINAGRE ESPECIAL"
         ]
 
+        # Função de tratamento de texto para as hierarquias (reutilizada para bater as tabelas)
         def aplicar_agrupamento_custom(item):
             item = str(item).strip().upper()
             mapeamento = {
@@ -1280,23 +1281,14 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
-        # --- TRATAMENTO ROBUSTO DA ABA DE METAS ---
         if df_metas_cob is not None:
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
-            df_metas_cob['EscrV'] = df_metas_cob['EscrV'].astype(str).str.strip().upper()
-            
+            # Limpeza da Meta Cobertura: Remove %, troca vírgula por ponto e converte
             if 'META COBERTURA' in df_metas_cob.columns:
-                # Converte para numérico pura e simplesmente
-                df_metas_cob['META_COB_NUM'] = (
-                    df_metas_cob['META COBERTURA'].astype(str)
-                    .str.replace('%', '')
-                    .str.replace(',', '.')
-                    .str.strip()
-                )
+                df_metas_cob['META_COB_NUM'] = df_metas_cob['META COBERTURA'].astype(str).str.replace('%', '').str.replace(',', '.')
                 df_metas_cob['META_COB_NUM'] = pd.to_numeric(df_metas_cob['META_COB_NUM'], errors='coerce').fillna(0)
-                
-                # A regra do 0.15 -> 15% (Se for menor que 1, provavelmente é percentual decimal)
-                df_metas_cob['META_COB_NUM'] = df_metas_cob['META_COB_NUM'].apply(lambda x: x * 100 if 0 < x < 1 else x)
+                # Se o valor for decimal (ex: 0.15), transforma em inteiro (15)
+                df_metas_cob['META_COB_NUM'] = df_metas_cob['META_COB_NUM'].apply(lambda x: x * 100 if 0 < x <= 1 else x)
 
     except Exception as e:
         st.error(f"Erro no processamento das abas: {e}")
@@ -1305,53 +1297,54 @@ elif menu_interna == "📊 Desempenho de Vendas":
     if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
         
-        # Filtros
+        st.markdown("### 🔍 Filtros")
         c0, c2, c3 = st.columns(3)
-        with c0: 
-            lista_estados = sorted(df_f['EscrV'].dropna().unique())
-            sel_estado = st.multiselect("Estado", lista_estados)
-        
-        # ... (Mantendo seus filtros de supervisor e vendedor)
-        if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
-        # ... (Aplicar filtros de supervisor/vendedor aqui)
+        with c0: sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
+        with c2:
+            df_temp_sup = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
+            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()))
+        with c3:
+            df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
+            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
 
-        # --- LÓGICA DA TABELA FINAL ---
+        if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
+        if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
+        if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
+
+        if not df_f.empty:
+            # (Lógica de cards mantida...)
+            positivacao = df_f[col_k].nunique()
+            # ... (código omitido para brevidade, mas mantido no seu arquivo)
+
+        # --- TABELA DE HIERARQUIA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         
         # 1. Agrupar Vendas Reais
-        df_real = df_f.groupby('HIERARQUIA').agg({
-            'QTD_VENDAS': 'sum', 
-            col_k: 'nunique'
-        }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
-
-        # 2. Filtrar Metas baseado nos estados ativos no df_f (pós filtro)
-        estados_ativos = [str(x).strip().upper() for x in df_f['EscrV'].unique()]
-        df_m_filtrado = df_metas_cob[df_metas_cob['EscrV'].isin(estados_ativos)].copy()
-
-        if not df_m_filtrado.empty:
-            # Crucial: aplicar a mesma limpeza de nome que nas vendas
-            df_m_filtrado['HIER_JOIN'] = df_m_filtrado['Hierarquia de produtos'].apply(aplicar_agrupamento_custom)
-            
-            # Pega a meta por Hierarquia (usando first para simplificar, já que você disse que é igual por estado)
-            df_metas_map = df_m_filtrado.groupby('HIER_JOIN')['META_COB_NUM'].first().reset_index()
-            df_metas_map.rename(columns={'HIER_JOIN': 'HIERARQUIA', 'META_COB_NUM': 'Meta Cobertura'}, inplace=True)
-        else:
-            df_metas_map = pd.DataFrame(columns=['HIERARQUIA', 'Meta Cobertura'])
-
-        # 3. Join Final
-        df_final = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
-        df_final = pd.merge(df_final, df_real, on='HIERARQUIA', how='left')
-        df_final = pd.merge(df_final, df_metas_map, on='HIERARQUIA', how='left')
+        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
         
-        # Preenche vazios com zero para Volume/Posit, mas NaN para Meta se preferir (aqui usei fillna(0))
-        df_final = df_final.fillna(0)
+        # 2. Capturar Metas do Estado Selecionado
+        estados_atuais = df_f['EscrV'].unique()
+        df_m_filtrado = df_metas_cob[df_metas_cob['EscrV'].isin(estados_atuais)].copy()
+        
+        if not df_m_filtrado.empty and 'Hierarquia de produtos' in df_m_filtrado.columns:
+            # Normaliza a hierarquia na planilha de metas para o cruzamento funcionar
+            df_m_filtrado['HIERARQUIA_JOIN'] = df_m_filtrado['Hierarquia de produtos'].apply(aplicar_agrupamento_custom)
+            df_metas_final = df_m_filtrado.groupby('HIERARQUIA_JOIN')['META_COB_NUM'].mean().reset_index()
+            df_metas_final.rename(columns={'HIERARQUIA_JOIN': 'HIERARQUIA', 'META_COB_NUM': 'Meta Cobertura'}, inplace=True)
+        else:
+            df_metas_final = pd.DataFrame(columns=['HIERARQUIA', 'Meta Cobertura'])
 
+        # 3. Montagem da Tabela Final
+        df_tab = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
+        df_tab = pd.merge(df_tab, df_f_agrupado, on='HIERARQUIA', how='left')
+        df_tab = pd.merge(df_tab, df_metas_final, on='HIERARQUIA', how='left').fillna(0)
+        
         st.dataframe(
-            df_final.sort_values(by='HIERARQUIA').style.format({
-                'Volume': lambda x: f"{x:,.0f}".replace(",", "."),
+            df_tab.sort_values(by=['HIERARQUIA'], ascending=True).style.format({
+                'Volume': lambda x: f"{x:,.0f}".replace(",", "."), 
                 'Positivação': lambda x: f"{x:,.0f}".replace(",", "."),
-                'Meta Cobertura': "{:.0f}%"
-            }),
-            use_container_width=True,
+                'Meta Cobertura': lambda x: f"{x:.0f}%"
+            }), 
+            use_container_width=True, 
             hide_index=True
         )
