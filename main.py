@@ -417,25 +417,28 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- FILTRO DE PENDÊNCIAS POR ANALISTA ---
+    # --- FILTRO DE PENDÊNCIAS POR HIERARQUIA (SINO) ---
     if eh_gestao:
         if df_agenda is not None and not df_agenda.empty:
-            # Se for Analista, filtra apenas o que é dele. Se for Admin/Diretoria, vê tudo.
+            # Filtra apenas registros com status Pendente
+            df_p_base = df_agenda[df_agenda['STATUS'] == "Pendente"]
+            
+            # Lógica de Filtro: Se for analista (e não admin/diretoria), filtra pelo nome dele
             if is_analista and not (is_admin or is_diretoria):
-                df_pendentes_contagem = df_agenda[
-                    (df_agenda['STATUS'] == "Pendente") & 
-                    (df_agenda['SUPERVISOR'].str.upper() == user_atual.upper())
+                df_pendentes_contagem = df_p_base[
+                    df_p_base['SUPERVISOR'].str.upper() == user_atual.upper()
                 ]
             else:
-                df_pendentes_contagem = df_agenda[df_agenda['STATUS'] == "Pendente"]
+                # Admin (Lycio) e Diretoria (Aldo) vêem o total de todos
+                df_pendentes_contagem = df_p_base
             
             qtd_p = len(df_pendentes_contagem)
         else:
             qtd_p = 0
 
-        # Exibição do Sino
+        # Exibição do Sino Flutuante
         if qtd_p > 0:
-            if st.button(f"🔔 {qtd_p} Suas Pendências", use_container_width=True, type="primary"):
+            if st.button(f"🔔 {qtd_p} Pendências da Sua Equipe", use_container_width=True, type="primary"):
                 st.session_state.pagina_direta = "🔔 Aprovações"
                 st.rerun()
         else:
@@ -460,14 +463,17 @@ with st.sidebar:
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
+    # Inicializa estado de página se não existir
     if "pagina_direta" not in st.session_state:
         st.session_state.pagina_direta = None
 
+    # Se o usuário interagir com o selectbox, cancela a visualização forçada do sino
     if menu:
+        # Se mudar o menu, limpa o estado do botão de aprovações
         if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia": 
              st.session_state.pagina_direta = None
 
-    # Define a página interna
+    # Define qual será a variável de controle da página (menu_interna)
     if st.session_state.pagina_direta:
         menu_interna = st.session_state.pagina_direta
     elif menu == texto_ver_agenda:
