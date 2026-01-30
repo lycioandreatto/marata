@@ -425,26 +425,38 @@ with st.sidebar:
     else:
         texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
+    # --- NOVO: LÓGICA DE CONTAGEM PARA O SININHO ---
+    qtd_p = 0
+    if df_agenda is not None and not df_agenda.empty:
+        # Filtra apenas o que está como 'Pendente' na coluna STATUS
+        qtd_p = len(df_agenda[df_agenda['STATUS'] == "Pendente"])
+
     # 1. Lista base de opções (acesso comum)
-    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
+    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento"]
     
-    # 2. Trava de segurança: Desempenho de Vendas apenas para o Lycio
-    # Ajuste o nome "LYCIO" para como ele aparece exatamente no seu st.session_state.usuario
+    # 2. Adiciona Aprovações APENAS para Gestores
+    if eh_gestao:
+        label_aprovacoes = f"🔔 Aprovações ({qtd_p})" if qtd_p > 0 else "🔔 Aprovações"
+        opcoes_menu.append(label_aprovacoes)
+
+    # 3. Adiciona o restante das opções
+    opcoes_menu.append(texto_ver_agenda)
+    
     if user_atual.upper() == "LYCIO":
         opcoes_menu.append("📊 Desempenho de Vendas")
     
-    # 3. Opções exclusivas de Gestão/Admin
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
         
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
-    # Padronização interna para o código
+    # Padronização interna para o código (Ajustado para o Sininho)
     if menu == texto_ver_agenda:
         menu_interna = "🔍 Ver/Editar Minha Agenda"
+    elif menu.startswith("🔔 Aprovações"):
+        menu_interna = "🔔 Aprovações"
     else:
-        menu_interna = menu 
-
+        menu_interna = menu
     # Botão Sair
     if st.button("Sair", key="btn_logout_sidebar"):
         if "user_marata" in cookies:
