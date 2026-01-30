@@ -1292,9 +1292,17 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if df_metas_cob is not None:
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
+            df_metas_cob['EscrV'] = df_metas_cob['EscrV'].astype(str).str.strip()
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+            
+            # Formatação da Meta Geral
             metas_vend_raw = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
             df_metas_cob['META'] = metas_vend_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
+            
+            # Tratamento da Meta Cobertura por Hierarquia (Garante que seja numérico)
+            if 'META COBERTURA' in df_metas_cob.columns:
+                m_hier_raw = pd.to_numeric(df_metas_cob['META COBERTURA'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
+                df_metas_cob['META COBERTURA'] = m_hier_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
 
     except Exception as e:
         st.error(f"Erro no processamento das abas: {e}")
@@ -1358,14 +1366,36 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 </div>
                 """, unsafe_allow_html=True)
 
+        # --- LÓGICA DA NOVA COLUNA DE META POR HIERARQUIA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
-        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
-        df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
+        # 1. Agrupar Vendas Reais
+        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
+        
+        # 2. Obter Metas da aba META COBXPOSIT filtrando pelo Estado atual do df_f
+        estados_atuais = df_f['EscrV'].unique()
+        df_metas_filtradas = df_metas_cob[df_metas_cob['EscrV'].isin(estados_atuais)]
+        
+        # Mapeia Hierarquia -> Média da Meta Cobertura (caso haja mais de um registro por estado/hierarquia)
+        # Note: 'Hierarquia de produtos' é o nome da coluna na aba META COBXPOSIT
+        if 'Hierarquia de produtos' in df_metas_filtradas.columns:
+            df_metas_h = df_metas_filtradas.groupby('Hierarquia de produtos')['META COBERTURA'].mean().reset_index()
+            df_metas_h.rename(columns={'Hierarquia de produtos': 'HIERARQUIA', 'META COBERTURA': 'Meta Cobertura'}, inplace=True)
+            # Aplica o mesmo tratamento de nomes para bater com a lista fixa
+            df_metas_h['HIERARQUIA'] = df_metas_h['HIERARQUIA'].apply(aplicar_agrupamento_custom)
+        else:
+            df_metas_h = pd.DataFrame(columns=['HIERARQUIA', 'Meta Cobertura'])
+
+        # 3. Cruzar Tudo
+        df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
+        df_final_h = pd.merge(df_final_h, df_metas_h, on='HIERARQUIA', how='left').fillna(0)
+        
+        # Exibição da Tabela
         st.dataframe(
             df_final_h.sort_values(by=['HIERARQUIA'], ascending=True).style.format({
                 'Volume': lambda x: f"{x:,.0f}".replace(",", "."), 
-                'Positivação': lambda x: f"{x:,.0f}".replace(",", ".")
+                'Positivação': lambda x: f"{x:,.0f}".replace(",", "."),
+                'Meta Cobertura': "{:.0f}%"
             }), 
             use_container_width=True, 
             hide_index=True
