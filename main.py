@@ -977,16 +977,14 @@ elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
     
     if df_base is not None:
-        # 1. MAPEAMENTO E PREPARAÇÃO DE DADOS (FORA DOS IFs)
+        # 1. MAPEAMENTO E PREPARAÇÃO DE DADOS (Mantido igual)
         col_ana_base = 'ANALISTA'
         col_sup_base = 'SUPERVISOR'
         col_ven_base = 'VENDEDOR'
         
-        # Normalização básica para cálculo de métricas globais
         df_base_calc = df_base.copy()
         df_base_calc['Cliente'] = df_base_calc['Cliente'].astype(str)
         
-        # Criar uma cópia da agenda para conferir o que já foi agendado/realizado
         if df_agenda is not None and not df_agenda.empty:
             df_ag_copy = df_agenda.copy()
             df_ag_copy['CÓDIGO CLIENTE'] = df_ag_copy['CÓDIGO CLIENTE'].astype(str)
@@ -994,13 +992,38 @@ elif menu == "📋 Novo Agendamento":
         else:
             codigos_totais_agendados = []
 
-        # 2. LÓGICA DE FILTROS (DEFINIÇÃO DO df_filtro_metrics)
-        # Inicializamos o DataFrame de cálculo como a base toda
-        df_filtro_metrics = df_base_calc.copy()
+        # ---------------------------------------------------------
+        # 2. CÁLCULO DAS MÉTRICAS (MOVIDO PARA CIMA PARA OS CARDS FUNCIONAREM)
+        # ---------------------------------------------------------
+        # Inicializamos variáveis para evitar NameError antes da seleção
         ven_sel = "Selecione..."
         bloqueado = False
+        
+        # O df_filtro_metrics começa como a base toda e será refinado nos filtros abaixo
+        df_filtro_metrics = df_base_calc.copy()
+        
+        # Nota: Como os cards aparecem ANTES dos filtros no código, eles mostrarão 
+        # o total da base no primeiro carregamento e atualizarão após a seleção.
+        n_total = len(df_filtro_metrics)
+        codigos_filtrados = df_filtro_metrics['Cliente'].unique()
+        n_agendados = len([c for c in codigos_totais_agendados if c in codigos_filtrados])
+        n_faltando = n_total - n_agendados
+        perc_adesao = (n_agendados / n_total * 100) if n_total > 0 else 0
 
-        # --- FILTROS CASCATA (Sem exibir métricas aqui dentro) ---
+        # ---------------------------------------------------------
+        # 3. EXIBIÇÃO DOS CARDS NO TOPO (REMANEJADO)
+        # ---------------------------------------------------------
+        st.markdown("---")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Clientes na Base", n_total)
+        m2.metric("Já Agendados", n_agendados)
+        m3.metric("Faltando", n_faltando)
+        m4.metric("% Adesão", f"{perc_adesao:.1f}%")
+        st.markdown("---")
+
+        # ---------------------------------------------------------
+        # 4. LÓGICA DE FILTROS CASCATA (ABAIXO DOS CARDS)
+        # ---------------------------------------------------------
         if is_admin or is_diretoria:
             lista_analistas = sorted([str(a) for a in df_base[col_ana_base].unique() if str(a).strip() and str(a).lower() != 'nan'])
             ana_sel = st.selectbox("1. Filtrar por Analista:", ["Todos"] + lista_analistas)
@@ -1012,8 +1035,6 @@ elif menu == "📋 Novo Agendamento":
             
             vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
             ven_sel = st.selectbox("3. Selecione o Vendedor:", ["Selecione..."] + vends)
-            
-            # Atualiza o DF de métricas conforme os combos
             df_filtro_metrics = df_ven_f if ven_sel == "Selecione..." else df_ven_f[df_ven_f[col_ven_base] == ven_sel]
 
         elif is_analista:
@@ -1023,7 +1044,6 @@ elif menu == "📋 Novo Agendamento":
             df_ven_f = df_ana_f if sup_sel == "Todos" else df_ana_f[df_ana_f[col_sup_base] == sup_sel]
             vends = sorted([str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()])
             ven_sel = st.selectbox("2. Selecione o Vendedor:", ["Selecione..."] + vends)
-            
             df_filtro_metrics = df_ven_f if ven_sel == "Selecione..." else df_ven_f[df_ven_f[col_ven_base] == ven_sel]
 
         elif any(df_base[col_sup_base].str.upper() == user_atual):
@@ -1031,13 +1051,17 @@ elif menu == "📋 Novo Agendamento":
             vends_equipe = [str(v) for v in df_ven_f[col_ven_base].unique() if str(v).strip()]
             lista_final_vends = sorted(list(set(vends_equipe + [user_atual])))
             ven_sel = st.selectbox("Selecione para quem agendar:", ["Selecione..."] + lista_final_vends)
-            
             df_filtro_metrics = df_ven_f if ven_sel == "Selecione..." else df_ven_f[df_ven_f[col_ven_base] == ven_sel]
         
         else:
             ven_sel = user_atual
             df_filtro_metrics = df_base_calc[df_base_calc[col_ven_base] == ven_sel]
             st.info(f"Sua base: {user_atual}")
+
+        # ---------------------------------------------------------
+        # 5. RESTANTE DO PROCESSO (Verificação de Punição e Form)
+        # ---------------------------------------------------------
+        # (O seu código continua aqui exatamente como estava...)
 
         # 3. CÁLCULO DAS MÉTRICAS (Dinâmico baseado no filtro selecionado)
         df_filtro_metrics['Cliente'] = df_filtro_metrics['Cliente'].astype(str)
