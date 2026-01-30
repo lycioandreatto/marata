@@ -946,7 +946,7 @@ elif menu == "📋 Novo Agendamento":
                     with st.expander("Ver visitas pendentes de atualização"):
                         st.table(pendencias_passadas[['DATA', 'CLIENTE', 'STATUS']].sort_values(by='DATA'))
 
-       # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
+      # --- PROCESSAMENTO DO AGENDAMENTO (SÓ EXIBE SE NÃO ESTIVER BLOQUEADO) ---
         if ven_sel != "Selecione..." and not bloqueado:
             
             # 1. Filtramos a base e removemos duplicados do mesmo cliente para o mesmo vendedor
@@ -967,8 +967,7 @@ elif menu == "📋 Novo Agendamento":
                 (df_agenda['STATUS'].isin(['Planejado', 'Realizado']))
             ]['CÓDIGO CLIENTE'].astype(str).str.strip().unique()
             
-            # 3. FILTRAGEM DE PENDENTES (Garantindo que a comparação ignore tipos de dados diferentes)
-            # Verificamos se o 'Cliente' (código) da base NÃO está nos agendados
+            # 3. FILTRAGEM DE PENDENTES
             clientes_pendentes = clientes_f[
                 ~clientes_f['Cliente'].astype(str).str.strip().isin(codigos_agendados)
             ].copy()
@@ -984,8 +983,16 @@ elif menu == "📋 Novo Agendamento":
             m3.metric("Faltando", n_pend_metric)
             m4.metric("% Adesão", f"{(n_agendados/n_total*100 if n_total>0 else 0):.1f}%")
             
+            # Identificação dos vínculos para salvar
+            try:
+                amostra = clientes_f.iloc[0]
+                analista_vinc = str(amostra[col_ana_base]).upper()
+                supervisor_vinc = str(amostra[col_sup_base]).upper()
+            except:
+                analista_vinc = "N/I"
+                supervisor_vinc = user_atual if ven_sel == user_atual else "N/I"
+
             # --- LISTA PARA O SELECTBOX ---
-            # Usamos unique() para garantir que o nome não se repita visualmente
             lista_c = sorted(
                 clientes_pendentes.apply(lambda x: f"{str(x['Cliente']).strip()} - {x['Nome 1']}", axis=1).unique().tolist()
             )
@@ -993,16 +1000,33 @@ elif menu == "📋 Novo Agendamento":
             if not lista_c:
                 st.success(f"✅ Todos os clientes de {ven_sel} já foram agendados!")
             else:
-                cliente_sel = st.selectbox("Selecione o Cliente (Apenas Pendentes):", ["Selecione..."] + lista_c)
-                # ... (resto do formulário de salvar agendamento)
+                # Adicionada KEY única para evitar StreamlitDuplicateElementId
+                id_vendedor = str(ven_sel).replace(" ", "_")
+                cliente_sel = st.selectbox(
+                    "Selecione o Cliente (Apenas Pendentes):", 
+                    ["Selecione..."] + lista_c,
+                    key=f"sel_cliente_{id_vendedor}"
+                )
+                
+                if cliente_sel != "Selecione...":
+                    qtd_visitas = st.number_input(
+                        "Quantidade de visitas (Máx 4):", 
+                        min_value=1, max_value=4, value=1,
+                        key=f"qtd_{id_vendedor}"
+                    )
                     
-                    with st.form("form_novo_v"):
+                    # Formulário com KEY única
+                    with st.form(key=f"form_novo_v_{id_vendedor}"):
                         cols_datas = st.columns(qtd_visitas)
                         datas_sel = []
                         for i in range(qtd_visitas):
                             with cols_datas[i]:
-                                # Trava de data: Não permite retroativo (min_value=hoje_dt)
-                                d = st.date_input(f"Data {i+1}:", value=hoje_dt, min_value=hoje_dt, key=f"d_{i}")
+                                d = st.date_input(
+                                    f"Data {i+1}:", 
+                                    value=hoje_dt, 
+                                    min_value=hoje_dt, 
+                                    key=f"d_{i}_{id_vendedor}"
+                                )
                                 datas_sel.append(d)
                         
                         if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
