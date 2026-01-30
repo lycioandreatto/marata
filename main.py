@@ -807,7 +807,7 @@ elif menu == "📊 Dashboard de Controle":
                 df_conv['ÚLT. FAT.'] = pd.to_datetime(df_conv['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
                 
                 df_view = df_conv[[col_cliente_base, col_nome_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']].copy()
-                df_view.columns = ['CÓDIGO', 'NOME', 'FAM. ATUAIS', 'GAP FAM', 'SKU ATUAIS', 'GAP SKU', 'ÚLT. FAT.']
+                df_view.columns = ['CÓDIGO', 'NOME', 'FAM. FAT', 'GAP FAM', 'SKUS FAT', 'GAP SKU', 'ÚLT. FAT.']
                 df_view.insert(0, "Selecionar", False)
 
                 edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True, key="editor_gap")
