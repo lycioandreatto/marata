@@ -1224,23 +1224,31 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
+# --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) ---
 elif menu_interna == "📊 Desempenho de Vendas":
     
-    # 1. LISTA DE USUÁRIOS AUTORIZADOS
+    # 1. LISTA DE USUÁRIOS AUTORIZADOS (Sempre em minúsculas aqui)
     usuarios_com_acesso = ["lycio", "admin"]
-    usuario_atual = st.session_state.get('username')
 
-    # 2. TRAVA DE SEGURANÇA
+    # 2. BUSCA O USUÁRIO E FAZ A LIMPEZA
+    # .strip() remove espaços e .lower() deixa tudo minúsculo
+    usuario_atual = str(st.session_state.get('username', '')).strip().lower()
+
+    # 3. VERIFICAÇÃO MELHORADA
     if usuario_atual not in usuarios_com_acesso:
         st.header("📊 Desempenho de Vendas")
         st.warning("🚀 **Página em Desenvolvimento**")
-        st.info(f"Olá **{usuario_atual}**, esta funcionalidade está sendo finalizada e será liberada em breve.")
+        st.info(f"Olá **{usuario_atual}**, seu acesso ainda não está liberado nesta aba.")
+        
+        # Log para você descobrir como o sistema está lendo seu nome:
+        st.write(f"DEBUG: O sistema te reconhece como: `{usuario_atual}`")
         st.stop() 
 
-    # 3. SE PASSAR PELA TRAVA, EXECUTA O CONTEÚDO
+    # --- SE PASSAR, SEGUE O CÓDIGO ---
     st.header("📊 Desempenho de Vendas (Faturado)")
     
     try:
+        # Aqui continua seu código df_faturado = ...
         # 1. Leitura das abas
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
         df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
