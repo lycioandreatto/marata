@@ -1283,10 +1283,13 @@ elif menu_interna == "📊 Desempenho de Vendas":
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
         if df_param_metas is not None:
+            # Padroniza nomes de colunas conforme o print (EscrV, BASE, META_COB)
             df_param_metas.columns = [str(c).strip().upper() for c in df_param_metas.columns]
-            df_param_metas.rename(columns={'ANALISTA': 'ESCRV', 'ESTADO': 'ESCRV'}, inplace=True)
+            # No print as colunas são EscrV, BASE, META_COB. O .upper() as torna ESCRV, BASE, META_COB.
             df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
             df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
+            # Garante que os nomes dos estados estejam em caixa alta para o merge/filtro
+            df_param_metas['ESCRV'] = df_param_metas['ESCRV'].astype(str).str.strip().str.upper()
 
         if df_metas_cob is not None:
             df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
@@ -1301,39 +1304,42 @@ elif menu_interna == "📊 Desempenho de Vendas":
     if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
         
-        # --- FILTROS (Lógica de Cascata) ---
+        # --- FILTROS ---
         st.markdown("### 🔍 Filtros")
-        c0, c2, c3 = st.columns(3) # Reduzido para 3 colunas
+        c0, c2, c3 = st.columns(3)
         
         with c0:
             sel_estado = st.multiselect("Estado", sorted(df_f['ESCRV'].dropna().unique()))
         
         with c2:
-            # Filtra supervisores baseada no estado
             df_temp_sup = df_f[df_f['ESCRV'].isin(sel_estado)] if sel_estado else df_f
             sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()))
             
         with c3:
-            # Filtra vendedores baseada no supervisor
             df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
             sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
 
-        # --- APLICAÇÃO DOS FILTROS NO DATAFRAME DE RESULTADOS ---
+        # --- APLICAÇÃO DOS FILTROS ---
         if sel_estado: df_f = df_f[df_f['ESCRV'].isin(sel_estado)]
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
         # --- LÓGICA DE POSITIVAÇÃO E METAS ---
         if not df_f.empty:
-            estados_ativos = df_f['ESCRV'].unique()
+            # Prepara lista de estados selecionados em caixa alta para bater com a PARAM_METAS
+            estados_ativos = [str(x).upper() for x in df_f['ESCRV'].unique()]
             
             if not (sel_supervisor or sel_vendedor):
+                # Busca Meta por Estado na PARAM_METAS
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
+                
                 dados_meta = df_param_metas[df_param_metas['ESCRV'].isin(estados_ativos)]
                 base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
+                # Usamos a média ponderada ou simples da meta dos estados filtrados
                 meta_val = dados_meta['META_COB'].mean() if not dados_meta.empty else 0
             else:
+                # Busca Meta por Vendedor na META COBXPOSIT
                 positivacao = df_f[col_k].nunique()
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
                 dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
