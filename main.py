@@ -1232,7 +1232,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
         df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
         
-        # --- LISTA FIXA DEFINIDA POR VOCÊ ---
+        # --- LISTA FIXA ---
         lista_hierarquia_fixa = [
             "ACHOCOLATADO", "ACUCAR", "ADOCANTE SACARINA", "ADOCANTE SUCRALOSE", "AZEITONA", 
             "BALSAMICO", "BEBIDA MISTA", "CALDOS TABLETE", "CATCHUP", "CEBOLINHA", "COGUMELO", 
@@ -1250,9 +1250,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         ]
 
         if df_faturado is not None and not df_faturado.empty:
-            # --- REMOVE LINHAS TOTALMENTE EM BRANCO ---
             df_faturado = df_faturado.dropna(how='all')
-
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
@@ -1261,15 +1259,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # --- FILTRA APENAS LINHAS QUE TENHAM VENDEDOR E HIERARQUIA (EVITA LIXO DA PLANILHA) ---
             df_faturado = df_faturado[df_faturado['VENDEDOR_NOME'].notna() & (df_faturado['VENDEDOR_NOME'] != "")]
-
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
-            
-            # --- FUNÇÃO DE AGRUPAMENTO REVISADA ---
+            df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
             def aplicar_agrupamento_custom(item):
                 item = str(item).strip().upper()
-                if item == "NAN" or item == "": return "OUTROS"
                 mapeamento = {
                     'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
                     'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
@@ -1282,14 +1277,25 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 return mapeamento.get(item, item)
             
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
-            
-            # Merge com a base para filtros de Analista/Supervisor
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
             
             df_faturado['ANALISTA'] = df_faturado['ANALISTA'].fillna('NÃO CADASTRADO')
             df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
+
+        # --- PROCESSAMENTO METAS ---
+        if df_param_metas is not None:
+            df_param_metas.columns = [str(c).strip().upper() for c in df_param_metas.columns]
+            df_param_metas['ANALISTA'] = df_param_metas['ANALISTA'].astype(str).str.strip().str.upper()
+            df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
+            df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
+
+        if df_metas_cob is not None:
+            df_metas_cob.columns = [str(c).strip().upper() for c in df_metas_cob.columns]
+            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip().str.upper()
+            df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
+            df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
 
     except Exception as e:
         st.error(f"Erro no processamento: {e}")
@@ -1302,39 +1308,62 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("### 🔍 Filtros")
         c0, c1, c2, c3 = st.columns(4)
         with c0:
-            # Dropna aqui garante que o selectbox não mostre a opção "None" ou "Nan"
-            opcoes_estado = sorted(df_f['EscrV'].dropna().unique())
-            sel_estado = st.multiselect("Estado", opcoes_estado)
+            sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
         with c1:
             df_temp = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
-            opcoes_analista = sorted(df_temp['ANALISTA'].dropna().unique())
-            sel_analista = st.multiselect("Analista", opcoes_analista)
+            sel_analista = st.multiselect("Analista", sorted(df_temp['ANALISTA'].dropna().unique()))
         with c2:
             df_temp = df_temp[df_temp['ANALISTA'].isin(sel_analista)] if sel_analista else df_temp
-            opcoes_supervisor = sorted(df_temp['SUPERVISOR'].dropna().unique())
-            sel_supervisor = st.multiselect("Supervisor", opcoes_supervisor)
+            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp['SUPERVISOR'].dropna().unique()))
         with c3:
             df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
-            opcoes_vendedor = sorted(df_temp['VENDEDOR_NOME'].dropna().unique())
-            sel_vendedor = st.multiselect("Vendedor", opcoes_vendedor)
+            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
 
         if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
         if sel_analista: df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
-        # --- CARDS ---
-        volume_total = df_f['QTD_VENDAS'].sum()
-        positivacao = df_f[col_k].nunique()
+        # --- LÓGICA DE POSITIVAÇÃO E METAS ---
+        if not df_f.empty:
+            if sel_supervisor or sel_vendedor:
+                positivacao = df_f[col_k].nunique()
+            else:
+                df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
+                positivacao = df_limpo[col_k].nunique()
 
-        st.markdown("---")
-        m1, m2 = st.columns(2)
-        m1.metric("📦 Volume Total (Faturado)", f"{volume_total:,.0f}")
-        m2.metric("🏪 Positivados", positivacao)
+            # Cálculo de Base e Meta
+            analista_alvo = sel_analista[0].upper() if sel_analista else (df_f['ANALISTA'].iloc[0].upper() if 'ANALISTA' in df_f.columns else "")
+            
+            if not (sel_supervisor or sel_vendedor):
+                linha_meta = df_param_metas[df_param_metas['ANALISTA'] == analista_alvo]
+                base_total = linha_meta['BASE'].iloc[0] if not linha_meta.empty else 1
+                meta_val = linha_meta['META_COB'].iloc[0] if not linha_meta.empty else 0
+            else:
+                vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
+                dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+                base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
+                meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
+            
+            real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
+            cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
 
-        # --- TABELA DE HIERARQUIA COM LISTA FIXA ---
+            # --- CARDS DE RESUMO ---
+            st.markdown("---")
+            m1, m2, m3 = st.columns([1, 1, 2])
+            m1.metric("📦 Volume Total", f"{df_f['QTD_VENDAS'].sum():,.0f}")
+            m2.metric("🏪 Positivados", positivacao)
+            with m3:
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                    <small style="color: #666;">COBERTURA (META VS REAL)</small><br>
+                    <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
+                    Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # --- TABELA DE HIERARQUIA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
-        
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
             'QTD_VENDAS': 'sum', 
             col_k: 'nunique'
@@ -1349,9 +1378,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             'Positivação': '{:,.0f}'
         }), use_container_width=True, hide_index=True)
 
-        # Log de conferência
-        if volume_total > 0:
-            soma_tabela = df_final_h['Volume'].sum()
-            diff = volume_total - soma_tabela
+        if df_f['QTD_VENDAS'].sum() > 0:
+            diff = df_f['QTD_VENDAS'].sum() - df_final_h['Volume'].sum()
             if diff > 0.5:
-                st.info(f"💡 Obs: Existem {diff:,.0f} unidades em categorias fora da lista fixa (ex: FERMENTO, OUTROS).")
+                st.info(f"💡 Obs: Existem {diff:,.0f} unidades em categorias fora da lista fixa.")
