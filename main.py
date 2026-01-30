@@ -1250,6 +1250,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
         ]
 
         if df_faturado is not None and not df_faturado.empty:
+            # --- REMOVE LINHAS TOTALMENTE EM BRANCO ---
+            df_faturado = df_faturado.dropna(how='all')
+
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
@@ -1258,12 +1261,15 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
+            # --- FILTRA APENAS LINHAS QUE TENHAM VENDEDOR E HIERARQUIA (EVITA LIXO DA PLANILHA) ---
+            df_faturado = df_faturado[df_faturado['VENDEDOR_NOME'].notna() & (df_faturado['VENDEDOR_NOME'] != "")]
+
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
             # --- FUNÇÃO DE AGRUPAMENTO REVISADA ---
             def aplicar_agrupamento_custom(item):
                 item = str(item).strip().upper()
-                # Mapeia as variações do faturado para os nomes da sua lista fixa
+                if item == "NAN" or item == "": return "OUTROS"
                 mapeamento = {
                     'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
                     'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
@@ -1296,16 +1302,21 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("### 🔍 Filtros")
         c0, c1, c2, c3 = st.columns(4)
         with c0:
-            sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
+            # Dropna aqui garante que o selectbox não mostre a opção "None" ou "Nan"
+            opcoes_estado = sorted(df_f['EscrV'].dropna().unique())
+            sel_estado = st.multiselect("Estado", opcoes_estado)
         with c1:
             df_temp = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
-            sel_analista = st.multiselect("Analista", sorted(df_temp['ANALISTA'].dropna().unique()))
+            opcoes_analista = sorted(df_temp['ANALISTA'].dropna().unique())
+            sel_analista = st.multiselect("Analista", opcoes_analista)
         with c2:
             df_temp = df_temp[df_temp['ANALISTA'].isin(sel_analista)] if sel_analista else df_temp
-            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp['SUPERVISOR'].dropna().unique()))
+            opcoes_supervisor = sorted(df_temp['SUPERVISOR'].dropna().unique())
+            sel_supervisor = st.multiselect("Supervisor", opcoes_supervisor)
         with c3:
             df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
-            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
+            opcoes_vendedor = sorted(df_temp['VENDEDOR_NOME'].dropna().unique())
+            sel_vendedor = st.multiselect("Vendedor", opcoes_vendedor)
 
         if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
         if sel_analista: df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
@@ -1324,29 +1335,23 @@ elif menu_interna == "📊 Desempenho de Vendas":
         # --- TABELA DE HIERARQUIA COM LISTA FIXA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         
-        # Agrupamos os dados filtrados
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
             'QTD_VENDAS': 'sum', 
             col_k: 'nunique'
         }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
 
-        # Criamos a tabela baseada na LISTA FIXA
         df_esqueleto = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
-        
-        # Cruzamos a lista fixa com os dados (quem não tem venda fica 0)
         df_final_h = pd.merge(df_esqueleto, df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
-        
-        # Ordenação: primeiro quem tem volume, depois alfabético
         df_final_h = df_final_h.sort_values(by=['Volume', 'HIERARQUIA'], ascending=[False, True])
         
-        # Exibição
         st.dataframe(df_final_h.style.format({
             'Volume': '{:,.0f}',
             'Positivação': '{:,.0f}'
         }), use_container_width=True, hide_index=True)
 
-        # Pequeno log de conferência para você
+        # Log de conferência
         if volume_total > 0:
-            diff = volume_total - df_final_h['Volume'].sum()
-            if diff > 0.1:
-                st.info(f"💡 Obs: Itens como 'FERMENTO' ou 'OUTROS' (total {diff:,.0f}) não estão na sua lista fixa e foram omitidos da tabela.")
+            soma_tabela = df_final_h['Volume'].sum()
+            diff = volume_total - soma_tabela
+            if diff > 0.5:
+                st.info(f"💡 Obs: Existem {diff:,.0f} unidades em categorias fora da lista fixa (ex: FERMENTO, OUTROS).")
