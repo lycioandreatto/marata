@@ -998,33 +998,48 @@ elif menu == "📋 Novo Agendamento":
                                 d = st.date_input(f"Data {i+1}:", value=hoje_dt, min_value=hoje_dt, key=f"d_{i}")
                                 datas_sel.append(d)
                         
-                        if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
-                            cod_c, nom_c = cliente_sel.split(" - ", 1)
-                            agora = datetime.now(fuso_br)
-                            novas_linhas = []
-                            
-                            for i, dt in enumerate(datas_sel):
-                                nid = (agora + timedelta(seconds=i)).strftime("%Y%m%d%H%M%S") + str(i)
-                                novas_linhas.append({
-                                    "ID": nid, 
-                                    "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
-                                    "DATA": dt.strftime("%d/%m/%Y"),
-                                    "ANALISTA": analista_vinc, 
-                                    "SUPERVISOR": supervisor_vinc, 
-                                    "VENDEDOR": ven_sel,
-                                    "CÓDIGO CLIENTE": cod_c, 
-                                    "CLIENTE": nom_c, 
-                                    "JUSTIFICATIVA": "-", 
-                                    "STATUS": "Planejado",
-                                    "AGENDADO POR": user_atual 
-                                })
-                                
-                            df_final_a = pd.concat([df_agenda.drop(columns=['LINHA'], errors='ignore'), pd.DataFrame(novas_linhas)], ignore_index=True)
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
-                            st.cache_data.clear()
-                            st.success(f"✅ Agendado com sucesso!")
-                            time.sleep(1)
-                            st.rerun()
+                        # --- DENTRO DO st.form("form_novo_v") ---
+if st.form_submit_button("💾 SALVAR AGENDAMENTOS"):
+    cod_c, nom_c = cliente_sel.split(" - ", 1)
+    agora = datetime.now(fuso_br)
+    novas_linhas = []
+    
+    for i, dt in enumerate(datas_sel):
+        # Gerar ID único e robusto
+        nid = f"{agora.strftime('%Y%m%d%H%M%S')}_{i}_{uuid.uuid4().hex[:4]}"
+        novas_linhas.append({
+            "ID": nid, 
+            "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
+            "DATA": dt.strftime("%d/%m/%Y"),
+            "ANALISTA": analista_vinc, 
+            "SUPERVISOR": supervisor_vinc, 
+            "VENDEDOR": ven_sel,
+            "CÓDIGO CLIENTE": cod_c, 
+            "CLIENTE": nom_c, 
+            "JUSTIFICATIVA": "-", 
+            "STATUS": "Planejado",
+            "AGENDADO POR": user_atual 
+        })
+    
+    # --- SOLUÇÃO ANTI-DUPLICAÇÃO ---
+    # 1. Pegar a agenda atual sem a coluna auxiliar 'LINHA'
+    df_atual = df_agenda.drop(columns=['LINHA'], errors='ignore').copy()
+    
+    # 2. Criar o DataFrame com os novos dados
+    df_novos = pd.DataFrame(novas_linhas)
+    
+    # 3. Concatenar e REMOVER DUPLICADOS baseando-se no ID (por segurança)
+    df_final_a = pd.concat([df_atual, df_novos], ignore_index=True)
+    df_final_a = df_final_a.drop_duplicates(subset=['ID'], keep='first')
+    
+    # 4. Atualizar a planilha
+    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_final_a)
+    
+    # 5. Limpar cache e forçar atualização imediata
+    st.cache_data.clear()
+    st.success(f"✅ Agendado com sucesso!")
+    time.sleep(1)
+    st.rerun()
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
