@@ -1231,10 +1231,25 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
         df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
         df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
-        df_skus = conn.read(spreadsheet=url_planilha, worksheet="SKUS")
         
+        # --- LISTA FIXA DEFINIDA POR VOCÊ ---
+        lista_hierarquia_fixa = [
+            "ACHOCOLATADO", "ACUCAR", "ADOCANTE SACARINA", "ADOCANTE SUCRALOSE", "AZEITONA", 
+            "BALSAMICO", "BEBIDA MISTA", "CALDOS TABLETE", "CATCHUP", "CEBOLINHA", "COGUMELO", 
+            "DESCARTAVEIS", "ESPECIARIAS", "FARINHA DE TRIGO FD", "FARINHA DE TRIGO SC", 
+            "FARINHA LACTEA", "MACARRAO INSTANTANEO", "MARATINHO", "MILHO", "MILHO FARINHA GOTA", 
+            "MILHO FARINHA MARATA", "MILHO FLOCAO GOTA", "MILHO FLOCAO MARATA", "MILHO PIPOCA", 
+            "MINGAU", "MISTURA BOLO", "MOLHO PRONTO", "MOLHOS ALHO", "MOLHOS INGLES", 
+            "MOLHOS LIMAO", "MOLHOS PIMENTA", "MOLHOS PIMENTA 75ML", "MOLHOS SALSA", 
+            "MOLHOS SHOYO", "MOLHOS TEMPEROS CASEIROS", "OLEAGINOSAS", "PIMENTA CONSERVA", 
+            "PIPOCA PRONTA", "REFRESCO", "SALGADINHOS FARDO", "SALGADINHOS NACHOS", 
+            "SALGADINHOS PASTEIS", "SUCO D+ 1000ML", "SUCO D+ 200ML", "SUCO MARATA 1000ML", 
+            "SUCO MARATA 200ML", "TEMPERO COLORIFICO GOTA", "TEMPERO COLORIFICO MARATA", 
+            "TEMPERO CONDIMENTO GOTA", "TEMPERO CONDIMENTO MARATA", "TEMPERO EM PO", 
+            "VINAGRE", "VINAGRE ESPECIAL"
+        ]
+
         if df_faturado is not None and not df_faturado.empty:
-            # Limpeza de colunas
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
@@ -1243,45 +1258,32 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'Hierarquia de produtos': 'HIERARQUIA'
             }, inplace=True)
 
-            # --- GARANTIR QUE QTD_VENDAS SEJA NÚMERO ---
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             
-            # --- EVITAR DUPLICAÇÃO NO MERGE ---
-            # Pegamos a relação da base, mas garantimos que cada vendedor apareça APENAS UMA VEZ
-            df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
-            
-            # Merge "left" para não perder vendas de vendedores que não estejam na base
-            df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
-
-            # Preencher Analista/Supervisor vazios para não sumirem no filtro
-            df_faturado['ANALISTA'] = df_faturado['ANALISTA'].fillna('NÃO CADASTRADO')
-            df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
-
-            # --- FUNÇÃO DE AGRUPAMENTO ---
+            # --- FUNÇÃO DE AGRUPAMENTO REVISADA ---
             def aplicar_agrupamento_custom(item):
                 item = str(item).strip().upper()
+                # Mapeia as variações do faturado para os nomes da sua lista fixa
                 mapeamento = {
                     'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
                     'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
-                    'MILHO': 'MILHO', 'MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO', 
+                    'MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO', 
                     'MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO',
-                    'MOLHOS ALHO': 'MOLHOS ALHO', 'MOLHOS ALHO PICANTE': 'MOLHOS ALHO',
-                    'PIMENTA CONSERVA': 'PIMENTA CONSERVA', 'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA', 
+                    'MOLHOS ALHO PICANTE': 'MOLHOS ALHO',
+                    'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA', 
                     'PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'
                 }
                 return mapeamento.get(item, item)
             
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
+            
+            # Merge com a base para filtros de Analista/Supervisor
+            df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
+            df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
+            
+            df_faturado['ANALISTA'] = df_faturado['ANALISTA'].fillna('NÃO CADASTRADO')
+            df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
-
-        # Processamento da Lista Oficial (SKUS)
-        lista_hierarquia_oficial = []
-        if df_skus is not None and not df_skus.empty:
-            df_skus.columns = [str(c).strip() for c in df_skus.columns]
-            # Use o nome exato da sua coluna na aba SKUS
-            col_hierarquia_fixa = 'HIERARQUIA DE PRODUTOS 2' if 'HIERARQUIA DE PRODUTOS 2' in df_skus.columns else 'HIERARQUIA DE PRODUTOS 2'
-            if col_hierarquia_fixa in df_skus.columns:
-                lista_hierarquia_oficial = sorted([str(x).strip().upper() for x in df_skus[col_hierarquia_fixa].dropna().unique()])
 
     except Exception as e:
         st.error(f"Erro no processamento: {e}")
@@ -1310,38 +1312,41 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
-        # --- CÁLCULO DOS CARDS ---
+        # --- CARDS ---
         volume_total = df_f['QTD_VENDAS'].sum()
         positivacao = df_f[col_k].nunique()
 
-        # (Lógica de Metas omitida aqui para brevidade, manter a que você já tem)
-        # ... [Seu código de metas aqui] ...
-
-        # Exibição dos Cards
         st.markdown("---")
         m1, m2 = st.columns(2)
         m1.metric("📦 Volume Total (Faturado)", f"{volume_total:,.0f}")
         m2.metric("🏪 Positivados", positivacao)
 
-        # --- TABELA DE HIERARQUIA ---
+        # --- TABELA DE HIERARQUIA COM LISTA FIXA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
         
-        # Agrupamento rigoroso
+        # Agrupamos os dados filtrados
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
             'QTD_VENDAS': 'sum', 
             col_k: 'nunique'
         }).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
 
-        if lista_hierarquia_oficial:
-            df_esqueleto = pd.DataFrame(lista_hierarquia_oficial, columns=['HIERARQUIA'])
-            df_final_h = pd.merge(df_esqueleto, df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
-            
-            # Conferência rápida para você:
-            check_sum = df_final_h['Volume'].sum()
-            if abs(check_sum - volume_total) > 1:
-                st.caption(f"⚠️ Nota: Soma da tabela ({check_sum:,.0f}) vs Total Geral ({volume_total:,.0f})")
+        # Criamos a tabela baseada na LISTA FIXA
+        df_esqueleto = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
+        
+        # Cruzamos a lista fixa com os dados (quem não tem venda fica 0)
+        df_final_h = pd.merge(df_esqueleto, df_f_agrupado, on='HIERARQUIA', how='left').fillna(0)
+        
+        # Ordenação: primeiro quem tem volume, depois alfabético
+        df_final_h = df_final_h.sort_values(by=['Volume', 'HIERARQUIA'], ascending=[False, True])
+        
+        # Exibição
+        st.dataframe(df_final_h.style.format({
+            'Volume': '{:,.0f}',
+            'Positivação': '{:,.0f}'
+        }), use_container_width=True, hide_index=True)
 
-            st.dataframe(df_final_h.sort_values(by='Volume', ascending=False).style.format({
-                'Volume': '{:,.0f}',
-                'Positivação': '{:,.0f}'
-            }), use_container_width=True, hide_index=True)
+        # Pequeno log de conferência para você
+        if volume_total > 0:
+            diff = volume_total - df_final_h['Volume'].sum()
+            if diff > 0.1:
+                st.info(f"💡 Obs: Itens como 'FERMENTO' ou 'OUTROS' (total {diff:,.0f}) não estão na sua lista fixa e foram omitidos da tabela.")
