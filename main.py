@@ -1252,12 +1252,14 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if df_faturado is not None and not df_faturado.empty:
             df_faturado = df_faturado.dropna(how='all')
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
+            
+            # Padronizando EscrV como a chave principal (Estado)
             df_faturado.rename(columns={
                 'Região de vendas': 'VENDEDOR_NOME',
                 'RG': 'VENDEDOR_COD', 
                 'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
                 'Hierarquia de produtos': 'HIERARQUIA',
-                'EscrV': 'ESTADO' 
+                'EscrV': 'ESCRV'  # Mantendo o nome técnico que você quer
             }, inplace=True)
 
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
@@ -1278,7 +1280,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
             
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
             
-            # Trazer Analista/Supervisor apenas para filtros
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
             
@@ -1286,13 +1287,19 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado['SUPERVISOR'] = df_faturado['SUPERVISOR'].fillna('NÃO CADASTRADO')
             col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
-        # --- PROCESSAMENTO PARAM_METAS (POR ESTADO) ---
+        # --- PROCESSAMENTO PARAM_METAS ---
         if df_param_metas is not None:
+            # Limpa espaços e joga pra cima para garantir o match
             df_param_metas.columns = [str(c).strip().upper() for c in df_param_metas.columns]
-            # Mapeia ESCRV para ESTADO na aba de parâmetros
-            if 'ESCRV' in df_param_metas.columns:
-                df_param_metas.rename(columns={'ESCRV': 'ESTADO'}, inplace=True)
             
+            # Se a coluna estiver como ANALISTA ou ESTADO na planilha, forçamos para ESCRV
+            mapeamento_colunas = {'ANALISTA': 'ESCRV', 'ESTADO': 'ESCRV'}
+            df_param_metas.rename(columns=mapeamento_colunas, inplace=True)
+            
+            if 'ESCRV' not in df_param_metas.columns:
+                st.error("A aba PARAM_METAS precisa ter a coluna 'EscrV' (com os nomes dos Estados).")
+                st.stop()
+
             df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
             df_param_metas['META_COB'] = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
 
@@ -1303,7 +1310,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_metas_cob['META'] = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
 
     except Exception as e:
-        st.error(f"Erro no processamento: {e}")
+        st.error(f"Erro no processamento de colunas: {e}")
         st.stop()
 
     if df_faturado is not None and not df_faturado.empty:
@@ -1313,9 +1320,9 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("### 🔍 Filtros")
         c0, c1, c2, c3 = st.columns(4)
         with c0:
-            sel_estado = st.multiselect("Estado", sorted(df_f['ESTADO'].dropna().unique()))
+            sel_estado = st.multiselect("Estado", sorted(df_f['ESCRV'].dropna().unique()))
         with c1:
-            df_temp = df_f[df_f['ESTADO'].isin(sel_estado)] if sel_estado else df_f
+            df_temp = df_f[df_f['ESCRV'].isin(sel_estado)] if sel_estado else df_f
             sel_analista = st.multiselect("Analista", sorted(df_temp['ANALISTA'].dropna().unique()))
         with c2:
             df_temp = df_temp[df_temp['ANALISTA'].isin(sel_analista)] if sel_analista else df_temp
@@ -1324,27 +1331,26 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_temp = df_temp[df_temp['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp
             sel_vendedor = st.multiselect("Vendedor", sorted(df_temp['VENDEDOR_NOME'].dropna().unique()))
 
-        # Aplicação Real dos Filtros
-        if sel_estado: df_f = df_f[df_f['ESTADO'].isin(sel_estado)]
+        if sel_estado: df_f = df_f[df_f['ESCRV'].isin(sel_estado)]
         if sel_analista: df_f = df_f[df_f['ANALISTA'].isin(sel_analista)]
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
 
         # --- LÓGICA DE POSITIVAÇÃO E METAS ---
         if not df_f.empty:
-            # REGRA: Visão Geral (Estado/Analista) NÃO CONTA "STR" e "SMX"
             if not (sel_supervisor or sel_vendedor):
+                # Visão Macro: ESTADO (ESCRV)
                 df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
                 positivacao = df_limpo[col_k].nunique()
                 
-                # BUSCA META PELO ESTADO (PARAM_METAS agora usa ESTADO/ESCRV)
-                estado_alvo = df_f['ESTADO'].iloc[0]
-                linha_meta = df_param_metas[df_param_metas['ESTADO'] == estado_alvo]
+                # Busca meta pelo nome que está em EscrV
+                valor_alvo = str(df_f['ESCRV'].iloc[0]).strip().upper()
+                linha_meta = df_param_metas[df_param_metas['ESCRV'] == valor_alvo]
                 
                 base_total = linha_meta['BASE'].sum() if not linha_meta.empty else 1
                 meta_val = linha_meta['META_COB'].mean() if not linha_meta.empty else 0
             else:
-                # Visão Vendedor/Supervisor conta tudo
+                # Visão Micro: VENDEDOR
                 positivacao = df_f[col_k].nunique()
                 vendedores_ids = [str(x).upper() for x in df_f['VENDEDOR_COD'].unique()]
                 dados_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
@@ -1362,7 +1368,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             with m3:
                 st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small style="color: #666;">COBERTURA (BASEADA NO ESTADO: {df_f['ESTADO'].iloc[0]})</small><br>
+                    <small style="color: #666;">COBERTURA POR ESTADO (EscrV: {df_f['ESCRV'].iloc[0]})</small><br>
                     <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b> | Meta: <b>{meta_val:.1f}%</b></span><br>
                     Atingido: <span style="color:{cor_indicador}; font-size: 1.4em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>
