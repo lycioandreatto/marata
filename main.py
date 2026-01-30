@@ -514,12 +514,13 @@ if menu == "📅 Agendamentos do Dia":
             keep='first'
         ).reset_index(drop=True)
 
-        col_aprov_plan = next((c for c in df_agenda.columns if "APROVA" in c.upper() and "PLAN" in c.upper() or c.upper() == "APROVACAO"), "APROVACAO")
+        col_aprov_plan = "APROVACAO"
         col_aprov_exec = "VALIDACAO_GESTAO"
         col_just = "JUSTIFICATIVA"
         
         if col_aprov_exec not in df_agenda.columns: df_agenda[col_aprov_exec] = "PENDENTE"
         if col_just not in df_agenda.columns: df_agenda[col_just] = ""
+        if 'DISTANCIA_LOG' not in df_agenda.columns: df_agenda['DISTANCIA_LOG'] = 0
 
         # --- PASSO 2: FILTROS DO DIA ---
         df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
@@ -533,46 +534,17 @@ if menu == "📅 Agendamentos do Dia":
             else: 
                 df_dia = df_dia[df_dia['VENDEDOR'].astype(str).str.upper() == user_atual.upper()]
 
-        # IMPORTANTE: Resetar índice após filtrar o dia para o editor não se perder
         df_dia = df_dia.reset_index(drop=True)
 
         # --- MÉTRICAS ---
         t_hoje = len(df_dia)
         t_realizado = len(df_dia[df_dia['STATUS'] == "Realizado"])
-        t_validado = len(df_dia[df_dia[col_aprov_exec] == "OK"])
-        t_reprovado = len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"])
-
+        
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Aprovados p/ Hoje", t_hoje)
         m2.metric("Realizados", t_realizado)
-        m3.metric("Validados", t_validado)
-        m4.metric("Reprovados", t_reprovado, delta_color="inverse")
-
-        # --- PAINEL DE VALIDAÇÃO EM MASSA ---
-        if eh_gestao and not df_dia.empty:
-            with st.expander("⚡ Painel de Validação em Massa (Gestão)"):
-                c_m1, c_m2, c_m3, c_m4 = st.columns([1.2, 1.2, 1, 1])
-                with c_m1:
-                    sups = ["TODOS"] + sorted(list(df_dia['SUPERVISOR'].dropna().unique()))
-                    sel_sup = st.selectbox("Supervisor:", sups, key="mass_sup")
-                with c_m2:
-                    v_list = df_dia[df_dia['SUPERVISOR'] == sel_sup] if sel_sup != "TODOS" else df_dia
-                    vends = ["TODOS"] + sorted(list(v_list['VENDEDOR'].dropna().unique()))
-                    sel_vend = st.selectbox("Vendedor:", vends, key="mass_vend")
-                with c_m3:
-                    acao_mass = st.radio("Ação:", ["Dar OK", "REPROVAR"], horizontal=True)
-                with c_m4:
-                    st.write("")
-                    if st.button("🚀 EXECUTAR", use_container_width=True):
-                        df_m = df_dia[df_dia['STATUS'] == "Realizado"].copy()
-                        if sel_sup != "TODOS": df_m = df_m[df_m['SUPERVISOR'] == sel_sup]
-                        if sel_vend != "TODOS": df_m = df_m[df_m['VENDEDOR'] == sel_vend]
-                        ids_m = df_m['ID'].tolist()
-                        if ids_m:
-                            res = "OK" if acao_mass == "Dar OK" else "REPROVADO"
-                            df_agenda.loc[df_agenda['ID'].isin(ids_m), col_aprov_exec] = res
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                            st.cache_data.clear(); st.success("Processado!"); time.sleep(1); st.rerun()
+        m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
+        m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
         # --- TABELA ---
         if not df_dia.empty:
@@ -580,7 +552,7 @@ if menu == "📅 Agendamentos do Dia":
                 df_cidades = df_base[['Cliente', 'Local']].drop_duplicates(subset='Cliente').copy()
                 df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
                 df_dia.rename(columns={'Local': 'CIDADE'}, inplace=True)
-                df_dia = df_dia.reset_index(drop=True) # Reset após merge para segurança
+                df_dia = df_dia.reset_index(drop=True)
 
             def style_audit(row):
                 if row[col_aprov_exec] == "REPROVADO": return ['background-color: #FADBD8'] * len(row)
@@ -600,17 +572,17 @@ if menu == "📅 Agendamentos do Dia":
                 use_container_width=True,
                 column_config={
                     "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    "JUSTIFICATIVA": st.column_config.TextColumn("MOTIVO/JUSTIF."),
+                    "DISTANCIA_LOG": st.column_config.NumberColumn("Dist. (m)", format="%d m"),
                     col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"])
                 },
                 disabled=[c for c in df_display.columns if c not in ["EDITAR", col_aprov_exec]]
             )
 
-            # --- EDIÇÃO INDIVIDUAL ---
+            # --- EDIÇÃO INDIVIDUAL E SALVAMENTO COM DISTÂNCIA ---
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 idx = marcados.index[0]
-                sel_row = df_dia.iloc[idx] # Agora o iloc funciona perfeitamente
+                sel_row = df_dia.iloc[idx]
                 st.markdown("---")
                 st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
                 
@@ -635,10 +607,31 @@ if menu == "📅 Agendamentos do Dia":
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
-                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', col_aprov_exec, col_just, 'COORDENADAS']] = [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}"]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                    st.success("Dados atualizados!"); time.sleep(1); st.rerun()
+                    distancia_final = 0
+                    
+                    # CÁLCULO DA DISTÂNCIA ANTES DE SALVAR
+                    try:
+                        # Pega coordenadas originais do cliente no df_base
+                        info_cliente = df_base[df_base['Cliente'] == sel_row['CÓDIGO CLIENTE']].iloc[0]
+                        lat_c = float(str(info_cliente['LATITUDE']).replace(',', '.'))
+                        lon_c = float(str(info_cliente['LONGITUDE']).replace(',', '.'))
+                        
+                        if lat_v != 0 and lon_v != 0:
+                            # Calcula a distância usando a fórmula de Haversine (ou similar)
+                            from geopy.distance import geodesic
+                            distancia_final = int(geodesic((lat_v, lon_v), (lat_c, lon_c)).meters)
+                    except:
+                        distancia_final = 0
 
+                    # ATUALIZA O DF PRINCIPAL COM TODOS OS DADOS, INCLUINDO DISTANCIA_LOG
+                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), 
+                                 ['STATUS', col_aprov_exec, col_just, 'COORDENADAS', 'DISTANCIA_LOG']] = \
+                                 [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}", distancia_final]
+                    
+                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", 
+                                data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+                    
+                    st.success(f"Dados atualizados! Distância: {distancia_final}m"); time.sleep(1); st.rerun()
         # --- BOTÃO ROTA FINALIZADA ---
         st.markdown("---")
         if not df_dia.empty:
