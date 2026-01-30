@@ -1293,12 +1293,14 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
             df_metas_cob['EscrV'] = df_metas_cob['EscrV'].astype(str).str.strip()
-            df_metas_cob['HIERARQUIA DE PRODUTOS'] = df_metas_cob['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().upper()
+            # AJUSTE AQUI: Usando .str.upper() para Series do Pandas
+            if 'HIERARQUIA DE PRODUTOS' in df_metas_cob.columns:
+                df_metas_cob['HIERARQUIA DE PRODUTOS'] = df_metas_cob['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
+            
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             metas_vend_raw = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
             df_metas_cob['META'] = metas_vend_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
             
-            # Formatação da coluna solicitada: META COBERTURA
             if 'META COBERTURA' in df_metas_cob.columns:
                 metas_cob_item = pd.to_numeric(df_metas_cob['META COBERTURA'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
                 df_metas_cob['META COBERTURA'] = metas_cob_item.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
@@ -1367,18 +1369,17 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         st.markdown("### 📈 Desempenho por Hierarquia")
         
-        # Agrupamento dos dados de vendas
         df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'Volume', col_k: 'Positivação'}).reset_index()
         
-        # Preparação do cruzamento com a aba META COBXPOSIT para pegar a META COBERTURA
-        # Filtramos as metas pelos estados selecionados no filtro para bater com o faturado
         df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
         
-        # Agrupamos a meta por hierarquia (tirando a média caso haja vários vendedores para a mesma hierarquia no estado)
-        df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index()
-        df_metas_hierarquia.rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'META COBERTURA': 'Meta Cobertura'}, inplace=True)
+        # Cruzamento seguro: garantindo que as colunas existam antes do groupby
+        if 'HIERARQUIA DE PRODUTOS' in df_metas_sub.columns and 'META COBERTURA' in df_metas_sub.columns:
+            df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index()
+            df_metas_hierarquia.rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'META COBERTURA': 'Meta Cobertura'}, inplace=True)
+        else:
+            df_metas_hierarquia = pd.DataFrame(columns=['HIERARQUIA', 'Meta Cobertura'])
 
-        # Montagem da tabela final cruzando Lista Fixa + Vendas + Metas
         df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
         df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left').fillna(0)
         
