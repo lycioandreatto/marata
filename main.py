@@ -1379,7 +1379,18 @@ elif menu_interna == "📊 Desempenho de Vendas":
         if df_faturado is not None and not df_faturado.empty:
             df_faturado = df_faturado.dropna(how='all')
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
-            df_faturado.rename(columns={'Região de vendas': 'VENDEDOR_NOME','RG': 'VENDEDOR_COD','Qtd Vendas (S/Dec)': 'QTD_VENDAS','Hierarquia de produtos': 'HIERARQUIA'}, inplace=True)
+            # Renomeação correta conforme as colunas do Sheets informadas
+            df_faturado.rename(columns={
+                'Região de vendas': 'VENDEDOR_NOME',
+                'RG': 'VENDEDOR_COD',
+                'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
+                'Hierarquia de produtos': 'HIERARQUIA',
+                'Cliente': 'CLIENTE_NOME' # Coluna J
+            }, inplace=True)
+            
+            # Identificar coluna K (Código do Cliente) para contagem de positivação
+            col_k = df_faturado.columns[10] # 11ª coluna (índice 10)
+            
             df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
@@ -1389,23 +1400,21 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 return mapeamento.get(item, item)
             
             df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
+            
+            # Merge com a base para trazer Supervisor e Analista
             df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
             df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
-            col_k = 'K' if 'K' in df_faturado.columns else df_faturado.columns[10]
 
         if df_param_metas is not None:
             df_param_metas.columns = [str(c).strip() for c in df_param_metas.columns]
             df_param_metas['BASE'] = pd.to_numeric(df_param_metas['BASE'], errors='coerce').fillna(0)
             metas_raw = pd.to_numeric(df_param_metas['META_COB'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
-            df_param_metas['META_COB'] = metas_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
-            df_param_metas['EscrV'] = df_param_metas['EscrV'].astype(str).str.strip()
+            df_param_metas['META_COB'] = metas_raw # Mantém original para cálculo
 
         if df_metas_cob is not None:
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
-            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.strip()
+            df_metas_cob['RG'] = df_metas_cob['RG'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
-            metas_vend_raw = pd.to_numeric(df_metas_cob['META'].astype(str).str.replace('%','').str.replace(',','.'), errors='coerce').fillna(0)
-            df_metas_cob['META'] = metas_vend_raw.apply(lambda x: x * 100 if x > 0 and x <= 1.0 else x)
 
     except Exception as e:
         st.error(f"Erro no processamento das abas: {e}")
@@ -1413,117 +1422,111 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
     if df_faturado is not None and not df_faturado.empty:
         df_f = df_faturado.copy()
-        df_ms = df_meta_sistema.copy() if df_meta_sistema is not None else None
-        df_25 = df_2025.copy() if df_2025 is not None else None
         
         st.markdown("### 🔍 Filtros")
-        c0, c2, c3 = st.columns(3)
-        with c0: sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
-        with c2: 
-            df_temp_sup = df_f[df_f['EscrV'].isin(sel_estado)] if sel_estado else df_f
-            sel_supervisor = st.multiselect("Supervisor", sorted(df_temp_sup['SUPERVISOR'].dropna().unique()))
-        with c3:
-            df_temp_vend = df_temp_sup[df_temp_sup['SUPERVISOR'].isin(sel_supervisor)] if sel_supervisor else df_temp_sup
-            sel_vendedor = st.multiselect("Vendedor", sorted(df_temp_vend['VENDEDOR_NOME'].dropna().unique()))
-
+        c1, c2, c3 = st.columns(3)
+        with c1: sel_estado = st.multiselect("Estado", sorted(df_f['EscrV'].dropna().unique()))
         if sel_estado: df_f = df_f[df_f['EscrV'].isin(sel_estado)]
+            
+        with c2: 
+            sel_supervisor = st.multiselect("Supervisor", sorted(df_f['SUPERVISOR'].dropna().unique()))
         if sel_supervisor: df_f = df_f[df_f['SUPERVISOR'].isin(sel_supervisor)]
+            
+        with c3:
+            sel_vendedor = st.multiselect("Vendedor", sorted(df_f['VENDEDOR_NOME'].dropna().unique()))
         if sel_vendedor: df_f = df_f[df_f['VENDEDOR_NOME'].isin(sel_vendedor)]
             
         vendedores_ids = df_f['VENDEDOR_COD'].unique()
-        if df_ms is not None: df_ms = df_ms[df_ms['RG'].isin(vendedores_ids)]
-        if df_25 is not None: df_25 = df_25[df_25['RG'].isin(vendedores_ids)]
-
-        if not df_f.empty:
-            if not (sel_supervisor or sel_vendedor):
-                df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
-                positivacao = df_limpo[col_k].nunique()
-                dados_meta = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())]
-                base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
-                meta_val = dados_meta['META_COB'].mean() if not dados_meta.empty else 0
-            else:
-                positivacao = df_f[col_k].nunique()
-                dados_meta = df_metas_cob[df_metas_cob['RG'].isin([str(x) for x in vendedores_ids])]
-                base_total = dados_meta['BASE'].sum() if not dados_meta.empty else 1
-                meta_val = dados_meta['META'].mean() if not dados_meta.empty else 0
-            
-            real_perc = (positivacao / base_total * 100) if base_total > 0 else 0
-            cor_indicador = "#28a745" if real_perc >= meta_val else "#e67e22"
-
-        # --- PREPARAÇÃO DOS DADOS (PROCESSA UMA VEZ SÓ) ---
-        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({'QTD_VENDAS': 'sum', col_k: 'nunique'}).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVADO_REAL'}).reset_index()
-        df_ms_agrupado = df_ms.groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_ms is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
-        df_25_agrupado = df_25.groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_25 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
-        df_metas_sub = df_metas_cob[df_metas_cob['EscrV'].isin(df_f['EscrV'].unique())] if not df_f.empty else df_metas_cob
-        df_metas_hierarquia = df_metas_sub.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'}) if 'META COBERTURA' in df_metas_sub.columns else pd.DataFrame(columns=['HIERARQUIA', 'META COBERTURA'])
-
-        df_final_h = pd.merge(pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA']), df_f_agrupado, on='HIERARQUIA', how='left')
-        df_final_h = pd.merge(df_final_h, df_metas_hierarquia, on='HIERARQUIA', how='left')
-        df_final_h = pd.merge(df_final_h, df_25_agrupado, on='HIERARQUIA', how='left') 
-        df_final_h = pd.merge(df_final_h, df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
         
+        # Filtro dinâmico da base de clientes conforme seleção
+        if not (sel_supervisor or sel_vendedor):
+            df_limpo = df_f[~df_f['EqVs'].astype(str).str.contains('SMX|STR', na=False)] if 'EqVs' in df_f.columns else df_f
+            positivacao_card = df_limpo[col_k].nunique()
+            dados_meta_base = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())]
+            base_total = dados_meta_base['BASE'].sum() if not dados_meta_base.empty else 0
+            meta_val_card = dados_meta_base['META_COB'].mean() if not dados_meta_base.empty else 0
+        else:
+            positivacao_card = df_f[col_k].nunique()
+            dados_meta_base = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
+            base_total = dados_meta_base['BASE'].sum() if not dados_meta_base.empty else 0
+            meta_val_card = dados_meta_base['META'].mean() if not dados_meta_base.empty else 0
+
+        # --- PROCESSAMENTO POR HIERARQUIA ---
+        # Volume e Positivação Real
+        df_f_agrupado = df_f.groupby('HIERARQUIA').agg({
+            'QTD_VENDAS': 'sum',
+            col_k: 'nunique'
+        }).rename(columns={'QTD_VENDAS': 'VOLUME', col_k: 'POSITIVAÇÃO'}).reset_index()
+
+        # Metas de Volume (Filtro por RG para bater com o vendedor selecionado)
+        df_ms_agrupado = df_meta_sistema[df_meta_sistema['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_meta_sistema is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
+        df_25_agrupado = df_2025[df_2025['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_2025 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
+        
+        # Metas de Cobertura por Hierarquia (Média da meta daquela categoria)
+        df_metas_hierarquia = df_metas_cob.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'})
+
+        # Merge Final
+        df_final_h = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
+        df_final_h = df_final_h.merge(df_f_agrupado, on='HIERARQUIA', how='left')
+        df_final_h = df_final_h.merge(df_metas_hierarquia, on='HIERARQUIA', how='left')
+        df_final_h = df_final_h.merge(df_25_agrupado, on='HIERARQUIA', how='left') 
+        df_final_h = df_final_h.merge(df_ms_agrupado, on='HIERARQUIA', how='left').fillna(0)
+        
+        # AJUSTE NAS COLUNAS SOLICITADAS:
+        # 1. Meta Clientes (ABS) = % da Meta * Base de clientes do filtro
         df_final_h['META CLIENTES (ABS)'] = (df_final_h['META COBERTURA'] / 100) * base_total
-        df_final_h = df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS', 'POSITIVADO_REAL': 'POSITIVAÇÃO'})
+        
+        # 2. Pendência Clientes = Subtração da Positivação pela Meta Absoluta
         df_final_h['PENDÊNCIA CLIENTES'] = (df_final_h['META CLIENTES (ABS)'] - df_final_h['POSITIVAÇÃO']).clip(lower=0)
+        
+        # Cálculos de Crescimento
         df_final_h['CRESCIMENTO 2025'] = df_final_h['VOLUME'] - df_final_h['META 2025']
         df_final_h['ATINGIMENTO % (VOL 2025)'] = (df_final_h['VOLUME'] / df_final_h['META 2025'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
         df_final_h['CRESCIMENTO 2026'] = df_final_h['VOLUME'] - df_final_h['META 2026']
         df_final_h['ATINGIMENTO % (VOL 2026)'] = (df_final_h['VOLUME'] / df_final_h['META 2026'] * 100).replace([float('inf'), -float('inf')], 0).fillna(0)
 
+        df_final_h.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'}, inplace=True)
+
         # --- ÁREA VISUAL: RESUMO ---
         st.markdown("---")
+        real_perc = (positivacao_card / base_total * 100) if base_total > 0 else 0
+        cor_indicador = "#28a745" if real_perc >= meta_val_card else "#e67e22"
         
-        qtd_total_itens = len(df_final_h)
-        itens_atingiram = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
-        itens_abaixo = qtd_total_itens - itens_atingiram
-        meta_fixa_perc = 80
-        realizado_perc_resumo = (itens_atingiram / qtd_total_itens * 100) if qtd_total_itens > 0 else 0
-        falta_perc = max(0, meta_fixa_perc - realizado_perc_resumo)
-
         col_res, col_cob = st.columns([1.5, 1])
-
         with col_res:
+            qtd_total_itens = len(df_final_h)
+            itens_atingiram = len(df_final_h[df_final_h['VOLUME'] >= df_final_h['META 2025']])
             st.markdown(f"""
                 <table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px;">
                     <tr style="background-color: #0070C0; color: white; font-weight: bold; text-align: center;">
                         <td colspan="2" style="padding: 8px; border: 1px solid #dee2e6;">RESUMO DE CRESCIMENTO (Vs META 2025)</td>
                     </tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTOS ITENS TEM NO TOTAL</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{qtd_total_itens}</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS QUE ATINGIRAM</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram}</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS ABAIXO DA META</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{itens_abaixo}</td></tr>
-                    <tr style="background-color: #E7E6E6;"><td style="padding: 5px; border: 1px solid #dee2e6;">META FIXA</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{meta_fixa_perc}%</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">REALIZADO (%)</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: {'green' if realizado_perc_resumo >= meta_fixa_perc else '#e67e22'};">{realizado_perc_resumo:.1f}%</td></tr>
-                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">QUANTO FALTA (%)</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: red;">{falta_perc:.1f}%</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ITENS NO TOTAL</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{qtd_total_itens}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">ATINGIRAM META</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold; color: green;">{itens_atingiram}</td></tr>
+                    <tr><td style="padding: 5px; border: 1px solid #dee2e6; background-color: #f8f9fa;">REALIZADO (%)</td><td style="padding: 5px; border: 1px solid #dee2e6; text-align: center; font-weight: bold;">{(itens_atingiram/qtd_total_itens*100):.1f}%</td></tr>
                 </table>
             """, unsafe_allow_html=True)
 
         with col_cob:
             base_fmt = f"{base_total:,.0f}".replace(",", ".")
-            atingido_fmt = f"{real_perc:.1f}".replace(".", ",") + "%"
             st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 18px; border-radius: 8px; background-color: #f9f9f9; height: 100%;">
-                    <small style="color: #666;">COBERTURA</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_fmt}</b> | Meta: <b>{meta_val:.0f}%</b></span><br>
-                    Atingido: <span style="color:{cor_indicador}; font-size: 1.8em; font-weight: bold;">{atingido_fmt}</span>
+                    <small style="color: #666;">COBERTURA GERAL</small><br>
+                    <span style="font-size: 1.1em;">Base: <b>{base_fmt}</b> | Meta: <b>{meta_val_card:.1f}%</b></span><br>
+                    Atingido: <span style="color:{cor_indicador}; font-size: 1.8em; font-weight: bold;">{real_perc:.1f}%</span>
                 </div>
             """, unsafe_allow_html=True)
 
-        # --- EXIBIÇÃO DA TABELA DETALHADA (APENAS UMA VEZ) ---
+        # --- EXIBIÇÃO DA TABELA ---
         st.markdown("### 📈 Desempenho por Hierarquia")
-        
         colunas_ordenadas = [
             'HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 
             'PENDÊNCIA CLIENTES', 'META 2025', 'META 2026', 'VOLUME', 
             'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)', 'CRESCIMENTO 2026', 'ATINGIMENTO % (VOL 2026)'
         ]
-        df_final_h = df_final_h[colunas_ordenadas]
-
-        def aplicar_estilo(val):
-            if isinstance(val, (int, float)) and val < 0: return 'color: #d63031; font-weight: bold;'
-            return ''
-
+        
         st.dataframe(
-            df_final_h.sort_values(by=['HIERARQUIA DE PRODUTOS'], ascending=True).style
+            df_final_h[colunas_ordenadas].sort_values(by=['HIERARQUIA DE PRODUTOS']).style
             .format({
                 'META COBERTURA': "{:.1f}%",
                 'META CLIENTES (ABS)': lambda x: f"{x:,.0f}".replace(",", "."),
@@ -1537,122 +1540,24 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
                 'ATINGIMENTO % (VOL 2026)': "{:.1f}%"
             })
-            .applymap(aplicar_estilo, subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
-            .bar(subset=['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)'], color=['#ffadad', '#72efdd'], align='mid', vmin=0, vmax=100)
+            .applymap(lambda v: 'color: red;' if isinstance(v, (int, float)) and v < 0 else '', subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
             .apply(lambda x: ['background-color: #fff3cd' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
             use_container_width=True,
             hide_index=True
         )
-        # --- ÁREA DE EXPORTAÇÃO ---
+
+        # --- EXPORTAÇÃO ---
         st.markdown("### 📥 Exportar Relatório")
-        col_btn1, col_btn2, _ = st.columns([1, 1, 2])
-
-        # --- PREPARAÇÃO DOS FILTROS PARA O EXCEL ---
-        # Criamos um pequeno DataFrame com o resumo dos filtros selecionados
-        filtros_selecionados = {
-            "Filtro": ["Estado", "Supervisor", "Vendedor"],
-            "Valores": [
-                ", ".join(sel_estado) if sel_estado else "Todos",
-                ", ".join(sel_supervisor) if sel_supervisor else "Todos",
-                ", ".join(sel_vendedor) if sel_vendedor else "Todos"
-            ]
-        }
-        df_filtros = pd.DataFrame(filtros_selecionados)
-
-        # --- FUNÇÃO EXCEL ---
         buffer_excel = io.BytesIO()
-        df_excel = df_final_h.copy()
-
-        # Ajuste de porcentagem para o Excel
-        cols_pct = ['META COBERTURA', 'ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)']
-        for col in cols_pct:
-            df_excel[col] = df_excel[col] / 100
-
         with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
-            # 1. Planilha Principal
-            df_excel.to_excel(writer, index=False, sheet_name='Desempenho')
-            
-            # 2. Planilha de Filtros (O que foi selecionado nos Slicers)
-            df_filtros.to_excel(writer, index=False, sheet_name='Filtros Aplicados')
-            
-            workbook  = writer.book
-            worksheet = writer.sheets['Desempenho']
-            ws_filtros = writer.sheets['Filtros Aplicados']
-
-            # Formatos
-            format_pct = workbook.add_format({'num_format': '0.0%', 'align': 'center'})
-            format_num = workbook.add_format({'num_format': '#,##0', 'align': 'right'})
-            format_header = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
-
-            # Aplicar formatos na aba principal
-            worksheet.set_column(1, 1, 15, format_pct)  # Meta Cob
-            worksheet.set_column(2, 7, 15, format_num)  # Valores
-            worksheet.set_column(9, 9, 20, format_pct)  # Atig 25
-            worksheet.set_column(11, 11, 20, format_pct) # Atig 26
-            worksheet.set_column(8, 8, 15, format_num)  # Cresc 25
-            worksheet.set_column(10, 10, 15, format_num) # Cresc 26
-            
-            # Estilizar aba de filtros para ficar organizado
-            ws_filtros.set_column(0, 0, 20, format_header)
-            ws_filtros.set_column(1, 1, 60)
-
-        with col_btn1:
-            st.download_button(
-                label="📊 Baixar Excel",
-                data=buffer_excel.getvalue(),
-                file_name="relatorio_desempenho.xlsx",
-                mime="application/vnd.ms-excel"
-            )
-
-        # --- FUNÇÃO PDF (ADICIONANDO FILTROS NO TOPO) ---
-        def generate_pdf(data):
-            pdf = FPDF(orientation='L', unit='mm', format='A4')
-            pdf.add_page()
-            
-            # Título
-            pdf.set_font("Arial", 'B', 14)
-            pdf.cell(0, 10, "Relatorio de Desempenho de Vendas", ln=True, align='C')
-            
-            # Informações dos Filtros no PDF
-            pdf.set_font("Arial", 'I', 8)
-            texto_filtros = f"Filtros - Estado: {filtros_selecionados['Valores'][0]} | " \
-                            f"Supervisor: {filtros_selecionados['Valores'][1]} | " \
-                            f"Vendedor: {filtros_selecionados['Valores'][2]}"
-            pdf.cell(0, 8, texto_filtros, ln=True, align='L')
-            pdf.ln(2)
-            
-            # Tabela
-            pdf.set_font("Arial", size=7)
-            cols = data.columns.tolist()
-            for col in cols:
-                pdf.cell(23, 8, str(col)[:14], border=1, align='C')
-            pdf.ln()
-            
-            for _, row in data.iterrows():
-                for col in cols:
-                    val = row[col]
-                    if col in cols_pct:
-                        txt = f"{val:.1f}%".replace(".", ",")
-                    elif isinstance(val, (int, float)):
-                        txt = f"{val:,.0f}".replace(",", ".")
-                    else:
-                        txt = str(val)
-                    pdf.cell(23, 7, txt, border=1, align='R')
-                pdf.ln()
-            
-            return pdf.output(dest='S').encode('latin-1')
-
-        with col_btn2:
-            try:
-                pdf_bytes = generate_pdf(df_final_h)
-                st.download_button(
-                    label="📄 Baixar PDF",
-                    data=pdf_bytes,
-                    file_name="relatorio_desempenho.pdf",
-                    mime="application/pdf"
-                )
-            except Exception as e:
-                st.warning(f"Erro ao gerar PDF: {e}")
+            df_final_h[colunas_ordenadas].to_excel(writer, index=False, sheet_name='Desempenho')
+        
+        st.download_button(
+            label="📊 Baixar Excel",
+            data=buffer_excel.getvalue(),
+            file_name="relatorio_desempenho.xlsx",
+            mime="application/vnd.ms-excel"
+        )
 
 # --- PÁGINA: APROVAÇÕES ---
 elif menu_interna == "🔔 Aprovações":
