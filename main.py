@@ -1381,19 +1381,17 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado = df_faturado.dropna(how='all')
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             # Renomeação correta
-           df_faturado['QTD_VENDAS'] = (
-                  df_faturado['QTD_VENDAS']
-                   .astype(str)
-                   .str.strip()
-                   .str.replace('.', '', regex=False)
-                   .str.replace(',', '.', regex=False)
-           )
-
-           df_faturado['QTD_VENDAS'] = pd.to_numeric(
-              df_faturado['QTD_VENDAS'],
-              errors='coerce'
-           ).fillna(0)
-
+            df_faturado.rename(columns={
+                'Região de vendas': 'VENDEDOR_NOME',
+                'RG': 'VENDEDOR_COD',
+                'Qtd Vendas (S/Dec)': 'QTD_VENDAS',
+                'Hierarquia de produtos': 'HIERARQUIA'
+            }, inplace=True)
+            
+            # Identificar coluna K (11ª coluna, índice 10) que é o CÓDIGO DO CLIENTE
+            col_cod_cliente = df_faturado.columns[10] 
+            
+            df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
             df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
             def aplicar_agrupamento_custom(item):
@@ -1673,4 +1671,3 @@ elif menu == "📊 KPI Aprovação Analistas":
                 gerar_pdf(df_show, tipo_relatorio="KPI_ANALISTA"),
                 file_name="kpi_aprovacao_analistas.pdf"
             )
-
