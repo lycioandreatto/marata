@@ -1388,17 +1388,23 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 }, inplace=True)
                 
                 col_cod_cliente = df_faturado.columns[10] 
-                
                 df_faturado['QTD_VENDAS'] = pd.to_numeric(df_faturado['QTD_VENDAS'], errors='coerce').fillna(0)
                 df_faturado['VENDEDOR_COD'] = df_faturado['VENDEDOR_COD'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
                 def aplicar_agrupamento_custom(item):
                     item = str(item).strip().upper()
-                    mapeamento = {'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS','MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO','MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO','MOLHOS ALHO PICANTE': 'MOLHOS ALHO','PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA','PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'}
+                    mapeamento = {
+                        'DESCARTAVEIS COPOS': 'DESCARTAVEIS', 'DESCARTAVEIS PRATOS': 'DESCARTAVEIS', 
+                        'DESCARTAVEIS TAMPAS': 'DESCARTAVEIS', 'DESCARTAVEIS POTES': 'DESCARTAVEIS',
+                        'MILHO CANJICA': 'MILHO', 'MILHO CANJIQUINHA': 'MILHO',
+                        'MILHO CREME MILHO': 'MILHO', 'MILHO FUBA': 'MILHO',
+                        'MOLHOS ALHO PICANTE': 'MOLHOS ALHO',
+                        'PIMENTA CONSERVA BIQUINHO': 'PIMENTA CONSERVA',
+                        'PIMENTA CONSERVA PASTA': 'PIMENTA CONSERVA'
+                    }
                     return mapeamento.get(item, item)
                 
                 df_faturado['HIERARQUIA'] = df_faturado['HIERARQUIA'].apply(aplicar_agrupamento_custom)
-                
                 df_relacao = df_base[['VENDEDOR', 'SUPERVISOR', 'ANALISTA']].drop_duplicates(subset=['VENDEDOR'])
                 df_faturado = pd.merge(df_faturado, df_relacao, left_on='VENDEDOR_NOME', right_on='VENDEDOR', how='left')
 
@@ -1433,7 +1439,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 
             vendedores_ids = df_f['VENDEDOR_COD'].unique()
             
-            # --- CÁLCULO DA BASE DE CLIENTES (CARD) ---
+            # --- CÁLCULO DA BASE DE CLIENTES ---
             if not (sel_supervisor or sel_vendedor):
                 dados_base = df_param_metas[df_param_metas['EscrV'].isin(df_f['EscrV'].unique())]
                 base_total = dados_base['BASE'].sum()
@@ -1441,28 +1447,26 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 dados_base = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)]
                 base_total = dados_base.drop_duplicates('RG')['BASE'].sum()
 
-            # --- PROCESSAMENTO DA TABELA (AJUSTADO PARA VOLUME CORRETO) ---
-            # 1. Volume Real (Soma da coluna QTD_VENDAS após filtros)
+            # --- PROCESSAMENTO DA TABELA (VOLUME CORRIGIDO) ---
+            # Agrupa o faturamento filtrado (VOLUME REAL)
             df_agrup_f = df_f.groupby('HIERARQUIA').agg({
                 'QTD_VENDAS': 'sum',
                 col_cod_cliente: 'nunique'
             }).rename(columns={'QTD_VENDAS': 'VOLUME', col_cod_cliente: 'POSITIVAÇÃO'}).reset_index()
 
-            # 2. Metas filtradas pelos RGs selecionados
+            # Agrupa Metas 2025
             df_agrup_25 = df_2025[df_2025['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_2025 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
-            df_agrup_26 = df_meta_sistema[df_meta_sistema['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_meta_sistema is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
             
-            # 3. Metas de Cobertura
+            # Metas Cobertura
             df_meta_cob_h = df_metas_cob.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'})
 
-            # 4. Montagem Final (Merge garantindo que o VOLUME venha do faturamento filtrado)
+            # Montagem Final
             df_final = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
             df_final = df_final.merge(df_agrup_f, on='HIERARQUIA', how='left')
             df_final = df_final.merge(df_meta_cob_h, on='HIERARQUIA', how='left')
-            df_final = df_final.merge(df_agrup_25, on='HIERARQUIA', how='left')
-            df_final = df_final.merge(df_agrup_26, on='HIERARQUIA', how='left').fillna(0)
+            df_final = df_final.merge(df_agrup_25, on='HIERARQUIA', how='left').fillna(0)
 
-            # --- CÁLCULOS ---
+            # Cálculos de colunas
             df_final['META CLIENTES (ABS)'] = (df_final['META COBERTURA'] / 100 * base_total).apply(math.ceil)
             df_final['PENDÊNCIA CLIENTES'] = (df_final['META CLIENTES (ABS)'] - df_final['POSITIVAÇÃO']).apply(lambda x: x if x > 0 else 0)
             df_final['CRESCIMENTO 2025'] = df_final['VOLUME'] - df_final['META 2025']
@@ -1472,18 +1476,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
             # --- UI: CARDS E TABELA ---
             st.markdown("---")
-            col_res, col_cob = st.columns([1.5, 1])
-            with col_cob:
-                real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
-                st.markdown(f"""
-                    <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                        <small>COBERTURA ATUAL</small><br>
-                        <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b></span><br>
-                        Atingido: <span style="color:#28a745; font-size: 1.8em; font-weight: bold;">{real_perc:.1f}%</span>
-                    </div>
-                """, unsafe_allow_html=True)
+            real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
+            st.metric("Cobertura Atual", f"{real_perc:.1f}%", f"Base: {base_total:,.0f}")
 
-            st.markdown("### 📈 Desempenho por Hierarquia")
             cols_view = ['HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 'PENDÊNCIA CLIENTES', 'META 2025', 'VOLUME', 'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)']
             
             st.dataframe(
@@ -1496,12 +1491,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 .apply(lambda x: ['background-color: #ffcccc' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
                 use_container_width=True, hide_index=True
             )
-
-            # Exportação
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df_final.to_excel(writer, index=False, sheet_name='Dashboard')
-            st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
 # --- PÁGINA: APROVAÇÕES ---
 elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
