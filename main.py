@@ -1381,7 +1381,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_faturado = df_faturado.dropna(how='all')
             df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
             # Renomeação correta
-                df_faturado['QTD_VENDAS'] = (
+           df_faturado['QTD_VENDAS'] = (
                   df_faturado['QTD_VENDAS']
                    .astype(str)
                    .str.strip()
