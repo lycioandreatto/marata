@@ -51,6 +51,15 @@ def enviar_excel_vendedor(email_destino, nome_vendedor, df_excel):
 
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
+MAPA_EMAIL_ANALISTAS = {
+    "BARBARA": "barbara@marata.com.br",
+    "THAIS": "thais@marata.com.br",
+    "ROBERIO": "roberio@marata.com.br",
+    "CAROL": "carol@marata.com.br",
+    "REGIANE": "regiane@marata.com.br",
+    "ALLANA": "allana@marata.com.br",
+}
+
 MAPA_EMAIL_VENDEDORES = {
     "ALIF NUNES": "alif.nunes@marata.com.br",
     "JOAO SILVA": "joao.silva@marata.com.br",
@@ -1575,23 +1584,39 @@ elif menu_interna == "📊 Desempenho de Vendas":
 if st.button("📧 Enviar Excel por Vendedor"):
     vendedores = df_f['VENDEDOR_NOME'].unique()
 
+    usuario_logado = st.session_state.get("usuario", "").upper()
+    email_analista = MAPA_EMAIL_ANALISTAS.get(usuario_logado)
+
     for vendedor in vendedores:
         vendedor_up = vendedor.upper()
 
-        # 🔹 TESTE: força envio só pra você
-        email_destino = MAPA_EMAIL_VENDEDORES.get(
-            vendedor_up,
-            "lycio.oliveira@marata.com.br"  # fallback
-        )
+        # 🔹 Email do vendedor
+        emails_vendedor = MAPA_EMAIL_VENDEDORES.get(vendedor_up, [])
 
-        # Filtra dados só daquele vendedor
-        df_vendedor = df_final.copy()
+        # 🔹 Monta lista final
+        emails_destino = []
 
-        enviar_excel_vendedor(
-            email_destino=email_destino,
-            nome_vendedor=vendedor,
-            df_excel=df_vendedor
-        )
+        emails_destino.extend(emails_vendedor)
+
+        if email_analista:
+            emails_destino.append(email_analista)
+
+        emails_destino.append(EMAIL_ADMIN)
+
+        emails_destino = list(set(emails_destino))  # remove duplicados
+
+        if not emails_destino:
+            continue
+
+        # 🔹 Excel somente daquele vendedor
+        df_vendedor = df_final[df_final['VENDEDOR_NOME'] == vendedor].copy()
+
+        for email in emails_destino:
+            enviar_excel_vendedor(
+                email_destino=email,
+                nome_vendedor=vendedor,
+                df_excel=df_vendedor
+            )
 
     st.success("📨 E-mails enviados com sucesso!")
 
