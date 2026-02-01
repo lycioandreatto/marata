@@ -15,6 +15,15 @@ from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
+MAPA_EMAIL_VENDEDORES = {
+    "ALIF NUNES": "alif.nunes@marata.com.br",
+    "JOAO SILVA": "joao.silva@marata.com.br",
+    "MARIA COSTA": "maria.costa@marata.com.br",
+
+    # TESTE
+    "TESTE": "lycio.oliveira@marata.com.br"
+}
+
 # --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
 MAPA_EMAILS = {
     "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br","marciajanaina@marata.com.br"],
