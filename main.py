@@ -1571,6 +1571,30 @@ elif menu_interna == "📊 Desempenho de Vendas":
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_final.to_excel(writer, index=False, sheet_name='Dashboard')
         st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
+        st.markdown("---")
+if st.button("📧 Enviar Excel por Vendedor"):
+    vendedores = df_f['VENDEDOR_NOME'].unique()
+
+    for vendedor in vendedores:
+        vendedor_up = vendedor.upper()
+
+        # 🔹 TESTE: força envio só pra você
+        email_destino = MAPA_EMAIL_VENDEDORES.get(
+            vendedor_up,
+            "lycio.oliveira@marata.com.br"  # fallback
+        )
+
+        # Filtra dados só daquele vendedor
+        df_vendedor = df_final.copy()
+
+        enviar_excel_vendedor(
+            email_destino=email_destino,
+            nome_vendedor=vendedor,
+            df_excel=df_vendedor
+        )
+
+    st.success("📨 E-mails enviados com sucesso!")
+
 # --- PÁGINA: APROVAÇÕES ---
 elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
