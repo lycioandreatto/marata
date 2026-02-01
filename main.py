@@ -1446,26 +1446,40 @@ elif menu_interna == "📊 Desempenho de Vendas":
             # Agrupa por RG para não duplicar a base se houver várias linhas por vendedor
             base_total = dados_base.drop_duplicates('RG')['BASE'].sum()
 
-        # --- PROCESSAMENTO DA TABELA ---
-        # 1. Volume e Positivação Real por Hierarquia
-        df_agrup_f = df_f.groupby('HIERARQUIA').agg({
-            'QTD_VENDAS': 'sum',
-            col_cod_cliente: 'nunique'
-        }).rename(columns={'QTD_VENDAS': 'VOLUME', col_cod_cliente: 'POSITIVAÇÃO'}).reset_index()
+       # --- PROCESSAMENTO DA TABELA (VERSÃO CORRIGIDA) ---
 
-        # 2. Metas de Volume (Sincronizadas com o filtro de RG)
-        df_agrup_25 = df_2025[df_2025['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_2025 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
-        df_agrup_26 = df_meta_sistema[df_meta_sistema['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_meta_sistema is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
-        
-        # 3. Metas de Cobertura (%)
-        df_meta_cob_h = df_metas_cob.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'})
+# 1. Garantir que as chaves de junção estejam idênticas (String, Upper, Sem espaços)
+df_f['HIERARQUIA'] = df_f['HIERARQUIA'].astype(str).str.strip().str.upper()
 
-        # 4. Montagem Final
-        df_final = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
-        df_final = df_final.merge(df_agrup_f, on='HIERARQUIA', how='left')
-        df_final = df_final.merge(df_meta_cob_h, on='HIERARQUIA', how='left')
-        df_final = df_final.merge(df_agrup_25, on='HIERARQUIA', how='left')
-        df_final = df_final.merge(df_agrup_26, on='HIERARQUIA', how='left').fillna(0)
+# 2. Volume e Positivação Real por Hierarquia
+# Usamos o df_f (que já passou pelos filtros de estado/supervisor/vendedor)
+df_agrup_f = df_f.groupby('HIERARQUIA').agg({
+    'QTD_VENDAS': 'sum',
+    col_cod_cliente: 'nunique'
+}).rename(columns={'QTD_VENDAS': 'VOLUME', col_cod_cliente: 'POSITIVAÇÃO'}).reset_index()
+
+# 3. Metas - Garantir que o filtro de RG seja comparável (Strings)
+vendedores_ids_str = [str(x) for x in vendedores_ids]
+
+# Processando Metas 2025
+if df_2025 is not None:
+    df_2025['RG'] = df_2025['RG'].astype(str).str.strip()
+    df_2025['HIERARQUIA DE PRODUTOS'] = df_2025['HIERARQUIA DE PRODUTOS'].astype(str).str.strip().str.upper()
+    
+    df_agrup_25 = df_2025[df_2025['RG'].isin(vendedores_ids_str)].groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index()
+    df_agrup_25.rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}, inplace=True)
+else:
+    df_agrup_25 = pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
+
+# 4. Montagem do DF Final com merge rigoroso
+df_final = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
+df_final['HIERARQUIA'] = df_final['HIERARQUIA'].str.strip().str.upper()
+
+df_final = df_final.merge(df_agrup_f, on='HIERARQUIA', how='left')
+df_final = df_final.merge(df_agrup_25, on='HIERARQUIA', how='left')
+
+# Preenche Nulos antes dos cálculos
+df_final[['VOLUME', 'POSITIVAÇÃO', 'META 2025']] = df_final[['VOLUME', 'POSITIVAÇÃO', 'META 2025']].fillna(0)
 
         # --- CÁLCULOS DAS COLUNAS COM ERRO ---
         # Meta Clientes (ABS) = (Meta % / 100) * Base Total do Vendedor Selecionado
