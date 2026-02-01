@@ -1468,7 +1468,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # --- CÁLCULOS DAS COLUNAS COM ERRO ---
         # Meta Clientes (ABS) = (Meta % / 100) * Base Total do Vendedor Selecionado
-        df_final['META CLIENTES (ABS)'] = (df_final['META COBERTURA'] / 100) * base_total
+        df_final['META CLIENTES (ABS)'] = df_final['META COBERTURA'] * base_total
         
         # Pendência = Meta Absoluta - Positivação (Se for negativo, vira zero)
         df_final['PENDÊNCIA CLIENTES'] = (df_final['META CLIENTES (ABS)'] - df_final['POSITIVAÇÃO']).apply(lambda x: x if x > 0 else 0)
