@@ -1669,3 +1669,106 @@ elif menu_interna == "🔔 Aprovações":
                     st.error(f"Agendamento de {row['CLIENTE']} recusado.")
                     st.cache_data.clear()
                     st.rerun()
+
+# --- PÁGINA: KPI APROVAÇÃO POR ANALISTA ---
+elif menu == "📊 KPI Aprovação Analistas":
+
+    # Segurança extra
+    if not (is_admin or is_diretoria):
+        st.error("Você não tem permissão para acessar esta página.")
+        st.stop()
+
+    st.header("📊 KPI de Aprovação por Analista")
+
+    if df_agenda is None or df_agenda.empty:
+        st.warning("Nenhum dado disponível para análise.")
+        st.stop()
+
+    # Garantia de coluna
+    if 'APROVACAO' not in df_agenda.columns:
+        st.warning("Coluna APROVACAO não encontrada.")
+        st.stop()
+
+    # Normalização
+    df_agenda['APROVACAO'] = (
+        df_agenda['APROVACAO']
+        .fillna("Pendente")
+        .astype(str)
+    )
+
+    # Base apenas com decisões tomadas
+    df_decisoes = df_agenda[
+        df_agenda['APROVACAO'].isin(['Aprovado', 'Reprovado'])
+    ].copy()
+
+    if df_decisoes.empty:
+        st.info("Ainda não há agendamentos avaliados.")
+        st.stop()
+
+    # KPI por analista
+    kpi_analista = (
+        df_decisoes
+        .groupby('ANALISTA')
+        .agg(
+            total_avaliados=('APROVACAO', 'count'),
+            aprovados=('APROVACAO', lambda x: (x == 'Aprovado').sum()),
+            reprovados=('APROVACAO', lambda x: (x == 'Reprovado').sum())
+        )
+        .reset_index()
+    )
+
+    kpi_analista['taxa_aprovacao'] = (
+        kpi_analista['aprovados'] / kpi_analista['total_avaliados'] * 100
+    ).round(1)
+
+    # --- KPIs GERAIS ---
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "📌 Total Avaliações",
+        int(kpi_analista['total_avaliados'].sum())
+    )
+
+    col2.metric(
+        "✅ Taxa Média de Aprovação",
+        f"{kpi_analista['taxa_aprovacao'].mean():.1f}%"
+    )
+
+    col3.metric(
+        "👤 Analistas Ativos",
+        kpi_analista['ANALISTA'].nunique()
+    )
+
+    st.markdown("---")
+
+    # --- TABELA ---
+    st.subheader("📋 Performance por Analista")
+
+    df_show = kpi_analista.sort_values(
+        by='taxa_aprovacao',
+        ascending=False
+    ).reset_index(drop=True)
+
+    st.dataframe(
+        df_show,
+        use_container_width=True
+    )
+
+    # --- EXPORTAÇÃO ---
+    with st.expander("📤 Exportar Relatório"):
+        col_e1, col_e2 = st.columns(2)
+
+        with col_e1:
+            st.download_button(
+                "📥 Exportar Excel",
+                converter_para_excel(df_show),
+                file_name="kpi_aprovacao_analistas.xlsx"
+            )
+
+        with col_e2:
+            st.download_button(
+                "📄 Exportar PDF",
+                gerar_pdf(df_show, tipo_relatorio="KPI_ANALISTA"),
+                file_name="kpi_aprovacao_analistas.pdf"
+            )
+
