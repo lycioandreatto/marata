@@ -10,6 +10,7 @@ from fpdf import FPDF
 import pytz
 import time
 import os
+import math
 from streamlit_cookies_manager import EncryptedCookieManager
 
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
@@ -1468,7 +1469,10 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # --- CÁLCULOS DAS COLUNAS COM ERRO ---
         # Meta Clientes (ABS) = (Meta % / 100) * Base Total do Vendedor Selecionado
-        df_final['META CLIENTES (ABS)'] = df_final['META COBERTURA'] * base_total
+        df_final['META CLIENTES (ABS)'] = (
+           df_final['META COBERTURA'] * base_total
+        ).apply(math.ceil)
+
         
         # Pendência = Meta Absoluta - Positivação (Se for negativo, vira zero)
         df_final['PENDÊNCIA CLIENTES'] = (df_final['META CLIENTES (ABS)'] - df_final['POSITIVAÇÃO']).apply(lambda x: x if x > 0 else 0)
