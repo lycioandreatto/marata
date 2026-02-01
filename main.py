@@ -1600,9 +1600,9 @@ if st.button("📧 Enviar Excel por Vendedor"):
         if email_analista:
             emails_destino.append(email_analista)
 
-        emails_destino.append(EMAIL_ADMIN)
+            emails_destino.append(EMAIL_ADMIN)
 
-        emails_destino = list(set(emails_destino))  # remove duplicados
+            emails_destino = list(set(emails_destino))  # remove duplicados
 
         if not emails_destino:
             continue
