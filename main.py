@@ -13,6 +13,42 @@ import os
 import math
 from streamlit_cookies_manager import EncryptedCookieManager
 
+
+def enviar_excel_vendedor(email_destino, nome_vendedor, df_excel):
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    email_origem = st.secrets["email"]["sender_email"]
+    senha_origem = st.secrets["email"]["sender_password"]
+    smtp_server = st.secrets["email"]["smtp_server"]
+    smtp_port = st.secrets["email"]["smtp_port"]
+
+    msg = MIMEMultipart()
+    msg["From"] = f"MARATÁ-GVP <{email_origem}>"
+    msg["To"] = email_destino
+    msg["Subject"] = f"📊 Desempenho de Vendas - {nome_vendedor}"
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        df_excel.to_excel(writer, index=False, sheet_name="Desempenho")
+
+    part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    part.set_payload(buffer.getvalue())
+    encoders.encode_base64(part)
+    part.add_header(
+        "Content-Disposition",
+        f'attachment; filename="desempenho_{nome_vendedor}.xlsx"'
+    )
+    msg.attach(part)
+
+    server = smtplib.SMTP(smtp_server, smtp_port)
+    server.starttls()
+    server.login(email_origem, senha_origem)
+    server.sendmail(email_origem, email_destino, msg.as_string())
+    server.quit()
+
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
 MAPA_EMAIL_VENDEDORES = {
