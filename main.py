@@ -425,9 +425,10 @@ with st.sidebar:
             if is_admin:
                 df_filtrado_sino = df_agenda[df_agenda['STATUS'] == "Pendente"]
             else:
-                # Ajuste 'ANALISTA' para o nome da coluna correta no seu DF
-                df_filtrado_sino = df_agenda[(df_agenda['STATUS'] == "Pendente") & (df_agenda['ANALISTA'] == user_atual)]
-            
+                df_filtrado_sino = df_agenda[
+                    (df_agenda['STATUS'] == "Pendente") &
+                    (df_agenda['ANALISTA'] == user_atual)
+                ]
             qtd_p = len(df_filtrado_sino)
         else:
             qtd_p = 0
@@ -447,23 +448,27 @@ with st.sidebar:
     else:
         texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
-    opcoes_menu = ["📅 Agendamentos do Dia", "📋 Novo Agendamento", texto_ver_agenda]
+    opcoes_menu = [
+        "📅 Agendamentos do Dia",
+        "📋 Novo Agendamento",
+        texto_ver_agenda
+    ]
     
     if user_atual.upper() == "LYCIO":
         opcoes_menu.append("📊 Desempenho de Vendas")
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
-        
+        opcoes_menu.append("📊 KPI Aprovação Analistas")  # ✅ NOVA OPÇÃO
+    
     menu = st.selectbox("Menu Principal", opcoes_menu)
     
     if "pagina_direta" not in st.session_state:
         st.session_state.pagina_direta = None
 
     if menu:
-        menu_selecionado = menu
-        if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia": 
-             st.session_state.pagina_direta = None
+        if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia":
+            st.session_state.pagina_direta = None
 
     if st.session_state.pagina_direta:
         menu_interna = st.session_state.pagina_direta
@@ -483,35 +488,58 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
         
-    for _ in range(5): st.sidebar.write("")
+    for _ in range(5):
+        st.sidebar.write("")
 
     if is_admin:
         st.markdown("---")
         st.subheader("🗑️ Limpeza em Massa")
         if df_agenda is not None and not df_agenda.empty:
-            df_limpeza = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
-            lista_sups_limpar = sorted([str(x) for x in df_limpeza['SUPERVISOR'].unique() if x])
-            sup_limpar = st.selectbox("Limpar agenda de:", ["Selecione..."] + lista_sups_limpar, key="sel_limpeza_admin")
+            df_limpeza = df_agenda.drop_duplicates(
+                subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS']
+            )
+            lista_sups_limpar = sorted(
+                [str(x) for x in df_limpeza['SUPERVISOR'].unique() if x]
+            )
+            sup_limpar = st.selectbox(
+                "Limpar agenda de:",
+                ["Selecione..."] + lista_sups_limpar,
+                key="sel_limpeza_admin"
+            )
 
             if sup_limpar != "Selecione...":
                 confirma = st.popover(f"⚠️ APAGAR: {sup_limpar}")
-                if confirma.button(f"Confirmar Exclusão de {sup_limpar}", key="btn_conf_limpeza"):
-                    df_rest = df_agenda[df_agenda['SUPERVISOR'] != sup_limpar].copy()
+                if confirma.button(
+                    f"Confirmar Exclusão de {sup_limpar}",
+                    key="btn_conf_limpeza"
+                ):
+                    df_rest = df_agenda[
+                        df_agenda['SUPERVISOR'] != sup_limpar
+                    ].copy()
                     conn.update(
                         spreadsheet=url_planilha, 
                         worksheet="AGENDA", 
-                        data=df_rest.drop(columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'], errors='ignore')
+                        data=df_rest.drop(
+                            columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'],
+                            errors='ignore'
+                        )
                     )
                     st.cache_data.clear()
                     st.success("Agenda limpa!")
                     time.sleep(1)
                     st.rerun()
+
 # --- TÍTULO CENTRAL NO TOPO ---
-st.markdown("<h4 style='text-align: center; color: black; margin-top: -110px;'>GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>", unsafe_allow_html=True)
+st.markdown(
+    "<h4 style='text-align: center; color: black; margin-top: -110px;'>"
+    "GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>",
+    unsafe_allow_html=True
+)
 st.markdown("---")
 
 # Mapeia menu_interna de volta para menu para o restante do código
 menu = menu_interna
+
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
