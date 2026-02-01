@@ -137,153 +137,6 @@ st.markdown("""
     }
     .user-card-icon {
         font-size: 1.5em;
-    }import streamlit as st
-from geoloc import capturar_coordenadas
-import numpy as np
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
-from datetime import datetime, timedelta
-import io
-import uuid
-from fpdf import FPDF
-import pytz
-import time
-import os
-from streamlit_cookies_manager import EncryptedCookieManager
-
-# --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
-
-# --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
-MAPA_EMAILS = {
-    "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br","marciajanaina@marata.com.br"],
-    "THAIS": ["thais.oliveira@marata.com.br","marciajanaina@marata.com.br"],
-    "REGIANE": ["regiane.santana@marata.com.br","marciajanaina@marata.com.br"],
-    "ALLANA": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br","marciajanaina@marata.com.br"],
-    "ROBERIO": ["roberio@marata.com.br", "dione.lima@marata.com.br","marciajanaina@marata.com.br"]
-}
-
-# E-mails que sempre recebem
-EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
-
-def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    try:
-        email_origem = st.secrets["email"]["sender_email"]
-        senha_origem = st.secrets["email"]["sender_password"]
-        smtp_server = st.secrets["email"]["smtp_server"]
-        smtp_port = st.secrets["email"]["smtp_port"]
-        
-        msg = MIMEMultipart()
-        msg['From'] = msg['From'] = f"MARATÁ-GVP <{email_origem}>"
-        msg['To'] = destinatarios_lista 
-        msg['Subject'] = f"✅ Rota Finalizada - {vendedor} ({datetime.now().strftime('%d/%m')})"
-
-        saudacao = nome_analista.title() if nome_analista != "NÃO LOCALIZADO" else "Gestão Maratá"
-
-        corpo = f"""
-        Olá, {saudacao},
-        
-        O vendedor {vendedor} acaba de finalizar a rota do dia.
-        
-        📊 RESUMO DE PERFORMANCE:
-        ------------------------------------------
-        - Total de Clientes na Agenda: {dados_resumo['total']}
-        - Visitas Realizadas: {dados_resumo['realizados']}
-        - Visitas com Pedido: {dados_resumo['pedidos']}
-        - Clientes Pendentes: {dados_resumo['pendentes']}
-        - Taxa de Conversão: {taxa:.1f}% (Pedidos / Visitas)
-        
-        📍 DADOS DE FINALIZAÇÃO:
-        ------------------------------------------
-        - Hora do Envio: {hora}
-        - Localização Final: {link}
-        
-        E-mail gerado automaticamente pelo Sistema Maratá GVP.
-        """
-        msg.attach(MIMEText(corpo, 'plain'))
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(email_origem, senha_origem)
-        server.sendmail(email_origem, destinatarios_lista.split(','), msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        st.error(f"Erro no envio: {e}")
-        return False
-
-# --- CONTINUAÇÃO DO SEU CÓDIGO (calcular_distancia, etc) ---
-
-
-
-def calcular_distancia(lat1, lon1, lat2, lon2):
-    # Raio da Terra em KM
-    R = 6371.0
-    
-    dlat = np.radians(float(lat2) - float(lat1))
-    dlon = np.radians(float(lon2) - float(lon1))
-    
-    a = np.sin(dlat / 2)**2 + np.cos(np.radians(float(lat1))) * np.cos(np.radians(float(lat2))) * np.sin(dlon / 2)**2
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-    
-    distancia = R * c * 1000 # Retorna em Metros
-    return distancia
-
-# --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
-# O password abaixo é apenas para criptografia local do cookie
-cookies = EncryptedCookieManager(password="marata_secret_key_2026")
-if not cookies.ready():
-    st.stop()
-
-# --- CONFIGURAÇÃO DA PÁGINA (ATUALIZADO COM A LOGO DA MARATÁ) ---
-st.set_page_config(
-    page_title="Maratá - GVP", 
-    page_icon="https://raw.githubusercontent.com/lycioandreatto/marata/main/pngmarata", 
-    layout="wide"
-)
-
-# --- ESTILIZAÇÃO, OCULTAR MENU E PERFIL ---
-st.markdown("""
-    <style>
-    /* OCULTAR BOTÃO DO GITHUB E MENU DE OPÇÕES */
-    header {visibility: hidden;}
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-
-    [data-testid="stMetric"] {
-        background-color: #f0f2f6;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #d3d3d3;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-    }
-    [data-testid="stMetric"] label, 
-    [data-testid="stMetric"] div {
-        color: black !important;
-    }
-    
-    /* Estilização do Card de Usuário Logado */
-    .user-card {
-        background-color: #1e1e1e;
-        padding: 12px 20px;
-        border-radius: 12px;
-        border-left: 5px solid #ff4b4b;
-        box-shadow: 3px 3px 10px rgba(0,0,0,0.3);
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        gap: 15px;
-    }
-    .user-card-text {
-        color: white;
-        font-weight: bold;
-        font-size: 1.1em;
-        letter-spacing: 0.5px;
-    }
-    .user-card-icon {
-        font-size: 1.5em;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1782,12 +1635,13 @@ elif menu_interna == "🔔 Aprovações":
         st.error("Você não tem permissão para acessar esta página.")
         st.stop()
 
-    # Filtro de dados para a página (Respeitando a lista de diretoria se necessário)
-    diretoria = ["ALDO", "MARCIA"]
-    
-    if is_admin or user_atual.upper() in diretoria:
+    # Filtrar apenas os pendentes e respeitar a hierarquia
+    if is_admin:
+        # Admin vê todos os pendentes
         df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
     else:
+        # Analista vê apenas os pendentes atribuídos a ele
+        # Certifique-se que a coluna 'ANALISTA' existe na sua planilha
         df_pendentes = df_agenda[(df_agenda['STATUS'] == "Pendente") & (df_agenda['ANALISTA'] == user_atual)].copy()
     
     if df_pendentes.empty:
@@ -1795,44 +1649,20 @@ elif menu_interna == "🔔 Aprovações":
     else:
         st.warning(f"Existem {len(df_pendentes)} agendamentos aguardando sua ação.")
         
-        # --- NOVO: BOTÕES DE AÇÃO EM MASSA ---
-        col_all1, col_all2 = st.columns(2)
-        
-        with col_all1:
-            if st.button("✅ APROVAR TODOS", use_container_width=True, type="primary"):
-                # Pega os IDs que estão aparecendo para este usuário
-                ids_para_aprovar = df_pendentes['ID'].tolist()
-                df_agenda.loc[df_agenda['ID'].isin(ids_para_aprovar), 'STATUS'] = "Planejado"
-                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
-                st.success(f"{len(ids_para_aprovar)} agendamentos aprovados de uma vez!")
-                st.cache_data.clear()
-                st.rerun()
-
-        with col_all2:
-            if st.button("❌ RECUSAR TODOS", use_container_width=True):
-                ids_para_recusar = df_pendentes['ID'].tolist()
-                df_agenda.loc[df_agenda['ID'].isin(ids_para_recusar), 'STATUS'] = "Recusado"
-                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
-                st.error(f"{len(ids_para_recusar)} agendamentos recusados de uma vez!")
-                st.cache_data.clear()
-                st.rerun()
-        
-        st.divider() # Linha divisória
-        
-        # --- LISTA INDIVIDUAL (EXPANDERS) ---
         for i, row in df_pendentes.iterrows():
             with st.expander(f"📍 {row['VENDEDOR']} -> {row['CLIENTE']} ({row['DATA']})"):
                 col1, col2 = st.columns(2)
                 
-                # Botão para Aprovar Individual
+                # Botão para Aprovar
                 if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}"):
+                    # Atualiza no DataFrame principal usando o ID único
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Planejado"
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
                     st.success(f"Agendamento de {row['CLIENTE']} aprovado!")
                     st.cache_data.clear()
                     st.rerun()
                 
-                # Botão para Recusar Individual
+                # Botão para Recusar
                 if col2.button("❌ Recusar", key=f"recus_{row['ID']}"):
                     df_agenda.loc[df_agenda['ID'] == row['ID'], 'STATUS'] = "Recusado"
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
