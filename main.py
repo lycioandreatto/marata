@@ -1065,6 +1065,7 @@ elif menu == "📋 Novo Agendamento":
             clientes_f['Cliente'] = clientes_f['Cliente'].astype(str)
 
             # Consideramos agendados os que estão Planejados, Realizados ou aguardando Aprovação (Pendente)
+            # Adicionado o filtro para não contar os "Reprovados" aqui, permitindo que voltem para a lista
             codigos_agendados = df_agenda[
                 (df_agenda['VENDEDOR'] == ven_sel) & 
                 (df_agenda['STATUS'].isin(['Planejado', 'Realizado', 'Pendente']))
@@ -1118,7 +1119,9 @@ elif menu == "📋 Novo Agendamento":
                                     "CÓDIGO CLIENTE": str(cod_c), 
                                     "CLIENTE": nom_c, 
                                     "JUSTIFICATIVA": "-", 
-                                    "STATUS": "Pendente", # <--- AQUI ESTÁ A MUDANÇA PARA O WORKFLOW
+                                    "STATUS": "Pendente",
+                                    "APROVACAO": "Pendente", # Adicionado para consistência com a tela de visualização
+                                    "OBS_GESTAO": "-",
                                     "AGENDADO POR": user_atual 
                                 })
                             
