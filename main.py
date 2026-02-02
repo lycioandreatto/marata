@@ -337,6 +337,19 @@ if not cookies.ready():
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Maratá - GVP", page_icon="📅", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="Maratá - GVP", page_icon="📅", layout="wide")
+
+st.markdown(
+    """
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" sizes="192x192" href="/static/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+    """,
+    unsafe_allow_html=True
+)
+
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
