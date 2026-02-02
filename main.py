@@ -985,7 +985,7 @@ if menu == "📅 Agendamentos do Dia":
                     time.sleep(1)
                     st.rerun()
 
-                      # ============================
+            # ============================
             # 🗺️ MAPA (NOVO - AO FINAL)
             # ============================
             st.markdown("---")
@@ -1028,48 +1028,58 @@ if menu == "📅 Agendamentos do Dia":
                     if df_map.empty:
                         st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
                     else:
-                        # --- LIMPEZA EXTRA (evita NaN/None no tooltip) ---
+                        # --- LIMPEZA EXTRA ---
                         for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
                             if c in df_map.columns:
                                 df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
 
-                        # --- COR POR STATUS ---
-                        df_map['COR'] = df_map['STATUS'].astype(str).str.upper().apply(
-                            lambda s: [0, 160, 0, 220] if s == "REALIZADO" else [200, 0, 0, 220]
+                        # --- CORES ---
+                        # Pino (verde / vermelho)
+                        df_map['COR_PINO'] = df_map['STATUS'].astype(str).str.upper().apply(
+                            lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
                         )
 
-                        # --- TOOLTIP (sem \n pra não quebrar) ---
+                        # Círculo 1km (cinza)
+                        df_map['COR_RAIO'] = [[160, 160, 160, 70]] * len(df_map)
+
+                        # --- TOOLTIP ---
                         df_map['TOOLTIP'] = df_map.apply(
                             lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
                             axis=1
                         )
 
-                        # ✅ ÍCONE (DICT) - constante (mais estável)
-                        icone_url = "https://cdn-icons-png.flaticon.com/512/684/684908.png"
-                        icon_dict = {"url": icone_url, "width": 128, "height": 128, "anchorY": 128}
-                        df_map["ICON"] = [icon_dict] * len(df_map)
+                        # --- ÍCONES ---
+                        icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                        icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
 
-                        # ✅ (MUITO IMPORTANTE) envia pro pydeck como LISTA DE DICTS (records)
-                        dados_mapa = df_map[['LON', 'LAT', 'COR', 'ICON', 'TOOLTIP']].to_dict(orient="records")
+                        def _icon_por_status(s):
+                            s = str(s).strip().upper()
+                            url = icone_verde if s == "REALIZADO" else icone_vermelho
+                            return {"url": url, "width": 25, "height": 41, "anchorY": 41}
 
-                        # --- CENTRO DO MAPA ---
+                        df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
+
+                        # --- DADOS PARA O MAPA ---
+                        dados_mapa = df_map[['LON', 'LAT', 'COR_PINO', 'COR_RAIO', 'ICON', 'TOOLTIP']].to_dict(orient="records")
+
+                        # --- CENTRO ---
                         lat_center = float(df_map['LAT'].mean())
                         lon_center = float(df_map['LON'].mean())
 
                         import pydeck as pdk
 
-                        # --- RAIO 1KM ---
+                        # --- CÍRCULO 1 KM (GARANTIDO) ---
                         layer_raio = pdk.Layer(
-                            "ScatterplotLayer",
+                            "CircleLayer",
                             data=dados_mapa,
                             get_position='[LON, LAT]',
                             get_radius=1000,
                             radius_units='meters',
-                            get_fill_color="COR",
-                            get_line_color="COR",
+                            get_fill_color="COR_RAIO",
+                            get_line_color=[120, 120, 120, 180],
+                            line_width_min_pixels=2,
                             filled=True,
                             stroked=True,
-                            opacity=0.08,
                             pickable=False,
                         )
 
@@ -1081,7 +1091,6 @@ if menu == "📅 Agendamentos do Dia":
                             get_icon="ICON",
                             get_size=4,
                             size_scale=10,
-                            get_color="COR",
                             pickable=True,
                         )
 
@@ -1095,20 +1104,31 @@ if menu == "📅 Agendamentos do Dia":
                         tooltip = {"text": "{TOOLTIP}"}
 
                         st.pydeck_chart(
-                            pdk.Deck(
-                                layers=[layer_raio, layer_pinos],
-                                initial_view_state=view_state,
-                                tooltip=tooltip,
-                                map_style=None
-                            ),
-                            use_container_width=True
-                        )
+                           pdk.Deck(
+                              layers=[layer_raio, layer_pinos],
+                              initial_view_state=view_state,
+                              tooltip=tooltip,
+                              # ✅ estilo público (não precisa token) -> não fica branco
+                              map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                         ),
+                         use_container_width=True
+                         )
+
 
                 else:
                     st.info("Coluna COORDENADAS não encontrada na BASE.")
 
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
+
+        else:
+            st.info("Nenhum agendamento para hoje.")
+    else:
+        st.info("Nenhum agendamento para hoje.")
+
+
+
+
 
 
 
