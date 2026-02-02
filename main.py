@@ -857,7 +857,9 @@ if menu == "📅 Agendamentos do Dia":
                 use_container_width=True,
                 column_config={
                     "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]),
+                    col_aprov_exec: st.column_config.SelectboxColumn(
+                        "AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]
+                    ),
                 },
                 disabled=[c for c in df_display.columns if c not in ["EDITAR", col_aprov_exec]]
             )
@@ -871,13 +873,26 @@ if menu == "📅 Agendamentos do Dia":
                 st.markdown("---")
                 st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
 
-                novo_status = st.selectbox("Status:", ["Planejado", "Realizado", "Reagendado"],
-                                           index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS']))
-                nova_val = st.selectbox("Validar:", ["PENDENTE", "OK", "REPROVADO"],
-                                        index=["PENDENTE", "OK", "REPROVADO"].index(sel_row[col_aprov_exec]))
+                novo_status = st.selectbox(
+                    "Status:",
+                    ["Planejado", "Realizado", "Reagendado"],
+                    index=["Planejado", "Realizado", "Reagendado"].index(sel_row['STATUS'])
+                )
+
+                # 🔧 CORREÇÃO DEFINITIVA DO ERRO (SEM MUDAR LÓGICA)
+                val_list = ["PENDENTE", "OK", "REPROVADO"]
+                valor_atual = str(sel_row[col_aprov_exec]).strip().upper()
+                if valor_atual not in val_list:
+                    valor_atual = "PENDENTE"
+
+                nova_val = st.selectbox(
+                    "Validar:",
+                    val_list,
+                    index=val_list.index(valor_atual)
+                )
+
                 nova_just = st.text_input("Justificativa:", value=sel_row[col_just] or "")
 
-                # 🔴 🔴 🔴 AQUI ESTÁ A CORREÇÃO 🔴 🔴 🔴
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
                     lat_v = st.session_state.get('lat', 0)
                     lon_v = st.session_state.get('lon', 0)
@@ -921,6 +936,7 @@ if menu == "📅 Agendamentos do Dia":
 
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
                     
 # --- PÁGINA: DASHBOARD ---
