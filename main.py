@@ -16,14 +16,53 @@ from streamlit_cookies_manager import EncryptedCookieManager
 from email.message import EmailMessage
 import io
 import pandas as pd
+import math
 
 def enviar_excel_vendedor(
     server,
     email_origem,
     email_destino,
     nome_vendedor,
-    df_excel
+    df_excel=None,
+    # ✅ NOVO (opcional): se você já tiver o arquivo pronto (bytes) com Dashboard+Resumo
+    df_excel_bytes=None,
+    # ✅ NOVO (opcional): DataFrames para montar a aba "Resumo" aqui dentro, sem precisar mudar o resto do app
+    df_resumo=None,
+    df_top_pend=None,
+    df_top_neg_25=None,
+    df_top_neg_26=None
 ):
+    """
+    Compatível com o seu padrão atual:
+    - Se você chamar como antes (df_excel=...), funciona igual.
+    - Se você passar df_excel_bytes=..., envia o arquivo pronto (ignora df_excel).
+    - Se você passar df_resumo/top_... junto com df_excel, cria a aba "Resumo" adicional.
+    """
+
+    # ✅ 1) Se já veio o Excel pronto em bytes, só envia (não mexe em nada)
+    if df_excel_bytes is not None:
+        msg = EmailMessage()
+        msg["From"] = email_origem
+        msg["To"] = email_destino
+        msg["Subject"] = f"Relatório de Vendas – {nome_vendedor}"
+        msg.set_content(
+            f"Olá,\n\nSegue em anexo o relatório de vendas do vendedor {nome_vendedor}.\n\nAtenciosamente."
+        )
+
+        msg.add_attachment(
+            df_excel_bytes,
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=f"Relatorio_{nome_vendedor}.xlsx"
+        )
+
+        server.send_message(msg)
+        return
+
+    # ✅ 2) Caso não venha bytes, segue seu fluxo normal gerando o Excel
+    if df_excel is None:
+        raise ValueError("Você precisa passar df_excel (DataFrame) ou df_excel_bytes (bytes do arquivo).")
+
     # 🔹 Gera Excel em memória
     output = io.BytesIO()
 
@@ -104,46 +143,27 @@ def enviar_excel_vendedor(
         # =========================
         # MAPA DE ÍNDICES DAS COLUNAS NO EXCEL
         # =========================
-        # Como usamos startrow=2, os dados começam na linha 3 (índice 2),
-        # mas os índices de colunas são os do DataFrame exportado
         col_names = list(df_export.columns)
         col_idx = {name: i for i, name in enumerate(col_names)}
 
         # =========================
-        # CABEÇALHOS MESCLADOS (LINHA 1)
+        # CABEÇALHOS MESCLADOS (LINHA 0)
         # =========================
-        # Linha 0: grupos
-        # Linha 1: nomes das colunas (já estão no Excel pelo to_excel, na linha startrow=2,
-        # então vamos reescrever os headers manualmente na linha 1 e apagar os do pandas (linha 2))
-        #
-        # Estratégia:
-        # - Mescla grupos na linha 0
-        # - Escreve headers na linha 1
-        # - Reescreve dados com formatos (bordas)
-        # - Oculta/neutraliza a linha de header gerada pelo pandas (linha 2) escrevendo vazio
-
-        # Define ranges dos grupos (se existirem)
-        # Grupo 1: COBERTURA X POSITIVAÇÃO (4 colunas)
         grp1_cols = ["META COBERTURA", "META CLIENTES (ABS)", "POSITIVAÇÃO", "PENDÊNCIA CLIENTES"]
         if all(c in col_idx for c in grp1_cols):
             c0 = col_idx[grp1_cols[0]]
             c1 = col_idx[grp1_cols[-1]]
             worksheet.merge_range(0, c0, 0, c1, "COBERTURA X POSITIVAÇÃO", fmt_header_grp)
 
-        # Grupo 2: META 2026 (2 colunas: META 2025 e META 2026)
         grp2_cols = ["META 2025", "META 2026"]
         if all(c in col_idx for c in grp2_cols):
             c0 = col_idx[grp2_cols[0]]
             c1 = col_idx[grp2_cols[-1]]
             worksheet.merge_range(0, c0, 0, c1, "META 2026", fmt_header_grp)
 
-        # Para as demais colunas (inclui HIERARQUIA, VOLUME e as colunas pós-espaços),
-        # apenas cria “blocos” individuais na linha 0 para manter padrão visual
         for name in col_names:
-            # pula as colunas que já fazem parte dos grupos mesclados
             if name in grp1_cols or name in grp2_cols:
                 continue
-            # pula colunas em branco
             if name in [" ", "  "]:
                 continue
             c = col_idx[name]
@@ -201,21 +221,88 @@ def enviar_excel_vendedor(
 
                 val = df_export.iloc[r, c]
 
-                # Se for coluna %: usa formato pct com borda
                 if name in colunas_pct:
                     worksheet.write(excel_r, c, val, fmt_cell_pct)
                 else:
                     worksheet.write(excel_r, c, val, fmt_cell)
 
         # =========================
-        # CONGELAR PAINEL (2 LINHAS DE CABEÇALHO)
+        # CONGELAR PAINEL
         # =========================
-        worksheet.freeze_panes(2, 0)  # congela as duas linhas do topo (grupo + colunas)
+        worksheet.freeze_panes(2, 0)
 
-        # ✅ (continua o resto da sua função exatamente como você já tem, envio de e-mail, etc.)
-        # aqui você provavelmente monta o attachment e envia pelo server
-        # (não mexi nisso porque você não colou essa parte)
+        # ==========================================================
+        # ✅ NOVO: ABA "Resumo" (opcional)
+        # - só cria se df_resumo vier preenchido
+        # - mantém simples e robusto
+        # ==========================================================
+        if df_resumo is not None and isinstance(df_resumo, pd.DataFrame) and not df_resumo.empty:
+            ws_resumo = workbook.add_worksheet("Resumo")
+            writer.sheets["Resumo"] = ws_resumo
 
+            fmt_title = workbook.add_format({'bold': True, 'font_size': 12})
+            fmt_hdr = workbook.add_format({'bold': True, 'bg_color': '#F2F2F2', 'border': 1, 'align': 'center'})
+            fmt_cell_r = workbook.add_format({'border': 1})
+            fmt_cell_num = workbook.add_format({'border': 1, 'num_format': '#,##0'})
+            fmt_cell_pct2 = workbook.add_format({'border': 1, 'num_format': '0.00%'})
+
+            # Helper para escrever DF com bordas
+            def _write_df(ws, df, start_row, start_col, pct_cols=None):
+                pct_cols = set(pct_cols or [])
+                # headers
+                for j, coln in enumerate(df.columns):
+                    ws.write(start_row, start_col + j, coln, fmt_hdr)
+                # rows
+                for i in range(len(df)):
+                    for j, coln in enumerate(df.columns):
+                        v = df.iloc[i, j]
+                        if coln in pct_cols:
+                            try:
+                                ws.write_number(start_row + 1 + i, start_col + j, float(v), fmt_cell_pct2)
+                            except:
+                                ws.write(start_row + 1 + i, start_col + j, v, fmt_cell_r)
+                        else:
+                            # número vs texto
+                            try:
+                                if isinstance(v, (int, float)) and not pd.isna(v):
+                                    ws.write_number(start_row + 1 + i, start_col + j, float(v), fmt_cell_num)
+                                else:
+                                    ws.write(start_row + 1 + i, start_col + j, v, fmt_cell_r)
+                            except:
+                                ws.write(start_row + 1 + i, start_col + j, v, fmt_cell_r)
+
+                # autosize leve
+                for j, coln in enumerate(df.columns):
+                    ws.set_column(start_col + j, start_col + j, max(14, min(35, len(str(coln)) + 6)))
+
+                return start_row + 1 + len(df)  # próxima linha após o df
+
+            # Título
+            ws_resumo.write(0, 0, f"Resumo — {nome_vendedor}", fmt_title)
+
+            # Resumo principal
+            next_row = 2
+            # Se tiver coluna Valor com percentuais, formatamos onde der
+            pct_cols = []
+            if "Métrica" in df_resumo.columns and "Valor" in df_resumo.columns:
+                # tenta converter a linha de "Atingimento Positivação (%)" e "Meta Positivação (%) (média)" se vierem em 0-1
+                # (se vierem como 0-100, quem monta o resumo deve passar já em 0-1)
+                pass
+
+            next_row = _write_df(ws_resumo, df_resumo, next_row, 0, pct_cols=set())
+
+            # Bloco: Top pendências
+            def _safe_block(title, df_block, start_row):
+                if df_block is None or not isinstance(df_block, pd.DataFrame) or df_block.empty:
+                    return start_row
+                ws_resumo.write(start_row + 1, 0, title, fmt_title)
+                return _write_df(ws_resumo, df_block, start_row + 2, 0, pct_cols=set())
+
+            next_row = _safe_block("Top 10 — Maior Pendência de Clientes", df_top_pend, next_row + 1)
+            next_row = _safe_block("Top 10 — Mais Negativados (Crescimento 2025)", df_top_neg_25, next_row + 1)
+            next_row = _safe_block("Top 10 — Mais Negativados (Crescimento 2026)", df_top_neg_26, next_row + 1)
+
+            ws_resumo.freeze_panes(1, 0)
 
     output.seek(0)
 
@@ -236,6 +323,7 @@ def enviar_excel_vendedor(
     )
 
     server.send_message(msg)
+
 
 
 
@@ -2245,6 +2333,108 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         df[col] = s2
         return df
 
+    # ✅ (NOVO) monta um RESUMO para exportar na aba "Resumo"
+    def montar_resumo_excel(df_f_base, df_dashboard, df_metas_cob_base, vendedores_ids_base, col_cod_cliente_base, base_total_base):
+        """
+        df_f_base: df_f (já filtrado pelos slicers/permissões)
+        df_dashboard: df_final (Dashboard por hierarquia)
+        df_metas_cob_base: df_metas_cob
+        vendedores_ids_base: vendedores_ids (RGs do filtro atual)
+        col_cod_cliente_base: coluna do cliente no FATURADO
+        base_total_base: base_total calculada para o filtro atual
+        """
+
+        # Total de clientes positivados no filtro atual
+        try:
+            positivos_total_local = int(df_f_base[col_cod_cliente_base].nunique())
+        except:
+            positivos_total_local = 0
+
+        # Base total (já calculada)
+        try:
+            base_local = float(base_total_base) if base_total_base else 0.0
+        except:
+            base_local = 0.0
+
+        # Meta média (%) e meta absoluta (aproximação) com base em META COBXPOSIT dos RGs filtrados
+        meta_perc_local = 0.0
+        meta_abs_local = 0
+        try:
+            dados_pos_local = (
+                df_metas_cob_base[df_metas_cob_base["RG"].isin(vendedores_ids_base)]
+                .drop_duplicates("RG")
+                if df_metas_cob_base is not None and not df_metas_cob_base.empty and "RG" in df_metas_cob_base.columns
+                else pd.DataFrame()
+            )
+
+            meta_perc_local = float(pd.to_numeric(dados_pos_local["META"], errors="coerce").fillna(0).mean()) if ("META" in dados_pos_local.columns) else 0.0
+            meta_perc_local = (meta_perc_local / 100) if meta_perc_local > 1 else meta_perc_local
+
+            # meta abs usando base_local (consistente com seu card)
+            meta_abs_local = int(math.ceil(base_local * meta_perc_local)) if base_local > 0 else 0
+        except:
+            meta_perc_local = 0.0
+            meta_abs_local = 0
+
+        ating_pos_local = (positivos_total_local / meta_abs_local) if meta_abs_local > 0 else 0.0
+
+        # Volume total (QTD_VENDAS)
+        vol_total_local = 0.0
+        try:
+            vol_total_local = float(pd.to_numeric(df_f_base["QTD_VENDAS"], errors="coerce").fillna(0).sum())
+        except:
+            vol_total_local = 0.0
+
+        # Top pendência / negativados
+        top_pend = pd.DataFrame()
+        top_neg_25 = pd.DataFrame()
+        top_neg_26 = pd.DataFrame()
+
+        try:
+            if df_dashboard is not None and not df_dashboard.empty:
+                # Top pendência
+                if ("PENDÊNCIA CLIENTES" in df_dashboard.columns) and ("HIERARQUIA DE PRODUTOS" in df_dashboard.columns):
+                    top_pend = (
+                        df_dashboard[["HIERARQUIA DE PRODUTOS", "PENDÊNCIA CLIENTES"]]
+                        .sort_values("PENDÊNCIA CLIENTES", ascending=False)
+                        .head(10)
+                        .reset_index(drop=True)
+                    )
+
+                # Mais negativados 2025
+                if ("CRESCIMENTO 2025" in df_dashboard.columns) and ("HIERARQUIA DE PRODUTOS" in df_dashboard.columns):
+                    top_neg_25 = (
+                        df_dashboard[["HIERARQUIA DE PRODUTOS", "CRESCIMENTO 2025"]]
+                        .sort_values("CRESCIMENTO 2025", ascending=True)
+                        .head(10)
+                        .reset_index(drop=True)
+                    )
+
+                # Mais negativados 2026
+                if ("CRESCIMENTO 2026" in df_dashboard.columns) and ("HIERARQUIA DE PRODUTOS" in df_dashboard.columns):
+                    top_neg_26 = (
+                        df_dashboard[["HIERARQUIA DE PRODUTOS", "CRESCIMENTO 2026"]]
+                        .sort_values("CRESCIMENTO 2026", ascending=True)
+                        .head(10)
+                        .reset_index(drop=True)
+                    )
+        except:
+            top_pend = pd.DataFrame()
+            top_neg_25 = pd.DataFrame()
+            top_neg_26 = pd.DataFrame()
+
+        # Tabela principal do resumo
+        df_resumo = pd.DataFrame([
+            {"Métrica": "Clientes Positivados (únicos)", "Valor": positivos_total_local},
+            {"Métrica": "Base (BASE total do filtro)", "Valor": base_local},
+            {"Métrica": "Meta Positivação (%) (média)", "Valor": meta_perc_local},
+            {"Métrica": "Meta Positivação (ABS)", "Valor": meta_abs_local},
+            {"Métrica": "Atingimento Positivação (%)", "Valor": ating_pos_local},
+            {"Métrica": "Volume Total (QTD_VENDAS)", "Valor": vol_total_local},
+        ])
+
+        return df_resumo, top_pend, top_neg_25, top_neg_26
+
     try:
         # 1. Leitura das abas
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
@@ -2890,10 +3080,38 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     except Exception as e:
         st.warning(f"Não foi possível gerar os rankings finais: {e}")
 
-    # Exportação
+    # Exportação (✅ agora com aba "Resumo")
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        # Dashboard
         df_final.to_excel(writer, index=False, sheet_name="Dashboard")
+
+        # Resumo (insights do filtro atual)
+        df_resumo, top_pend, top_neg_25, top_neg_26 = montar_resumo_excel(
+            df_f_base=df_f,
+            df_dashboard=df_final,
+            df_metas_cob_base=df_metas_cob,
+            vendedores_ids_base=vendedores_ids,
+            col_cod_cliente_base=col_cod_cliente,
+            base_total_base=base_total
+        )
+
+        # Aba Resumo organizada (blocos)
+        df_resumo.to_excel(writer, index=False, sheet_name="Resumo", startrow=0)
+        start_row = len(df_resumo) + 3
+
+        if top_pend is not None and not top_pend.empty:
+            # título via linha em branco (mantém simples)
+            top_pend.to_excel(writer, index=False, sheet_name="Resumo", startrow=start_row)
+            start_row += len(top_pend) + 3
+
+        if top_neg_25 is not None and not top_neg_25.empty:
+            top_neg_25.to_excel(writer, index=False, sheet_name="Resumo", startrow=start_row)
+            start_row += len(top_neg_25) + 3
+
+        if top_neg_26 is not None and not top_neg_26.empty:
+            top_neg_26.to_excel(writer, index=False, sheet_name="Resumo", startrow=start_row)
+
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
 
@@ -2927,18 +3145,75 @@ if st.button("📧 Enviar Excel por Vendedor"):
         else:
             email_destino_str = str(email_destino).strip()
 
+        # ✅ mantém seu padrão: por vendedor, só adicionando a aba "Resumo"
         df_vendedor = df_final.copy()
 
-        enviar_excel_vendedor(
-            server=server,
-            email_origem=email_origem,
-            email_destino=email_destino_str,
-            nome_vendedor=vendedor,
-            df_excel=df_vendedor
-        )
+        # Filtra FATURADO desse vendedor pra calcular resumo (quando envia por vendedor)
+        df_f_vend = df_f[df_f["VENDEDOR_NOME"].astype(str).str.strip() == str(vendedor).strip()].copy()
+
+        # vendedores_ids do vendedor (RG)
+        vend_ids_local = df_f_vend["VENDEDOR_COD"].dropna().unique()
+
+        # base_total do vendedor (aprox): usa BASE da META COBXPOSIT desse RG (se existir)
+        base_total_vend = 0.0
+        try:
+            tmp = df_metas_cob[df_metas_cob["RG"].isin(vend_ids_local)].drop_duplicates("RG") if df_metas_cob is not None else pd.DataFrame()
+            base_total_vend = float(pd.to_numeric(tmp["BASE"], errors="coerce").fillna(0).sum()) if ("BASE" in tmp.columns) else 0.0
+        except:
+            base_total_vend = 0.0
+
+        # cria excel em memória com 2 abas (Dashboard + Resumo) e manda no seu método atual
+        buffer_v = io.BytesIO()
+        with pd.ExcelWriter(buffer_v, engine="xlsxwriter") as writer:
+            df_vendedor.to_excel(writer, index=False, sheet_name="Dashboard")
+
+            df_resumo_v, top_pend_v, top_neg_25_v, top_neg_26_v = montar_resumo_excel(
+                df_f_base=df_f_vend,
+                df_dashboard=df_vendedor,
+                df_metas_cob_base=df_metas_cob,
+                vendedores_ids_base=vend_ids_local,
+                col_cod_cliente_base=col_cod_cliente,
+                base_total_base=base_total_vend
+            )
+
+            df_resumo_v.to_excel(writer, index=False, sheet_name="Resumo", startrow=0)
+            start_row = len(df_resumo_v) + 3
+
+            if top_pend_v is not None and not top_pend_v.empty:
+                top_pend_v.to_excel(writer, index=False, sheet_name="Resumo", startrow=start_row)
+                start_row += len(top_pend_v) + 3
+
+            if top_neg_25_v is not None and not top_neg_25_v.empty:
+                top_neg_25_v.to_excel(writer, index=False, sheet_name="Resumo", startrow=start_row)
+                start_row += len(top_neg_25_v) + 3
+
+            if top_neg_26_v is not None and not top_neg_26_v.empty:
+                top_neg_26_v.to_excel(writer, index=False, sheet_name="Resumo", startrow=start_row)
+
+        # ✅ (MÍNIMO) tenta usar a sua função existente:
+        # - primeiro tenta passar bytes (se sua função aceitar)
+        # - se não aceitar, cai pro df_excel (sem quebrar seu código atual)
+        try:
+            enviar_excel_vendedor(
+                server=server,
+                email_origem=email_origem,
+                email_destino=email_destino_str,
+                nome_vendedor=vendedor,
+                df_excel_bytes=buffer_v.getvalue()
+            )
+        except TypeError:
+            # fallback: mantém como era (sem resumo) caso sua função não aceite bytes
+            enviar_excel_vendedor(
+                server=server,
+                email_origem=email_origem,
+                email_destino=email_destino_str,
+                nome_vendedor=vendedor,
+                df_excel=df_vendedor
+            )
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 
