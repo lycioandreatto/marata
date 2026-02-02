@@ -909,6 +909,137 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
+        # ============================
+        # ✅ BOTÃO: FINALIZAR ROTA (SÓ VENDEDOR)
+        # ============================
+        if is_vendedor and not df_dia.empty:
+            st.markdown("---")
+            st.markdown("### 🏁 Finalizar Rota (Vendedor)")
+
+            # tenta pegar analista do dia (normalmente 1)
+            analistas_do_dia = (
+                df_dia["ANALISTA"].dropna().astype(str).str.strip().unique().tolist()
+                if "ANALISTA" in df_dia.columns else []
+            )
+            analista_dest = sorted(analistas_do_dia)[0] if analistas_do_dia else ""
+
+            # resumo automático
+            total_aprovados = int(len(df_dia))
+            total_realizados = int((df_dia["STATUS"] == "Realizado").sum()) if "STATUS" in df_dia.columns else 0
+            total_planejados = int((df_dia["STATUS"] == "Planejado").sum()) if "STATUS" in df_dia.columns else 0
+            total_reagendados = int((df_dia["STATUS"] == "Reagendado").sum()) if "STATUS" in df_dia.columns else 0
+
+            try:
+                dist_series = pd.to_numeric(df_dia.get("DISTANCIA_LOG", 0), errors="coerce").fillna(0)
+                fora_raio_50m = int((dist_series > 50).sum())
+            except Exception:
+                fora_raio_50m = 0
+
+            # observações registradas nas visitas (JUSTIFICATIVA)
+            obs_lista = []
+            try:
+                if col_just in df_dia.columns:
+                    obs_lista = (
+                        df_dia[col_just]
+                        .dropna()
+                        .astype(str)
+                        .str.strip()
+                        .replace(["", "nan", "None"], "")
+                    )
+                    obs_lista = [x for x in obs_lista.tolist() if x]
+            except Exception:
+                obs_lista = []
+
+            obs_final = st.text_area(
+                "Resumo do dia (opcional) — o que aconteceu de relevante?",
+                placeholder="Ex.: clientes fechados, pedidos enviados, dificuldades, inadimplência, etc.",
+                key="txt_resumo_final_rota",
+            )
+
+            cfr1, cfr2 = st.columns([0.5, 0.5])
+            with cfr1:
+                confirmar_final = st.checkbox(
+                    "Confirmo que finalizei minha rota de hoje",
+                    key="chk_finalizar_rota",
+                )
+
+            with cfr2:
+                if st.button(
+                    "🏁 FINALIZAR ROTA (enviar e-mail ao analista)",
+                    use_container_width=True,
+                    disabled=not confirmar_final,
+                    key="btn_finalizar_rota",
+                ):
+                    # precisa existir no seu código: MAPA_EMAIL_ANALISTAS = {"NOME ANALISTA": "email@..."}
+                    email_analista = ""
+                    try:
+                        email_analista = MAPA_EMAIL_ANALISTAS.get(str(analista_dest).strip().upper())
+                    except Exception:
+                        email_analista = ""
+
+                    if not email_analista:
+                        st.warning(
+                            f"⚠️ Não encontrei e-mail do analista: {analista_dest}. "
+                            f"Cadastre no MAPA_EMAIL_ANALISTAS."
+                        )
+                    else:
+                        import smtplib
+                        from email.message import EmailMessage
+
+                        email_origem = st.secrets["email"]["sender_email"]
+                        senha_origem = st.secrets["email"]["sender_password"]
+                        smtp_server = st.secrets["email"]["smtp_server"]
+                        smtp_port = st.secrets["email"]["smtp_port"]
+
+                        vendedor_nome = (
+                            str(df_dia["VENDEDOR"].iloc[0]).strip()
+                            if ("VENDEDOR" in df_dia.columns and not df_dia.empty)
+                            else user_atual
+                        )
+
+                        # limita observações para não virar e-mail enorme
+                        if obs_lista:
+                            obs_unicas = list(dict.fromkeys(obs_lista))[:10]
+                            linhas_obs = "\n- " + "\n- ".join(obs_unicas)
+                        else:
+                            linhas_obs = "\n(Nenhuma observação registrada)"
+
+                        corpo = f"""Olá, {analista_dest}.
+
+O vendedor {vendedor_nome} finalizou a rota do dia {hoje_str}.
+
+Resumo automático:
+- Aprovados para hoje: {total_aprovados}
+- Realizados: {total_realizados}
+- Planejados: {total_planejados}
+- Reagendados: {total_reagendados}
+- Fora do raio (+50m): {fora_raio_50m}
+
+Observações registradas nas visitas:{linhas_obs}
+
+Resumo do vendedor:
+{obs_final.strip() if obs_final and obs_final.strip() else "(Não informou resumo manual)"}
+
+Atenciosamente.
+"""
+
+                        msg = EmailMessage()
+                        msg["From"] = email_origem
+                        msg["To"] = email_analista
+                        msg["Subject"] = f"🏁 Rota finalizada — {vendedor_nome} — {hoje_str}"
+                        msg.set_content(corpo)
+
+                        try:
+                            server_mail = smtplib.SMTP(smtp_server, smtp_port)
+                            server_mail.starttls()
+                            server_mail.login(email_origem, senha_origem)
+                            server_mail.send_message(msg)
+                            server_mail.quit()
+
+                            st.success("✅ Rota finalizada! E-mail enviado para o analista.")
+                        except Exception as e:
+                            st.error(f"Erro ao enviar e-mail: {e}")
+
         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
             if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
@@ -1177,8 +1308,6 @@ if menu == "📅 Agendamentos do Dia":
                         time.sleep(1)
                         st.rerun()
 
-
-
             # ============================
             # 🗺️ MAPA (AO FINAL)
             # ============================
@@ -1357,6 +1486,7 @@ if menu == "📅 Agendamentos do Dia":
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
 
 
