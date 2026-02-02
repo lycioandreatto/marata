@@ -987,8 +987,8 @@ if menu == "📅 Agendamentos do Dia":
                        # ============================
                       # 🗺️ MAPA (NOVO - AO FINAL)
                       # ============================
-                      st.markdown("---")
-                      st.markdown("### 🗺️ Mapa das Visitas do Dia")
+                    st.markdown("---")
+                    st.markdown("### 🗺️ Mapa das Visitas do Dia")
 
                       try:
                           if df_base is not None and ("COORDENADAS" in df_base.columns):
