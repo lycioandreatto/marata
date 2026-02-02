@@ -1484,7 +1484,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_metas_cob['BASE'] = pd.to_numeric(df_metas_cob['BASE'], errors='coerce').fillna(0)
             # Garantir que a coluna de meta de cobertura seja numérica
             if 'META COBERTURA' in df_metas_cob.columns:
-                df_metas_cob['META COBERTURA'] = pd.to_numeric(df_metas_cob['META COBERTURA'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0)
+                df_metas_cob['META COBERTURA'] = pd.to_numeric(df_metas_cob['META COBERTURA'].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce').fillna(0) / 100
+
 
     except Exception as e:
         st.error(f"Erro no processamento: {e}")
