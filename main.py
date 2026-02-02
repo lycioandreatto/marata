@@ -996,16 +996,20 @@ if menu == "📅 Agendamentos do Dia":
                 else:
                     nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
 
-                # ✅ SALVAR (corrigido: evita cair em except por coord indefinida / mismatch / indent)
+                # ✅ SALVAR (CORRIGIDO: evita NameError e corrige indentação do if)
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
-                    lat_v, lon_v = capturar_coordenadas()
-                if lat_v and lon_v:
-                    st.session_state.lat = lat_v
-                    st.session_state.lon = lon_v
-                else:
-                    lat_v = st.session_state.get("lat", 0)
-                    lon_v = st.session_state.get("lon", 0)
+                    lat_tmp, lon_tmp = capturar_coordenadas()
 
+                    if lat_tmp and lon_tmp:
+                        lat_v = lat_tmp
+                        lon_v = lon_tmp
+                        st.session_state.lat = lat_v
+                        st.session_state.lon = lon_v
+                    else:
+                        lat_v = st.session_state.get("lat", 0)
+                        lon_v = st.session_state.get("lon", 0)
+
+                    distancia_m = 0.0
 
                     try:
                         cod_sel = str(sel_row["CÓDIGO CLIENTE"]).strip().replace(".0", "")
@@ -1062,6 +1066,7 @@ if menu == "📅 Agendamentos do Dia":
                     st.success("Dados atualizados!")
                     time.sleep(1)
                     st.rerun()
+
             # ============================
             # 🗺️ MAPA (AO FINAL)
             # ============================
@@ -1080,7 +1085,6 @@ if menu == "📅 Agendamentos do Dia":
                             if s.lower() in ["nan", "none", ""]:
                                 return ""
                             s = s.replace("\n", " ").replace("\t", " ").strip()
-                            # remove ".0" no final (caso venha de float)
                             if s.endswith(".0"):
                                 s = s[:-2]
                             import re
@@ -1093,14 +1097,11 @@ if menu == "📅 Agendamentos do Dia":
                     df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
                     df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
 
-                    # normaliza Cliente (chave)
                     df_coords["Cliente"] = df_coords["Cliente"].apply(_limpa_cod)
 
-                    # normaliza coordenadas (remove espaços extras)
                     if "COORDENADAS_BASE" in df_coords.columns:
                         df_coords["COORDENADAS_BASE"] = df_coords["COORDENADAS_BASE"].astype(str).str.strip()
 
-                    # cria um dicionário fallback: codigo_cliente -> coordenadas_base
                     mapa_coords = dict(
                         zip(
                             df_coords["Cliente"].astype(str),
@@ -1119,7 +1120,6 @@ if menu == "📅 Agendamentos do Dia":
                         how="left",
                     )
 
-                    # fallback: se o merge não achou COORDENADAS_BASE, tenta no dict
                     if "COORDENADAS_BASE" in df_map.columns:
                         df_map["COORDENADAS_BASE"] = df_map.apply(
                             lambda r: (
@@ -1130,7 +1130,6 @@ if menu == "📅 Agendamentos do Dia":
                             axis=1
                         )
 
-                    # --- EXTRAI LAT/LON DA BASE ---
                     def _parse_coord(x):
                         try:
                             if x is None:
@@ -1138,27 +1137,18 @@ if menu == "📅 Agendamentos do Dia":
                             s = str(x).strip()
                             if s.lower() in ["nan", "none", ""]:
                                 return None, None
-
-                            # aceita "lat, lon" e também "lat; lon"
                             s = s.replace(";", ",")
                             if "," not in s:
                                 return None, None
-
                             lat, lon = s.split(",", 1)
                             lat = lat.strip().replace(" ", "")
                             lon = lon.strip().replace(" ", "")
-
-                            # troca vírgula decimal por ponto, se vier "-10,123"
                             lat = lat.replace(",", ".")
                             lon = lon.replace(",", ".")
-
                             lat_f = float(lat)
                             lon_f = float(lon)
-
-                            # valida range
                             if not (-90 <= lat_f <= 90 and -180 <= lon_f <= 180):
                                 return None, None
-
                             return lat_f, lon_f
                         except Exception:
                             return None, None
@@ -1166,30 +1156,25 @@ if menu == "📅 Agendamentos do Dia":
                     df_map["LAT"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[0])
                     df_map["LON"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[1])
 
-                    # Remove sem coordenadas válidas
                     df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
 
                     if df_map.empty:
                         st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
                     else:
-                        # Limpeza extra
                         for c in ["VENDEDOR", "CLIENTE", "STATUS"]:
                             if c in df_map.columns:
                                 df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
 
-                        # Cores
                         df_map["COR_PINO"] = df_map["STATUS"].astype(str).str.upper().apply(
                             lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
                         )
                         df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
 
-                        # Tooltip
                         df_map["TOOLTIP"] = df_map.apply(
                             lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
                             axis=1,
                         )
 
-                        # Ícones
                         icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
                         icone_verde = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
 
@@ -1200,10 +1185,8 @@ if menu == "📅 Agendamentos do Dia":
 
                         df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
-                        # Dados pro mapa
                         dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
 
-                        # Centro
                         lat_center = float(df_map["LAT"].mean())
                         lon_center = float(df_map["LON"].mean())
 
@@ -1257,6 +1240,11 @@ if menu == "📅 Agendamentos do Dia":
 
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
+
+        else:
+            st.info("Nenhum agendamento para hoje.")
+    else:
+        st.info("Nenhum agendamento para hoje.")
 
 
 
