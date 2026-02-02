@@ -1799,19 +1799,19 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
     col_titulo, col_btn = st.columns([0.8, 0.2])
     with col_titulo:
         st.header("🔍 Minha Agenda Completa")
-    
+
     with col_btn:
         if st.button("🔄 Atualizar Dados", key="btn_refresh_agenda"):
             st.cache_data.clear()
             st.rerun()
-    
+
     if df_agenda is not None and not df_agenda.empty:
         # --- 1. LIMPEZA DE DUPLICADOS E RESET DE ÍNDICE ---
         df_agenda = df_agenda.drop_duplicates(
-            subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'], 
+            subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'],
             keep='first'
         ).reset_index(drop=True)
-        
+
         # Garantir que colunas essenciais existam
         colunas_necessarias = ['APROVACAO', 'OBS_GESTAO', 'ANALISTA', 'SUPERVISOR', 'VENDEDOR', 'DISTANCIA_LOG']
         for col in colunas_necessarias:
@@ -1833,6 +1833,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
         # --- 2. PREPARAÇÃO DE DATAS ---
         df_agenda['DT_COMPLETA'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
+
+        # ✅ (NOVO) DT_REGISTRO: data/hora do registro (quando agendou)
+        # aceita "dd/mm/yyyy HH:MM" e também "dd/mm/yyyy"
+        if 'REGISTRO' in df_agenda.columns:
+            df_agenda['DT_REGISTRO'] = pd.to_datetime(df_agenda['REGISTRO'], dayfirst=True, errors='coerce')
+        else:
+            df_agenda['DT_REGISTRO'] = pd.NaT
 
         # --- 3. LÓGICA DE FILTRO POR HIERARQUIA E STATUS DE APROVAÇÃO ---
         if is_admin or is_diretoria:
@@ -1863,16 +1870,58 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                 ana_f = f_col1.selectbox("Filtrar Analista:", get_options(df_user, 'ANALISTA'))
                 df_temp = df_user if ana_f == "Todos" else df_user[df_user['ANALISTA'] == ana_f]
-                
+
                 sup_f = f_col2.selectbox("Filtrar Supervisor:", get_options(df_temp, 'SUPERVISOR'))
                 df_temp = df_temp if sup_f == "Todos" else df_temp[df_temp['SUPERVISOR'] == sup_f]
-                
+
                 vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, 'VENDEDOR'))
-                
+
                 if ana_f != "Todos": df_user = df_user[df_user['ANALISTA'] == ana_f]
                 if sup_f != "Todos": df_user = df_user[df_user['SUPERVISOR'] == sup_f]
                 if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
+
+            # ✅ (NOVO) SLICER DE DATA (bonito / moderno) com slider de range
+            st.markdown("### 🗓️ Período")
+            c_dt1, c_dt2 = st.columns([0.55, 0.45])
+
+            with c_dt2:
+                modo_data = st.radio(
+                    "Filtrar datas por:",
+                    ["Data da visita (DATA)", "Data do registro (REGISTRO)"],
+                    horizontal=True,
+                    key="modo_data_agenda"
+                )
+
+            # Escolhe a coluna de data base do filtro
+            col_dt_filtro = 'DT_COMPLETA' if modo_data == "Data da visita (DATA)" else 'DT_REGISTRO'
+
+            # Prepara min/max só com datas válidas
+            serie_dt = pd.to_datetime(df_user[col_dt_filtro], errors='coerce')
+            serie_dt = serie_dt.dropna()
+
+            if not serie_dt.empty:
+                dt_min = serie_dt.min().date()
+                dt_max = serie_dt.max().date()
+
+                with c_dt1:
+                    dt_ini, dt_fim = st.slider(
+                        "Arraste para selecionar o período:",
+                        min_value=dt_min,
+                        max_value=dt_max,
+                        value=(dt_min, dt_max),
+                        format="DD/MM/YYYY",
+                        key="slider_periodo_agenda"
+                    )
+
+                # aplica filtro
+                mask_dt = (
+                    pd.to_datetime(df_user[col_dt_filtro], errors='coerce').dt.date.between(dt_ini, dt_fim)
+                )
+                df_user = df_user[mask_dt].reset_index(drop=True)
+            else:
+                with c_dt1:
+                    st.info("Sem datas válidas para filtrar no modo selecionado.")
 
             # --- 5. MÉTRICAS ---
             # ✅ (NOVO) Card de "fora do raio" > 50 metros
@@ -1894,7 +1943,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     vend_alvo = col_ap1.selectbox("Vendedor:", ["Todos"] + vends_na_lista, key="sel_massa_v")
                     status_massa = col_ap2.selectbox("Definir:", ["Aprovado", "Reprovado"], key="sel_massa_s")
                     obs_massa = col_ap3.text_input("Observação:", key="obs_massa_input")
-                    
+
                     if st.button("🚀 Aplicar Decisão em Massa"):
                         mask = df_agenda['VENDEDOR'] == vend_alvo if vend_alvo != "Todos" else df_agenda['VENDEDOR'].isin(vends_na_lista)
                         df_agenda.loc[mask, 'APROVACAO'] = status_massa
@@ -1904,9 +1953,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         else:
                             # Se aprovado em massa, muda de Pendente para Planejado
                             df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Planejado"
-                        
+
                         df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
                         st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
 
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
@@ -1915,9 +1964,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             edicao_user = st.data_editor(
-                df_display, 
-                key="edit_agenda_final_v3", 
-                hide_index=True, 
+                df_display,
+                key="edit_agenda_final_v3",
+                hide_index=True,
                 use_container_width=True,
                 column_config={
                     "AÇÃO": st.column_config.CheckboxColumn("📌"),
@@ -1927,22 +1976,27 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 },
                 disabled=[c for c in df_display.columns if c != "AÇÃO"]
             )
-            
+
             # --- 8. GERENCIAMENTO INDIVIDUAL ---
             marcados = edicao_user[edicao_user["AÇÃO"] == True]
             if not marcados.empty:
                 idx_selecionado = marcados.index[0]
                 sel_row = df_user.iloc[idx_selecionado]
-                
+
                 st.markdown(f"### ⚙️ Gerenciar: {sel_row['CLIENTE']}")
-                t1, t2, t3 = st.tabs(["⚖️ Aprovação", "🔄 Reagendar", "🗑️ Excluir"])
-                
+
+                # ✅ (AJUSTE) Aba Excluir só aparece para ADMIN (você)
+                if is_admin:
+                    t1, t2, t3 = st.tabs(["⚖️ Aprovação", "🔄 Reagendar", "🗑️ Excluir"])
+                else:
+                    t1, t2 = st.tabs(["⚖️ Aprovação", "🔄 Reagendar"])
+
                 with t1:
                     if is_admin or is_diretoria or is_analista:
                         col_ind1, col_ind2 = st.columns(2)
                         n_status = col_ind1.selectbox("Decisão:", ["Aprovado", "Reprovado"], key="n_status_ind")
                         n_obs = col_ind2.text_input("Motivo:", value=str(sel_row['OBS_GESTAO']), key="n_obs_ind")
-                        
+
                         if st.button("Salvar Decisão Individual"):
                             df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['APROVACAO', 'OBS_GESTAO']] = [n_status, n_obs]
                             if n_status == "Reprovado":
@@ -1950,8 +2004,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             else:
                                 # Se aprovado individualmente, muda de Pendente para Planejado
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Planejado"
-                            
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
+
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
                             st.cache_data.clear(); st.success("Salvo!"); time.sleep(1); st.rerun()
                     else:
                         st.warning("Apenas gestores podem alterar a aprovação.")
@@ -1959,18 +2013,19 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 with t2:
                     n_data = st.date_input("Nova Data:", value=datetime.now(), key="date_reag")
                     if st.button("Confirmar Reagendamento"):
-                        # Reagendamento volta para Planejado ou Pendente? 
+                        # Reagendamento volta para Planejado ou Pendente?
                         # Aqui mantive Planejado como estava no seu código original
                         df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Planejado", "Pendente"]
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
                         st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
-                
-                with t3:
-                    st.error("Atenção: Esta ação excluirá o registro permanentemente.")
-                    if st.button("🗑️ CONFIRMAR EXCLUSÃO"):
-                        df_agenda = df_agenda[df_agenda['ID'] != sel_row['ID']]
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
+
+                if is_admin:
+                    with t3:
+                        st.error("Atenção: Esta ação excluirá o registro permanentemente.")
+                        if st.button("🗑️ CONFIRMAR EXCLUSÃO"):
+                            df_agenda = df_agenda[df_agenda['ID'] != sel_row['ID']]
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
+                            st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
 
             # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
