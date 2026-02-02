@@ -13,59 +13,16 @@ import os
 import math
 from streamlit_cookies_manager import EncryptedCookieManager
 
-
-def enviar_excel_vendedor(email_destino, nome_vendedor, df_excel):
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.base import MIMEBase
-    from email import encoders
-
-    email_origem = st.secrets["email"]["sender_email"]
-    senha_origem = st.secrets["email"]["sender_password"]
-    smtp_server = st.secrets["email"]["smtp_server"]
-    smtp_port = st.secrets["email"]["smtp_port"]
-
-    msg = MIMEMultipart()
-    msg["From"] = f"MARATÁ-GVP <{email_origem}>"
-    msg["To"] = email_destino
-    msg["Subject"] = f"📊 Desempenho de Vendas - {nome_vendedor}"
-
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df_excel.to_excel(writer, index=False, sheet_name="Desempenho")
-
-    part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    part.set_payload(buffer.getvalue())
-    encoders.encode_base64(part)
-    part.add_header(
-        "Content-Disposition",
-        f'attachment; filename="desempenho_{nome_vendedor}.xlsx"'
-    )
-    msg.attach(part)
-
-    server = smtplib.SMTP(smtp_server, smtp_port)
-    server.starttls()
-    server.login(email_origem, senha_origem)
-    server.sendmail(email_origem, email_destino, msg.as_string())
-    server.quit()
-
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
-MAPA_EMAIL_ANALISTAS = {
-    "BARBARA": "barbara@marata.com.br",
-    "THAIS": "thais@marata.com.br",
-    "ROBERIO": "roberio@marata.com.br",
-    "CAROL": "carol@marata.com.br",
-    "REGIANE": "regiane@marata.com.br",
-    "ALLANA": "allana@marata.com.br",
-}
-
 MAPA_EMAIL_VENDEDORES = {
-    "ALIF NUNES": ["alif.nunes@marata.com.br"],
-    "JOAO SILVA": ["joao.silva@marata.com.br"],
-    "MARIA COSTA": ["maria.costa@marata.com.br"]
-}
+    "ALIF NUNES": "alif.nunes@marata.com.br",
+    "JOAO SILVA": "joao.silva@marata.com.br",
+    "MARIA COSTA": "maria.costa@marata.com.br",
 
+    # TESTE
+    "TESTE": "lycio.oliveira@marata.com.br"
+}
 
 # --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
 MAPA_EMAILS = {
@@ -78,7 +35,6 @@ MAPA_EMAILS = {
 
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
-EMAIL_ADMIN = EMAILS_GESTAO[0]
 
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
     import smtplib
@@ -508,7 +464,8 @@ with st.sidebar:
         texto_ver_agenda
     ]
     
-    opcoes_menu.append("📊 Desempenho de Vendas")
+    if user_atual.upper() == "LYCIO":
+        opcoes_menu.append("📊 Desempenho de Vendas")
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
@@ -1386,44 +1343,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
-            def gerar_df_final(df_f_base):
-    # 1. Volume e Positivação por Hierarquia
-    df_agrup_f = (
-        df_f_base
-        .groupby('HIERARQUIA')
-        .agg(
-            VOLUME=('QTD_VENDAS', 'sum'),
-            POSITIVAÇÃO=(col_cod_cliente, 'nunique')
-        )
-        .reset_index()
-    )
-
-    # 2. Montagem base
-    df_final = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
-    df_final = df_final.merge(df_agrup_f, on='HIERARQUIA', how='left')
-
-    # 3. Metas
-    df_final = df_final.merge(df_meta_cob_h, on='HIERARQUIA', how='left')
-    df_final = df_final.merge(df_agrup_25, on='HIERARQUIA', how='left')
-    df_final = df_final.merge(df_agrup_26, on='HIERARQUIA', how='left')
-
-    df_final.fillna(0, inplace=True)
-
-    # 4. Cálculos
-    df_final['META CLIENTES (ABS)'] = (df_final['META COBERTURA'] * base_total).apply(math.ceil)
-    df_final['PENDÊNCIA CLIENTES'] = (
-        df_final['META CLIENTES (ABS)'] - df_final['POSITIVAÇÃO']
-    ).apply(lambda x: x if x > 0 else 0)
-
-    df_final['CRESCIMENTO 2025'] = df_final['VOLUME'] - df_final['META 2025']
-    df_final['ATINGIMENTO % (VOL 2025)'] = (
-        df_final['VOLUME'] / df_final['META 2025'] * 100
-    ).replace([np.inf, -np.inf], 0).fillna(0)
-
-    df_final.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'}, inplace=True)
-
-    return df_final
-
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) 
 elif menu_interna == "📊 Desempenho de Vendas":
     st.header("📊 Desempenho de Vendas (Faturado)")
@@ -1616,50 +1535,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df_final.to_excel(writer, index=False, sheet_name='Dashboard')
         st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
-        st.markdown("---")
-if st.button("📧 Enviar Excel por Vendedor"):
-    vendedores = df_f['VENDEDOR_NOME'].unique()
-
-    usuario_logado = st.session_state.get("usuario", "").upper()
-    email_analista = MAPA_EMAIL_ANALISTAS.get(usuario_logado)
-
-    for vendedor in vendedores:
-        vendedor_up = vendedor.upper()
-
-        # 🔹 Email do vendedor
-        emails_vendedor = MAPA_EMAIL_VENDEDORES.get(vendedor_up, [])
-
-        # 🔹 Monta lista final
-        emails_destino = []
-
-        emails_destino.extend(emails_vendedor)
-
-        if email_analista:
-            emails_destino.append(email_analista)
-
-            emails_destino.append(EMAIL_ADMIN)
-
-            emails_destino = list(set(emails_destino))  # remove duplicados
-
-        if not emails_destino:
-            continue
-
-        # 🔹 Excel somente daquele vendedor
-        df_f_vendedor = df_f[df_f['VENDEDOR_NOME'] == vendedor].copy()
-
-# Recalcula o df_final somente com dados daquele vendedor
-        df_vendedor = gerar_df_final(df_f_vendedor)
-
-
-        for email in emails_destino:
-            enviar_excel_vendedor(
-                email_destino=email,
-                nome_vendedor=vendedor,
-                df_excel=df_vendedor
-            )
-
-    st.success("📨 E-mails enviados com sucesso!")
-
 # --- PÁGINA: APROVAÇÕES ---
 elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
