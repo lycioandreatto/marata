@@ -2622,7 +2622,14 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
                 st.stop()
 
-        vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
+        # ✅ AJUSTE PEDIDO (SÓ ISSO):
+        # Se tiver vendedor selecionado no filtro, envia só para ele(s).
+        # Se não tiver, envia para todos.
+        if sel_vendedor and len(sel_vendedor) > 0:
+            vendedores = sel_vendedor
+        else:
+            vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
+
         if len(vendedores) == 0:
             st.warning("Não há vendedores disponíveis para envio (base filtrada ficou vazia).")
             st.stop()
@@ -2992,6 +2999,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         st.error(f"Erro no processamento: {e}")
         st.stop()
     """
+
 
 
 
