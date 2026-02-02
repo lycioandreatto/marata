@@ -1577,7 +1577,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.dataframe(
             df_final[cols_view].sort_values(by='HIERARQUIA DE PRODUTOS').style
             .format({
-                'META COBERTURA': "{:.1f}%",
+                'META COBERTURA': "{:.0%}",
                 'META CLIENTES (ABS)': "{:,.0f}",
                 'POSITIVAÇÃO': "{:,.0f}",
                 'PENDÊNCIA CLIENTES': "{:,.0f}",
