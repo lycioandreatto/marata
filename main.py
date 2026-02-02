@@ -2215,35 +2215,167 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
 
-    # ✅ BOTÃO: APARECE SOMENTE AQUI (porque está DENTRO do elif)
-        # ✅ BOTÃO: APARECE SOMENTE AQUI
-        # ✅ BOTÃO: APARECE SOMENTE AQUI
+    # ============================
+    # ✅ CONTROLE DE ESTADO (Streamlit rerun)
+    # ============================
+    # Guarda o df_final e a base de vendedores para o botão funcionar sempre
+    if "df_final_acomp_diario" not in st.session_state:
+        st.session_state["df_final_acomp_diario"] = None
+
+    if "df_envio_acomp_diario" not in st.session_state:
+        st.session_state["df_envio_acomp_diario"] = None
+
+    # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
+    def fmt_pt_int(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", ".")
+        except:
+            return str(v)
+
+    # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) SEM PERDER 1 CLIENTE:
+    def _norm_cliente(df, col):
+        if df is None or df.empty or col not in df.columns:
+            return df
+
+        s = df[col]
+        mask = s.notna()
+        s2 = s.copy()
+
+        s2.loc[mask] = (
+            s.loc[mask]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.0$", "", regex=True)
+        )
+
+        df[col] = s2
+        return df
+
+    # ============================
+    # >>> SEU CÓDIGO EXISTENTE DA PÁGINA (tudo que você já tem)
+    #     (leitura FATURADO, merges, filtros, df_final, tabela, rankings, etc.)
+    # ============================
+    try:
+        # 1. Leitura das abas
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
+        df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
+        df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
+        df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
+
+        lista_hierarquia_fixa = [
+            "ACHOCOLATADO","ACUCAR","ADOCANTE SACARINA","ADOCANTE SUCRALOSE","AZEITONA",
+            "BALSAMICO","BEBIDA MISTA","CALDOS TABLETE","CATCHUP","CEBOLINHA","COGUMELO",
+            "DESCARTAVEIS","ESPECIARIAS","FARINHA DE TRIGO FD","FARINHA DE TRIGO SC",
+            "FARINHA LACTEA","MACARRAO INSTANTANEO","MARATINHO","MILHO",
+            "MILHO FARINHA GOTA","MILHO FARINHA MARATA","MILHO FLOCAO GOTA",
+            "MILHO FLOCAO MARATA","MILHO PIPOCA","MINGAU","MISTURA BOLO",
+            "MOLHO PRONTO","MOLHOS ALHO","MOLHOS INGLES","MOLHOS LIMAO",
+            "MOLHOS PIMENTA","MOLHOS PIMENTA 75ML","MOLHOS SALSA","MOLHOS SHOYO",
+            "MOLHOS TEMPEROS CASEIROS","OLEAGINOSAS","PIMENTA CONSERVA",
+            "PIPOCA PRONTA","REFRESCO","SALGADINHOS FARDO","SALGADINHOS NACHOS",
+            "SALGADINHOS PASTEIS","SUCO D+ 1000ML","SUCO D+ 200ML",
+            "SUCO MARATA 1000ML","SUCO MARATA 200ML","TEMPERO COLORIFICO GOTA",
+            "TEMPERO COLORIFICO MARATA","TEMPERO CONDIMENTO GOTA",
+            "TEMPERO CONDIMENTO MARATA","TEMPERO EM PO","VINAGRE","VINAGRE ESPECIAL"
+        ]
+
+        if df_faturado is not None and not df_faturado.empty:
+            df_faturado = df_faturado.dropna(how="all")
+            df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
+
+            df_faturado.rename(columns={
+                "Região de vendas": "VENDEDOR_NOME",
+                "RG": "VENDEDOR_COD",
+                "Qtd Vendas (S/Dec)": "QTD_VENDAS",
+                "Hierarquia de produtos": "HIERARQUIA"
+            }, inplace=True)
+
+            # ✅ Cliente é a coluna K (ajuste conforme seu arquivo; você usou [11])
+            col_cod_cliente = df_faturado.columns[11]
+
+            df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
+            df_faturado["VENDEDOR_COD"] = df_faturado["VENDEDOR_COD"].astype(str).str.replace(r"\.0$", "", regex=True)
+
+            df_faturado = _norm_cliente(df_faturado, col_cod_cliente)
+
+            df_relacao = df_base[["VENDEDOR","SUPERVISOR","ANALISTA"]].drop_duplicates("VENDEDOR")
+            df_faturado = df_faturado.merge(
+                df_relacao, left_on="VENDEDOR_NOME", right_on="VENDEDOR", how="left"
+            )
+
         # ============================
+        # ✅ A PARTIR DAQUI É O RESTO DO SEU PROCESSAMENTO NORMAL
+        # (df_f, permissões, filtros, df_agrup, df_final, tabela, rankings...)
+        # ============================
+
+        # --- BASE PRINCIPAL (igual ao seu)
+        df_f = df_faturado.copy()
+        df_f = _norm_cliente(df_f, col_cod_cliente)
+
+        # >>>>>> AQUI fica TODO o resto do seu código atual, sem mudar nada <<<<<<
+        # (eu não repliquei tudo aqui porque é gigante, mas é exatamente o que você já tem)
+
+        # ============================
+        # ✅ GARANTA QUE df_final SEJA CRIADO (do jeito que você já faz)
+        # ============================
+        # Exemplo: (você já tem isso no seu código)
+        # df_final = ...
+        #
+        # >>>>>>> IMPORTANTE <<<<<<<
+        # Quando terminar de montar df_final, NÃO ESQUEÇA de renomear:
+        # df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
+        #
+        # e aí sim salvar no session_state (eu faço logo abaixo)
+
+    except Exception as e:
+        st.error(f"Erro no processamento: {e}")
+        st.stop()
+
+    # ============================
+    # ✅ SALVA BASES NO SESSION_STATE (isso é o que resolve o erro do botão)
+    # ============================
+    # df_final e df_f/df_faturado PRECISAM existir aqui.
+    # Se por algum motivo seu código criar df_final depois desse ponto, mova este bloco pra baixo.
+    try:
+        if "df_final" in locals() and df_final is not None and not df_final.empty:
+            st.session_state["df_final_acomp_diario"] = df_final.copy()
+        else:
+            st.session_state["df_final_acomp_diario"] = None
+
+        # Base para lista de vendedores
+        if "df_f" in locals() and df_f is not None and not df_f.empty:
+            st.session_state["df_envio_acomp_diario"] = df_f.copy()
+        elif "df_faturado" in locals() and df_faturado is not None and not df_faturado.empty:
+            st.session_state["df_envio_acomp_diario"] = df_faturado.copy()
+        else:
+            st.session_state["df_envio_acomp_diario"] = None
+    except:
+        st.session_state["df_final_acomp_diario"] = None
+        st.session_state["df_envio_acomp_diario"] = None
+
+    # ============================
     # 📧 ENVIAR EXCEL POR VENDEDOR (SÓ NESTA PÁGINA)
     # ============================
     if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
         import smtplib
 
-        # ✅ 1) Garante que o relatório existe (é ele que vai anexar)
-        if "df_final" not in locals() or df_final is None or df_final.empty:
-            st.error("Relatório (df_final) não foi gerado. Verifique a leitura/processamento do FATURADO.")
-            st.stop()
+        # ✅ pega SEMPRE do session_state (nunca de locals)
+        df_relatorio = st.session_state.get("df_final_acomp_diario")
+        df_envio = st.session_state.get("df_envio_acomp_diario")
 
-        # ✅ 2) Base para pegar lista de vendedores (df_f se existir; senão df_faturado)
-        df_envio = None
-        if "df_f" in locals() and df_f is not None and not df_f.empty:
-            df_envio = df_f.copy()
-        elif "df_faturado" in locals() and df_faturado is not None and not df_faturado.empty:
-            df_envio = df_faturado.copy()
+        if df_relatorio is None or df_relatorio.empty:
+            st.error("Relatório (df_final) não foi gerado nesta execução. Atualize a página e tente novamente.")
+            st.stop()
 
         if df_envio is None or df_envio.empty:
-            st.error("Base de vendedores não carregada. Verifique a leitura da aba FATURADO.")
+            st.error("Base de vendedores não carregada. Verifique a leitura/processamento do FATURADO.")
             st.stop()
 
-        # ✅ 3) Garante coluna VENDEDOR_NOME para extrair vendedores
+        # ✅ garante coluna VENDEDOR_NOME
         if "VENDEDOR_NOME" not in df_envio.columns:
-            # fallback caso esteja bruto
             if "Região de vendas" in df_envio.columns:
+                df_envio = df_envio.copy()
                 df_envio["VENDEDOR_NOME"] = df_envio["Região de vendas"]
             else:
                 st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
@@ -2254,7 +2386,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             st.warning("Não há vendedores disponíveis para envio (base filtrada ficou vazia).")
             st.stop()
 
-        # ✅ 4) Conecta no SMTP
+        # ✅ Conecta no SMTP
         email_origem = st.secrets["email"]["sender_email"]
         senha_origem = st.secrets["email"]["sender_password"]
         smtp_server = st.secrets["email"]["smtp_server"]
@@ -2276,21 +2408,18 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 pulados += 1
                 continue
 
-            # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
             if isinstance(email_destino, list):
                 email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
             else:
                 email_destino_str = str(email_destino).strip()
 
-            # ✅ 5) Aqui é o ponto principal:
-            # sua função espera df_excel e ela mesma ajusta % e formata Excel.
-            # Então passa o df_final (relatório pronto).
+            # ✅ sua função já faz: ajuste % / formatação / anexo / envio
             enviar_excel_vendedor(
                 server=server,
                 email_origem=email_origem,
                 email_destino=email_destino_str,
                 nome_vendedor=vendedor,
-                df_excel=df_final
+                df_excel=df_relatorio
             )
             enviados += 1
 
