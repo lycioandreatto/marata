@@ -777,6 +777,43 @@ st.markdown("---")
 # Mapeia menu_interna de volta para menu para o restante do código
 menu = menu_interna
 
+def enviar_excel_agenda_dia(
+    server,
+    email_origem,
+    email_destino,
+    nome_vendedor,
+    df_excel,
+    hoje_str
+):
+    """
+    Excel simples (sem espaçamento/estética), só a tabela.
+    """
+    output = io.BytesIO()
+    df_export = df_excel.copy()
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_export.to_excel(writer, index=False, sheet_name="AGENDA_DIA")
+
+    output.seek(0)
+
+    msg = EmailMessage()
+    msg["From"] = f"MARATÁ-GVP <{email_origem}>"
+    msg["To"] = email_destino
+    msg["Subject"] = f"📅 Agenda do Dia ({hoje_str}) - {nome_vendedor}"
+    msg.set_content(
+        f"Olá,\n\nSegue em anexo a agenda do dia ({hoje_str}) do vendedor {nome_vendedor}.\n\n"
+        f"Mensagem automática pelo Sistema Maratá GVP."
+    )
+
+    msg.add_attachment(
+        output.read(),
+        maintype="application",
+        subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"Agenda_{hoje_str.replace('/','-')}_{nome_vendedor}.xlsx"
+    )
+
+    server.send_message(msg)
+
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
@@ -857,6 +894,105 @@ if menu == "📅 Agendamentos do Dia":
         m2.metric("Realizados", len(df_dia[df_dia['STATUS'] == "Realizado"]))
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
+
+                # ============================
+        # 📧 BOTÃO: ENVIAR AGENDA DO DIA (VENDEDOR + ANALISTA)
+        # ============================
+        if pode_validar and not df_dia.empty:
+            if st.button("📧 Enviar Agenda do Dia (Vendedor + Analista)", use_container_width=True):
+
+                import smtplib
+
+                email_origem = st.secrets["email"]["sender_email"]
+                senha_origem = st.secrets["email"]["sender_password"]
+                smtp_server = st.secrets["email"]["smtp_server"]
+                smtp_port   = st.secrets["email"]["smtp_port"]
+
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+                server.login(email_origem, senha_origem)
+
+                # ✅ garante colunas como texto para evitar erro
+                for c in ["VENDEDOR", "ANALISTA", "SUPERVISOR", "CLIENTE", "STATUS"]:
+                    if c in df_dia.columns:
+                        df_dia[c] = df_dia[c].astype(str)
+
+                # Lista de vendedores do DIA (respeita filtros que já aplicou no df_dia)
+                vendedores = df_dia["VENDEDOR"].dropna().unique()
+
+                enviados = 0
+                pulados = 0
+
+                for vendedor in vendedores:
+                    vendedor_up = str(vendedor).strip().upper()
+
+                    # 1) E-mail do vendedor (obrigatório)
+                    email_vendedor = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
+
+                    if not email_vendedor:
+                        st.warning(f"⚠️ Sem e-mail cadastrado no MAPA_EMAIL_VENDEDORES para: {vendedor_up} (pulando)")
+                        pulados += 1
+                        continue
+
+                    # Aceita lista ou string
+                    if isinstance(email_vendedor, list):
+                        lista_dest = [str(x).strip() for x in email_vendedor if str(x).strip()]
+                    else:
+                        lista_dest = [str(email_vendedor).strip()]
+
+                    # 2) Descobre analista responsável pelo vendedor (pelo df_dia)
+                    analistas_do_vendedor = []
+                    if "ANALISTA" in df_dia.columns:
+                        analistas_do_vendedor = (
+                            df_dia[df_dia["VENDEDOR"].astype(str).str.upper() == vendedor_up]["ANALISTA"]
+                            .dropna()
+                            .astype(str)
+                            .str.strip()
+                            .str.upper()
+                            .unique()
+                            .tolist()
+                        )
+
+                    # Normalmente é 1 analista; se vier mais de 1, manda para todos que tiver no MAPA_EMAILS
+                    for analista_up in analistas_do_vendedor:
+                        emails_analista = MAPA_EMAILS.get(analista_up)
+                        if emails_analista:
+                            if isinstance(emails_analista, list):
+                                lista_dest += [str(x).strip() for x in emails_analista if str(x).strip()]
+                            else:
+                                lista_dest.append(str(emails_analista).strip())
+                        else:
+                            # Não trava; só avisa
+                            st.info(f"ℹ️ Analista {analista_up} sem e-mail cadastrado no MAPA_EMAILS (não adicionado).")
+
+                    # 3) (Opcional) Gestão sempre em cópia
+                    if "EMAILS_GESTAO" in globals() and EMAILS_GESTAO:
+                        lista_dest += [str(x).strip() for x in EMAILS_GESTAO if str(x).strip()]
+
+                    # Remove duplicados e vazios
+                    lista_dest = sorted(list(set([e for e in lista_dest if e])))
+
+                    email_destino_str = ",".join(lista_dest)
+
+                    # df do vendedor (agenda do dia dele)
+                    df_vendedor = df_dia[df_dia["VENDEDOR"].astype(str).str.upper() == vendedor_up].copy()
+
+                    # ✅ Envia Excel simples da agenda do dia
+                    enviar_excel_agenda_dia(
+                        server=server,
+                        email_origem=email_origem,
+                        email_destino=email_destino_str,
+                        nome_vendedor=vendedor_up,
+                        df_excel=df_vendedor,
+                        hoje_str=hoje_str
+                    )
+
+                    enviados += 1
+
+                server.quit()
+
+                st.success(f"📨 Enviado para {enviados} vendedor(es). Pulados: {pulados}.")
+
 
         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
