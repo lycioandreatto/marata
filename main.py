@@ -985,16 +985,18 @@ if menu == "📅 Agendamentos do Dia":
                     time.sleep(1)
                     st.rerun()
 
-            # ============================
+                       # ============================
             # 🗺️ MAPA (NOVO - AO FINAL)
             # ============================
             st.markdown("---")
             st.markdown("### 🗺️ Mapa das Visitas do Dia")
 
             try:
-                # Pega coordenadas do cliente na BASE e junta no df_dia
                 if df_base is not None and ("COORDENADAS" in df_base.columns):
+
+                    # 🔧 RENOMEIA PARA EVITAR CONFLITO
                     df_coords = df_base[['Cliente', 'COORDENADAS']].drop_duplicates(subset='Cliente').copy()
+                    df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
                     df_coords['Cliente'] = df_coords['Cliente'].astype(str).str.strip()
 
                     df_map = df_dia.copy()
@@ -1007,99 +1009,102 @@ if menu == "📅 Agendamentos do Dia":
                         how='left'
                     )
 
-                    # Extrai lat/lon
+                    # --- EXTRAI LAT / LON DA BASE ---
                     def _parse_coord(x):
                         try:
                             if isinstance(x, str) and ',' in x:
-                                a, b = x.split(',', 1)
-                                return float(a.strip()), float(b.strip())
+                                lat, lon = x.split(',', 1)
+                                return float(lat.strip()), float(lon.strip())
                         except:
                             pass
                         return None, None
 
-                    df_map['LAT'] = df_map['COORDENADAS'].apply(lambda v: _parse_coord(v)[0])
-                    df_map['LON'] = df_map['COORDENADAS'].apply(lambda v: _parse_coord(v)[1])
+                    df_map['LAT'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
+                    df_map['LON'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
 
-                    # Remove sem coordenadas válidas
+                    # Remove linhas sem coordenadas válidas
                     df_map = df_map.dropna(subset=['LAT', 'LON']).copy()
 
-                    # Define cor por status
-                    df_map['COR'] = df_map['STATUS'].astype(str).str.upper().apply(
-                        lambda s: [0, 180, 0, 220] if s == "REALIZADO" else [220, 0, 0, 220]
-                    )
+                    if df_map.empty:
+                        st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
+                    else:
+                        # --- COR POR STATUS ---
+                        df_map['COR'] = df_map['STATUS'].astype(str).str.upper().apply(
+                            lambda s: [0, 160, 0, 220] if s == "REALIZADO" else [200, 0, 0, 220]
+                        )
 
-                    # Tooltip (mostra vendedor p/ analista, cliente e status)
-                    df_map['TOOLTIP'] = df_map.apply(
-                        lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
-                        axis=1
-                    )
+                        # --- TOOLTIP ---
+                        df_map['TOOLTIP'] = df_map.apply(
+                            lambda r: (
+                                f"Vendedor: {r.get('VENDEDOR','')}\n"
+                                f"Cliente: {r.get('CLIENTE','')}\n"
+                                f"Status: {r.get('STATUS','')}"
+                            ),
+                            axis=1
+                        )
 
-                    # Centro do mapa (média)
-                    lat_center = float(df_map['LAT'].mean()) if not df_map.empty else -10.0
-                    lon_center = float(df_map['LON'].mean()) if not df_map.empty else -37.0
+                        # --- CENTRO DO MAPA ---
+                        lat_center = float(df_map['LAT'].mean())
+                        lon_center = float(df_map['LON'].mean())
 
-                    import pydeck as pdk
+                        import pydeck as pdk
 
-                    layer_pinos = pdk.Layer(
-                        "IconLayer",
-                        data=df_map,
-                        get_position='[LON, LAT]',
-                        get_icon='''{
-                            "url": "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-                            "width": 128,
-                            "height": 128,
-                            "anchorY": 128
-                        }''',
-                        get_size=4,
-                        size_scale=10,
-                        get_color="COR",
-                        pickable=True,
-                    )
+                        # --- PINOS ---
+                        layer_pinos = pdk.Layer(
+                            "IconLayer",
+                            data=df_map,
+                            get_position='[LON, LAT]',
+                            get_icon='''{
+                                "url": "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+                                "width": 128,
+                                "height": 128,
+                                "anchorY": 128
+                            }''',
+                            get_size=4,
+                            size_scale=10,
+                            get_color="COR",
+                            pickable=True,
+                        )
 
-                    layer_raio = pdk.Layer(
-                        "ScatterplotLayer",
-                        data=df_map,
-                        get_position='[LON, LAT]',
-                        get_radius=1000,   # 1km
-                        radius_units='meters',
-                        get_fill_color="COR",
-                        get_line_color="COR",
-                        filled=True,
-                        stroked=True,
-                        opacity=0.08,
-                        pickable=False,
-                    )
+                        # --- RAIO 1KM ---
+                        layer_raio = pdk.Layer(
+                            "ScatterplotLayer",
+                            data=df_map,
+                            get_position='[LON, LAT]',
+                            get_radius=1000,
+                            radius_units='meters',
+                            get_fill_color="COR",
+                            get_line_color="COR",
+                            filled=True,
+                            stroked=True,
+                            opacity=0.08,
+                            pickable=False,
+                        )
 
-                    view_state = pdk.ViewState(
-                        latitude=lat_center,
-                        longitude=lon_center,
-                        zoom=10,
-                        pitch=0
-                    )
+                        view_state = pdk.ViewState(
+                            latitude=lat_center,
+                            longitude=lon_center,
+                            zoom=11,
+                            pitch=0
+                        )
 
-                    tooltip = {
-                        "text": "{TOOLTIP}"
-                    }
+                        tooltip = {"text": "{TOOLTIP}"}
 
-                    st.pydeck_chart(
-                        pdk.Deck(
-                            layers=[layer_raio, layer_pinos],
-                            initial_view_state=view_state,
-                            tooltip=tooltip,
-                            map_style=None
-                        ),
-                        use_container_width=True
-                    )
+                        st.pydeck_chart(
+                            pdk.Deck(
+                                layers=[layer_raio, layer_pinos],
+                                initial_view_state=view_state,
+                                tooltip=tooltip,
+                                map_style=None
+                            ),
+                            use_container_width=True
+                        )
+
                 else:
-                    st.info("Não encontrei a coluna COORDENADAS na BASE para montar o mapa.")
+                    st.info("Coluna COORDENADAS não encontrada na BASE.")
+
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
-
-        else:
-            st.info("Nenhum agendamento para hoje.")
-    else:
-        st.info("Nenhum agendamento para hoje.")
-
 
 
 
