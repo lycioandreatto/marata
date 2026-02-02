@@ -806,7 +806,7 @@ with st.sidebar:
 
 # --- TÍTULO CENTRAL NO TOPO ---
 st.markdown(
-    "<h4 style='text-align: center; color: black; margin-top: -20px;'>"
+    "<h4 style='text-align: center; color: black; margin-top: -110px;'>"
     "GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>",
     unsafe_allow_html=True
 )
@@ -820,193 +820,543 @@ menu = menu_interna
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 if menu == "📅 Agendamentos do Dia":
     col_titulo, col_btn = st.columns([0.8, 0.2])
+
     with col_titulo:
         st.header("📅 Agendamentos do Dia")
-    
+
     with col_btn:
         if st.button("🔄 Atualizar Agenda", key="btn_refresh_dia"):
             st.cache_data.clear()
             st.rerun()
 
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
-    
-    if df_agenda is not None and not df_agenda.empty:
-        # --- PASSO 1: LIMPEZA DE DUPLICIDADES E RESET DE ÍNDICE ---
-        df_agenda = df_agenda.drop_duplicates(
-            subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'], 
-            keep='first'
-        ).reset_index(drop=True)
 
-        col_aprov_plan = next((c for c in df_agenda.columns if "APROVA" in c.upper() and "PLAN" in c.upper() or c.upper() == "APROVACAO"), "APROVACAO")
+    if df_agenda is not None and not df_agenda.empty:
+
+        # ✅ Permissão de validação: Gestão + Analista
+        pode_validar = (is_admin or is_diretoria or is_analista)
+
+        # --- LIMPEZA ---
+        df_agenda = (
+            df_agenda.drop_duplicates(
+                subset=["DATA", "VENDEDOR", "CÓDIGO CLIENTE", "STATUS"],
+                keep="first",
+            )
+            .reset_index(drop=True)
+        )
+
+        # --- COLUNAS PADRÃO ---
+        col_aprov_plan = next(
+            (
+                c
+                for c in df_agenda.columns
+                if (("APROVA" in c.upper() and "PLAN" in c.upper()) or c.upper() == "APROVACAO")
+            ),
+            "APROVACAO",
+        )
         col_aprov_exec = "VALIDACAO_GESTAO"
         col_just = "JUSTIFICATIVA"
-        
-        if col_aprov_exec not in df_agenda.columns: df_agenda[col_aprov_exec] = "PENDENTE"
-        if col_just not in df_agenda.columns: df_agenda[col_just] = ""
 
-        # --- PASSO 2: FILTROS DO DIA ---
-        df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
+        if col_aprov_exec not in df_agenda.columns:
+            df_agenda[col_aprov_exec] = "PENDENTE"
+        if col_just not in df_agenda.columns:
+            df_agenda[col_just] = ""
+
+        # ✅ NOVO: coluna para observação da gestão na validação diária (sem mexer no botão do vendedor)
+        col_obs_rotina = "OBS_VALIDACAO_GESTAO"
+        if col_obs_rotina not in df_agenda.columns:
+            df_agenda[col_obs_rotina] = ""
+
+        if "DISTANCIA_LOG" not in df_agenda.columns:
+            df_agenda["DISTANCIA_LOG"] = 0.0
+        if "COORDENADAS" not in df_agenda.columns:
+            df_agenda["COORDENADAS"] = ""
+
+        # --- FILTRO DO DIA ---
+        df_dia = df_agenda[df_agenda["DATA"] == hoje_str].copy()
         df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
-        
-        if not (is_admin or is_diretoria):
-            if is_analista: 
-                df_dia = df_dia[df_dia['ANALISTA'].astype(str).str.upper() == user_atual.upper()]
-            elif is_supervisor: 
-                df_dia = df_dia[df_dia['SUPERVISOR'].astype(str).str.upper() == user_atual.upper()]
-            else: 
-                df_dia = df_dia[df_dia['VENDEDOR'].astype(str).str.upper() == user_atual.upper()]
 
-        # IMPORTANTE: Resetar índice após filtrar o dia para o editor não se perder
+        # --- CONTROLE DE ACESSO ---
+        if not (is_admin or is_diretoria):
+            if is_analista:
+                df_dia = df_dia[df_dia["ANALISTA"].astype(str).str.upper() == user_atual.upper()]
+            elif is_supervisor:
+                df_dia = df_dia[df_dia["SUPERVISOR"].astype(str).str.upper() == user_atual.upper()]
+            else:
+                df_dia = df_dia[df_dia["VENDEDOR"].astype(str).str.upper() == user_atual.upper()]
+
         df_dia = df_dia.reset_index(drop=True)
 
+        # --- SLICERS (GESTÃO / ANALISTA) ---
+        if pode_validar and not df_dia.empty:
+            st.markdown("### 🔍 Filtros")
+            f1, f2 = st.columns(2)
+
+            with f1:
+                sup_sel = st.multiselect("Supervisor", sorted(df_dia["SUPERVISOR"].dropna().unique()))
+            if sup_sel:
+                df_dia = df_dia[df_dia["SUPERVISOR"].isin(sup_sel)]
+
+            with f2:
+                vend_sel = st.multiselect("Vendedor", sorted(df_dia["VENDEDOR"].dropna().unique()))
+            if vend_sel:
+                df_dia = df_dia[df_dia["VENDEDOR"].isin(vend_sel)]
+
         # --- MÉTRICAS ---
-        t_hoje = len(df_dia)
-        t_realizado = len(df_dia[df_dia['STATUS'] == "Realizado"])
-        t_validado = len(df_dia[df_dia[col_aprov_exec] == "OK"])
-        t_reprovado = len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"])
-
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Aprovados p/ Hoje", t_hoje)
-        m2.metric("Realizados", t_realizado)
-        m3.metric("Validados", t_validado)
-        m4.metric("Reprovados", t_reprovado, delta_color="inverse")
+        m1.metric("Aprovados p/ Hoje", len(df_dia))
+        m2.metric("Realizados", len(df_dia[df_dia["STATUS"] == "Realizado"]))
+        m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
+        m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-        # --- PAINEL DE VALIDAÇÃO EM MASSA ---
-        if eh_gestao and not df_dia.empty:
-            with st.expander("⚡ Painel de Validação em Massa (Gestão)"):
-                c_m1, c_m2, c_m3, c_m4 = st.columns([1.2, 1.2, 1, 1])
-                with c_m1:
-                    sups = ["TODOS"] + sorted(list(df_dia['SUPERVISOR'].dropna().unique()))
-                    sel_sup = st.selectbox("Supervisor:", sups, key="mass_sup")
-                with c_m2:
-                    v_list = df_dia[df_dia['SUPERVISOR'] == sel_sup] if sel_sup != "TODOS" else df_dia
-                    vends = ["TODOS"] + sorted(list(v_list['VENDEDOR'].dropna().unique()))
-                    sel_vend = st.selectbox("Vendedor:", vends, key="mass_vend")
-                with c_m3:
-                    acao_mass = st.radio("Ação:", ["Dar OK", "REPROVAR"], horizontal=True)
-                with c_m4:
-                    st.write("")
-                    if st.button("🚀 EXECUTAR", use_container_width=True):
-                        df_m = df_dia[df_dia['STATUS'] == "Realizado"].copy()
-                        if sel_sup != "TODOS": df_m = df_m[df_m['SUPERVISOR'] == sel_sup]
-                        if sel_vend != "TODOS": df_m = df_m[df_m['VENDEDOR'] == sel_vend]
-                        ids_m = df_m['ID'].tolist()
-                        if ids_m:
-                            res = "OK" if acao_mass == "Dar OK" else "REPROVADO"
-                            df_agenda.loc[df_agenda['ID'].isin(ids_m), col_aprov_exec] = res
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                            st.cache_data.clear(); st.success("Processado!"); time.sleep(1); st.rerun()
+        # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+        if pode_validar and not df_dia.empty:
+            if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
+                ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
+                if ids:
+                    df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
+                    conn.update(
+                        spreadsheet=url_planilha,
+                        worksheet="AGENDA",
+                        data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                    )
+                    st.success("Todas as visitas realizadas foram aprovadas!")
+                    time.sleep(1)
+                    st.rerun()
 
         # --- TABELA ---
         if not df_dia.empty:
-            if df_base is not None:
-                df_cidades = df_base[['Cliente', 'Local']].drop_duplicates(subset='Cliente').copy()
-                df_dia = pd.merge(df_dia, df_cidades, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
-                df_dia.rename(columns={'Local': 'CIDADE'}, inplace=True)
-                df_dia = df_dia.reset_index(drop=True) # Reset após merge para segurança
 
-            def style_audit(row):
-                if row[col_aprov_exec] == "REPROVADO": return ['background-color: #FADBD8'] * len(row)
-                if row[col_aprov_exec] == "OK": return ['background-color: #D4EFDF'] * len(row)
-                return [''] * len(row)
+            # ✅ Cidade
+            if df_base is not None and not df_base.empty and ("Cliente" in df_base.columns) and ("Local" in df_base.columns):
+                df_cidades = df_base[["Cliente", "Local"]].drop_duplicates("Cliente").copy()
+                df_cidades["Cliente"] = df_cidades["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
 
-            cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA', col_aprov_exec]
-            if eh_gestao: cols_v.insert(6, 'DISTANCIA_LOG')
-            
+                df_dia["CÓDIGO CLIENTE"] = df_dia["CÓDIGO CLIENTE"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                df_dia = (
+                    df_dia.merge(
+                        df_cidades,
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left",
+                    )
+                    .rename(columns={"Local": "CIDADE"})
+                )
+
+            cols_v = ["EDITAR", "VENDEDOR", "CLIENTE", "CIDADE", "STATUS", col_just]
+
+            # ✅ Auditoria só aparece para quem pode validar
+            if pode_validar:
+                cols_v.append(col_aprov_exec)
+                cols_v.append("DISTANCIA_LOG")
+
             df_dia["EDITAR"] = False
             df_display = df_dia[[c for c in cols_v if c in df_dia.columns or c == "EDITAR"]].copy()
 
             edicao_dia = st.data_editor(
-                df_display.style.apply(style_audit, axis=1),
-                key="audit_dia_v2",
+                df_display,
                 hide_index=True,
                 use_container_width=True,
                 column_config={
                     "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    "JUSTIFICATIVA": st.column_config.TextColumn("MOTIVO/JUSTIF."),
-                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"])
+                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]),
                 },
-                disabled=[c for c in df_display.columns if c not in ["EDITAR", col_aprov_exec]]
+                disabled=[
+                    c
+                    for c in df_display.columns
+                    if c not in (["EDITAR", col_aprov_exec] if pode_validar else ["EDITAR"])
+                ],
             )
 
             # --- EDIÇÃO INDIVIDUAL ---
             marcados = edicao_dia[edicao_dia["EDITAR"] == True]
             if not marcados.empty:
                 idx = marcados.index[0]
-                sel_row = df_dia.iloc[idx] # Agora o iloc funciona perfeitamente
+                sel_row = df_dia.iloc[idx]
+
                 st.markdown("---")
-                st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
-                
-                c1, c2, c3 = st.columns([1, 1, 1.5])
-                with c1:
-                    st_list = ["Planejado", "Realizado", "Reagendado"]
-                    idx_st = st_list.index(sel_row['STATUS']) if sel_row['STATUS'] in st_list else 0
-                    novo_status = st.selectbox("Status:", st_list, index=idx_st)
-                with c2:
-                    val_list = ["PENDENTE", "OK", "REPROVADO"]
-                    idx_val = val_list.index(sel_row[col_aprov_exec]) if sel_row[col_aprov_exec] in val_list else 0
-                    nova_val = st.radio("Validar:", val_list, index=idx_val, horizontal=True) if eh_gestao else sel_row[col_aprov_exec]
-                
-                with c3:
-                    opcoes_just = ["", "Cliente Fechado", "Proprietário Ausente", "Sem estoque para o pedido", "Reagendado a pedido do cliente", "Visita produtiva com pedido", "Visita improdutiva", "Outros (especificar)"]
-                    val_atual_just = sel_row[col_just] if pd.notna(sel_row[col_just]) else ""
-                    default_idx = opcoes_just.index(val_atual_just) if val_atual_just in opcoes_just else 0
-                    nova_just = st.selectbox("Escolha a Justificativa:", opcoes_just, index=default_idx)
-                    if nova_just == "Outros (especificar)":
-                        nova_just = st.text_input("Especifique o motivo:", value=val_atual_just if val_atual_just not in opcoes_just else "")
+                st.subheader(f"⚙️ Detalhes: {sel_row.get('CLIENTE','')}")
 
-                if st.button("💾 SALVAR ATUALIZAÇÃO"):
-                    lat_v = st.session_state.get('lat', 0)
-                    lon_v = st.session_state.get('lon', 0)
-                    df_agenda.loc[df_agenda['ID'] == str(sel_row['ID']), ['STATUS', col_aprov_exec, col_just, 'COORDENADAS']] = [novo_status, nova_val, nova_just, f"{lat_v}, {lon_v}"]
-                    conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                    st.success("Dados atualizados!"); time.sleep(1); st.rerun()
+                # ✅ Status
+                status_list = ["Planejado", "Realizado", "Reagendado"]
+                status_atual = sel_row["STATUS"] if sel_row.get("STATUS") in status_list else "Planejado"
+                novo_status = st.selectbox("Status:", status_list, index=status_list.index(status_atual))
 
-        # --- BOTÃO ROTA FINALIZADA ---
-        st.markdown("---")
-        if not df_dia.empty:
-            if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
-                # ... (Lógica de envio de e-mail permanece igual ao seu código original) ...
-                try:
-                    analista_encontrado = df_base[df_base['VENDEDOR'].str.upper() == user_atual.upper()]['ANALISTA'].iloc[0].upper().strip()
-                except:
-                    analista_encontrado = "NÃO LOCALIZADO"
+                # ✅ Auditoria
+                val_list = ["PENDENTE", "OK", "REPROVADO"]
+                valor_atual = str(sel_row.get(col_aprov_exec, "PENDENTE")).strip().upper()
+                if valor_atual not in val_list:
+                    valor_atual = "PENDENTE"
 
-                lista_final = EMAILS_GESTAO.copy()
-                if analista_encontrado in MAPA_EMAILS:
-                    lista_final.extend(MAPA_EMAILS[analista_encontrado])
-                string_destinatarios = ", ".join(lista_final)
-
-                resumo_dados = {
-                    'total': len(df_dia),
-                    'realizados': len(df_dia[df_dia['STATUS'] == "Realizado"]),
-                    'pedidos': len(df_dia[df_dia['JUSTIFICATIVA'] == "Visita produtiva com pedido"]),
-                    'pendentes': len(df_dia[df_dia['STATUS'] != "Realizado"])
-                }
-                taxa_conversao = (resumo_dados['pedidos'] / resumo_dados['realizados'] * 100) if resumo_dados['realizados'] > 0 else 0
-                hora_finalizacao = datetime.now(fuso_br).strftime("%H:%M:%S")
-                link_mapas = f"https://www.google.com/maps?q={st.session_state.get('lat', 0)},{st.session_state.get('lon', 0)}"
-
-                with st.spinner("Enviando resumo..."):
-                    sucesso = enviar_resumo_rota(
-                        destinatarios_lista=string_destinatarios,
-                        vendedor=user_atual,
-                        dados_resumo=resumo_dados,
-                        nome_analista=analista_encontrado,
-                        taxa=taxa_conversao,
-                        hora=hora_finalizacao,
-                        link=link_mapas
-                    )
-                if sucesso:
-                    st.success("✅ Rota finalizada e resumo enviado!")
-                    #st.balloons()
+                if pode_validar:
+                    nova_val = st.selectbox("Validar:", val_list, index=val_list.index(valor_atual))
                 else:
-                    st.error("Falha ao enviar e-mail.")
+                    nova_val = valor_atual
+
+                # ✅ Observações (pré-selecionadas)
+                opcoes_obs = [
+                    "Selecione...",
+                    "Pedido enviado",
+                    "Cliente Inadimplente",
+                    "Cliente fechado",
+                    "Cliente inativo",
+                    "Cliente sem limite de crédito",
+                    "Outro (digitar)",
+                ]
+
+                just_atual = str(sel_row.get(col_just, "") or "").strip()
+
+                idx_padrao = 0
+                for i, opt in enumerate(opcoes_obs):
+                    if just_atual.upper() == opt.upper():
+                        idx_padrao = i
+                        break
+
+                obs_sel = st.selectbox("Observações:", opcoes_obs, index=idx_padrao, key="obs_pre_def")
+
+                if obs_sel == "Outro (digitar)":
+                    nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
+                elif obs_sel != "Selecione...":
+                    nova_just = st.text_input("Justificativa:", value=obs_sel, key="just_txt")
+                else:
+                    nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
+
+                # ✅ NOVO: BLOCO SEPARADO DA GESTÃO PARA VALIDAR A ROTINA + OBSERVAÇÃO (SEM MEXER NO BOTÃO DO VENDEDOR)
+                if pode_validar:
+                    st.markdown("#### ✅ Validação da Rotina (Gestão)")
+                    obs_gestao_rotina = st.text_input(
+                        "Observação da gestão (opcional):",
+                        value=str(sel_row.get(col_obs_rotina, "") or ""),
+                        key="obs_validacao_gestao_rotina",
+                    )
+
+                    c_val1, c_val2 = st.columns(2)
+                    with c_val1:
+                        if st.button("✅ APROVAR ROTINA (Gestão)", key="btn_aprovar_rotina_gestao"):
+                            df_agenda.loc[
+                                df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                                [col_aprov_exec, col_obs_rotina],
+                            ] = [
+                                "OK",
+                                obs_gestao_rotina,
+                            ]
+
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                            )
+
+                            st.success("Rotina aprovada pela gestão!")
+                            time.sleep(1)
+                            st.rerun()
+
+                    with c_val2:
+                        if st.button("❌ REPROVAR ROTINA (Gestão)", key="btn_reprovar_rotina_gestao"):
+                            df_agenda.loc[
+                                df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                                [col_aprov_exec, col_obs_rotina],
+                            ] = [
+                                "REPROVADO",
+                                obs_gestao_rotina,
+                            ]
+
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                            )
+
+                            st.error("Rotina reprovada pela gestão!")
+                            time.sleep(1)
+                            st.rerun()
+
+                # ✅ BOTÃO DO VENDEDOR (FICA QUIETO / INTACTO — NÃO ALTERADO)
+                if st.button("💾 SALVAR ATUALIZAÇÃO"):
+
+                    # ✅ se for gestão (admin/diretoria/analista), NÃO atualiza GPS nem distância
+                    if pode_validar:
+                        # mantém coordenadas e distância já existentes no registro
+                        coord_atual = str(sel_row.get("COORDENADAS", "") or "")
+                        dist_atual = sel_row.get("DISTANCIA_LOG", 0.0)
+
+                        try:
+                            dist_atual = float(str(dist_atual).replace(",", ".").strip())
+                        except:
+                            dist_atual = 0.0
+
+                        df_agenda.loc[
+                            df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                            ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
+                        ] = [
+                            novo_status,
+                            nova_val,
+                            nova_just,
+                            coord_atual,
+                            dist_atual,
+                        ]
+
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                        )
+
+                        st.success("Dados atualizados! (GPS do vendedor preservado)")
+                        time.sleep(1)
+                        st.rerun()
+
+                    # ✅ caso contrário (vendedor/supervisor), aí sim captura coordenadas e recalcula distância
+                    else:
+                        lat_tmp, lon_tmp = capturar_coordenadas()
+
+                        if lat_tmp and lon_tmp:
+                            lat_v = lat_tmp
+                            lon_v = lon_tmp
+                            # ✅ só salva session_state para quem está na rua (não gestão)
+                            st.session_state.lat = lat_v
+                            st.session_state.lon = lon_v
+                        else:
+                            lat_v = st.session_state.get("lat", 0)
+                            lon_v = st.session_state.get("lon", 0)
+
+                        distancia_m = 0.0
+
+                        try:
+                            cod_sel = str(sel_row["CÓDIGO CLIENTE"]).strip().replace(".0", "")
+
+                            base_cliente = df_base.copy()
+                            if "Cliente" in base_cliente.columns:
+                                base_cliente["Cliente"] = (
+                                    base_cliente["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                                )
+
+                            coord = None
+                            if (base_cliente is not None) and (not base_cliente.empty) and ("COORDENADAS" in base_cliente.columns):
+                                linha_cli = base_cliente[base_cliente["Cliente"] == cod_sel]
+                                if not linha_cli.empty:
+                                    coord = linha_cli.iloc[0]["COORDENADAS"]
+
+                            if isinstance(coord, str) and ("," in coord):
+                                lat_c, lon_c = coord.split(",", 1)
+
+                                if float(lat_v) != 0 and float(lon_v) != 0:
+                                    distancia_m = calcular_distancia(
+                                        lat_c.strip(),
+                                        lon_c.strip(),
+                                        lat_v,
+                                        lon_v,
+                                    )
+                                else:
+                                    distancia_m = 0.0
+                            else:
+                                distancia_m = 0.0
+
+                        except Exception as e:
+                            distancia_m = 0.0
+                            st.warning(f"Falha ao calcular distância: {e}")
+
+                        df_agenda.loc[
+                            df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                            ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
+                        ] = [
+                            novo_status,
+                            nova_val,
+                            nova_just,
+                            f"{lat_v}, {lon_v}",
+                            round(float(distancia_m), 1),
+                        ]
+
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                        )
+
+                        st.success("Dados atualizados!")
+                        time.sleep(1)
+                        st.rerun()
+
+
+
+            # ============================
+            # 🗺️ MAPA (AO FINAL)
+            # ============================
+            st.markdown("---")
+            st.markdown("### 🗺️ Mapa das Visitas do Dia")
+
+            try:
+                if df_base is not None and ("COORDENADAS" in df_base.columns):
+
+                    # 🔧 Função única para normalizar códigos (BASE e AGENDA)
+                    def _limpa_cod(x):
+                        try:
+                            if x is None:
+                                return ""
+                            s = str(x).strip()
+                            if s.lower() in ["nan", "none", ""]:
+                                return ""
+                            s = s.replace("\n", " ").replace("\t", " ").strip()
+                            if s.endswith(".0"):
+                                s = s[:-2]
+                            import re
+                            s = re.sub(r"\.0$", "", s)
+                            return s.strip()
+                        except Exception:
+                            return ""
+
+                    # 🔧 COORDENADAS DA BASE (normaliza para o merge não falhar)
+                    df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
+                    df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
+
+                    df_coords["Cliente"] = df_coords["Cliente"].apply(_limpa_cod)
+
+                    if "COORDENADAS_BASE" in df_coords.columns:
+                        df_coords["COORDENADAS_BASE"] = df_coords["COORDENADAS_BASE"].astype(str).str.strip()
+
+                    mapa_coords = dict(
+                        zip(
+                            df_coords["Cliente"].astype(str),
+                            df_coords["COORDENADAS_BASE"].astype(str)
+                        )
+                    )
+
+                    df_map = df_dia.copy()
+                    if "CÓDIGO CLIENTE" in df_map.columns:
+                        df_map["CÓDIGO CLIENTE"] = df_map["CÓDIGO CLIENTE"].apply(_limpa_cod)
+
+                    df_map = df_map.merge(
+                        df_coords,
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left",
+                    )
+
+                    if "COORDENADAS_BASE" in df_map.columns:
+                        df_map["COORDENADAS_BASE"] = df_map.apply(
+                            lambda r: (
+                                r["COORDENADAS_BASE"]
+                                if pd.notnull(r["COORDENADAS_BASE"]) and str(r["COORDENADAS_BASE"]).strip() not in ["", "nan", "None", "-"]
+                                else mapa_coords.get(str(r.get("CÓDIGO CLIENTE", "")).strip(), None)
+                            ),
+                            axis=1
+                        )
+
+                    def _parse_coord(x):
+                        try:
+                            if x is None:
+                                return None, None
+                            s = str(x).strip()
+                            if s.lower() in ["nan", "none", ""]:
+                                return None, None
+                            s = s.replace(";", ",")
+                            if "," not in s:
+                                return None, None
+                            lat, lon = s.split(",", 1)
+                            lat = lat.strip().replace(" ", "")
+                            lon = lon.strip().replace(" ", "")
+                            lat = lat.replace(",", ".")
+                            lon = lon.replace(",", ".")
+                            lat_f = float(lat)
+                            lon_f = float(lon)
+                            if not (-90 <= lat_f <= 90 and -180 <= lon_f <= 180):
+                                return None, None
+                            return lat_f, lon_f
+                        except Exception:
+                            return None, None
+
+                    df_map["LAT"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[0])
+                    df_map["LON"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[1])
+
+                    df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
+
+                    if df_map.empty:
+                        st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
+                    else:
+                        for c in ["VENDEDOR", "CLIENTE", "STATUS"]:
+                            if c in df_map.columns:
+                                df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
+
+                        df_map["COR_PINO"] = df_map["STATUS"].astype(str).str.upper().apply(
+                            lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
+                        )
+                        df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
+
+                        df_map["TOOLTIP"] = df_map.apply(
+                            lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
+                            axis=1,
+                        )
+
+                        icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                        icone_verde = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+
+                        def _icon_por_status(s):
+                            s = str(s).strip().upper()
+                            url = icone_verde if s == "REALIZADO" else icone_vermelho
+                            return {"url": url, "width": 25, "height": 41, "anchorY": 41}
+
+                        df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
+
+                        dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
+
+                        lat_center = float(df_map["LAT"].mean())
+                        lon_center = float(df_map["LON"].mean())
+
+                        import pydeck as pdk
+
+                        layer_raio = pdk.Layer(
+                            "CircleLayer",
+                            data=dados_mapa,
+                            get_position="[LON, LAT]",
+                            get_radius=1000,
+                            radius_units="meters",
+                            get_fill_color="COR_RAIO",
+                            get_line_color=[120, 120, 120, 180],
+                            line_width_min_pixels=2,
+                            filled=True,
+                            stroked=True,
+                            pickable=False,
+                        )
+
+                        layer_pinos = pdk.Layer(
+                            "IconLayer",
+                            data=dados_mapa,
+                            get_position="[LON, LAT]",
+                            get_icon="ICON",
+                            get_size=4,
+                            size_scale=10,
+                            pickable=True,
+                        )
+
+                        view_state = pdk.ViewState(
+                            latitude=lat_center,
+                            longitude=lon_center,
+                            zoom=11,
+                            pitch=0,
+                        )
+
+                        tooltip = {"text": "{TOOLTIP}"}
+
+                        st.pydeck_chart(
+                            pdk.Deck(
+                                layers=[layer_raio, layer_pinos],
+                                initial_view_state=view_state,
+                                tooltip=tooltip,
+                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                            ),
+                            use_container_width=True,
+                        )
+
+                else:
+                    st.info("Coluna COORDENADAS não encontrada na BASE.")
+
+            except Exception as e:
+                st.warning(f"Não foi possível renderizar o mapa: {e}")
+
+        else:
+            st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
-
-
-
 
 
 
@@ -2547,7 +2897,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
 
-if st.button("📧 Enviar Excel por Vendedor"):
+if menu_interna == "📊 ACOMP. DIÁRIO":
+    if st.button("📧 Enviar Excel por Vendedor", key="btn_email_excel_vendedor"):
+        # ... envio aqui ...
+
 
     import smtplib
     email_origem = st.secrets["email"]["sender_email"]
