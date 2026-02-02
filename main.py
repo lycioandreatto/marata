@@ -2051,19 +2051,46 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     user_atual = user_atual.strip().upper()
     vendedores_permitidos = None
 
-    # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo; Analista vê seus supervisores/vendedores; Supervisor vê seus vendedores; Vendedor vê só ele
+    # ✅ (NOVO) define qual coluna de estado vamos usar na base de permissão
+    col_estado_perm = "EscrV" if "EscrV" in df_base_perm.columns else ("Estado" if "Estado" in df_base_perm.columns else None)
+
+    # ✅ (NOVO) estados do usuário (para vendedor/supervisor)
+    estados_usuario = None
+    if col_estado_perm and (is_vendedor or is_supervisor):
+        if is_vendedor:
+            estados_usuario = df_base_perm.loc[df_base_perm["VENDEDOR"] == user_atual, col_estado_perm].dropna().unique().tolist()
+        elif is_supervisor:
+            estados_usuario = df_base_perm.loc[df_base_perm["SUPERVISOR"] == user_atual, col_estado_perm].dropna().unique().tolist()
+
+        if estados_usuario:
+            estados_usuario = [str(x).strip().upper() for x in estados_usuario if str(x).strip()]
+        else:
+            estados_usuario = None
+
+    # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo; Analista vê seus supervisores/vendedores;
+    # ✅ (AJUSTE) Supervisor e Vendedor passam a ver APENAS o estado deles (logo: todos vendedores do estado)
     if is_analista:
         vendedores_permitidos = df_base_perm.loc[
             df_base_perm["ANALISTA"] == user_atual, "VENDEDOR"
         ].dropna().unique().tolist()
 
     elif is_supervisor:
-        vendedores_permitidos = df_base_perm.loc[
-            df_base_perm["SUPERVISOR"] == user_atual, "VENDEDOR"
-        ].dropna().unique().tolist()
+        if col_estado_perm and estados_usuario:
+            vendedores_permitidos = df_base_perm.loc[
+                df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
+            ].dropna().unique().tolist()
+        else:
+            vendedores_permitidos = df_base_perm.loc[
+                df_base_perm["SUPERVISOR"] == user_atual, "VENDEDOR"
+            ].dropna().unique().tolist()
 
     elif is_vendedor:
-        vendedores_permitidos = [user_atual]
+        if col_estado_perm and estados_usuario:
+            vendedores_permitidos = df_base_perm.loc[
+                df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
+            ].dropna().unique().tolist()
+        else:
+            vendedores_permitidos = [user_atual]
 
     if vendedores_permitidos:
         df_f["VENDEDOR"] = df_f["VENDEDOR"].astype(str).str.strip().str.upper()
@@ -2078,42 +2105,32 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ✅ Estado vem do df_base ("Estado"); como no seu código estava "EscrV", aqui mantemos sem quebrar:
     col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
 
-    # ✅ (NOVO) Restrição de Estado para Vendedor/Supervisor: só o(s) estado(s) dele(s)
-    estados_permitidos = None
-    if col_estado and (is_vendedor or is_supervisor):
-        if is_vendedor:
-            estados_permitidos = df_base_perm.loc[
-                df_base_perm["VENDEDOR"] == user_atual, col_estado
-            ].dropna().unique().tolist()
-        elif is_supervisor:
-            estados_permitidos = df_base_perm.loc[
-                df_base_perm["SUPERVISOR"] == user_atual, col_estado
-            ].dropna().unique().tolist()
-
-        if estados_permitidos:
-            estados_permitidos = [str(x).strip().upper() for x in estados_permitidos if str(x).strip()]
-            df_f[col_estado] = df_f[col_estado].astype(str).str.strip().str.upper()
-            df_f = df_f[df_f[col_estado].isin(estados_permitidos)]
+    # ✅ (NOVO) garante que df_f fique somente no(s) estado(s) do usuário (vendedor/supervisor)
+    if col_estado and (is_vendedor or is_supervisor) and estados_usuario:
+        df_f[col_estado] = df_f[col_estado].astype(str).str.strip().str.upper()
+        df_f = df_f[df_f[col_estado].isin(estados_usuario)]
 
     with c1:
-        # ✅ (AJUSTE) VENDEDOR/SUPERVISOR NÃO veem slicer de Estado (pra evitar qualquer brecha)
-        if (is_vendedor or is_supervisor):
-            sel_estado = []
-        else:
-            if col_estado:
-                sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique()))
+        if col_estado:
+            # ✅ (AJUSTE) Para vendedor/supervisor: slicer mostra APENAS o(s) estado(s) dele(s) e já seleciona
+            if (is_vendedor or is_supervisor) and estados_usuario:
+                sel_estado = st.multiselect("Estado", sorted(estados_usuario), default=sorted(estados_usuario))
             else:
-                sel_estado = []
+                sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique()))
+        else:
+            sel_estado = []
 
     if sel_estado and col_estado:
         df_f = df_f[df_f[col_estado].isin(sel_estado)]
 
     with c2:
+        # ✅ (automaticamente já fica do estado, porque df_f já está filtrado acima)
         sel_supervisor = st.multiselect("Supervisor", sorted(df_f["SUPERVISOR"].dropna().unique()))
     if sel_supervisor:
         df_f = df_f[df_f["SUPERVISOR"].isin(sel_supervisor)]
 
     with c3:
+        # ✅ (automaticamente já fica do estado, porque df_f já está filtrado acima)
         sel_vendedor = st.multiselect("Vendedor", sorted(df_f["VENDEDOR_NOME"].dropna().unique()))
     if sel_vendedor:
         df_f = df_f[df_f["VENDEDOR_NOME"].isin(sel_vendedor)]
@@ -2517,8 +2534,6 @@ if st.button("📧 Enviar Excel por Vendedor"):
         if not email_destino:
             st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
             continue
-            # ou fallback:
-            # email_destino = "lycio.oliveira@marata.com.br"
 
         # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
         if isinstance(email_destino, list):
@@ -2538,6 +2553,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 
