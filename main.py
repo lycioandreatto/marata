@@ -1104,14 +1104,16 @@ if menu == "📅 Agendamentos do Dia":
                         tooltip = {"text": "{TOOLTIP}"}
 
                         st.pydeck_chart(
-                            pdk.Deck(
-                                layers=[layer_raio, layer_pinos],
-                                initial_view_state=view_state,
-                                tooltip=tooltip,
-                                map_style="mapbox://styles/mapbox/light-v9"
-                            ),
-                            use_container_width=True
-                        )
+                           pdk.Deck(
+                              layers=[layer_raio, layer_pinos],
+                              initial_view_state=view_state,
+                              tooltip=tooltip,
+                              # ✅ estilo público (não precisa token) -> não fica branco
+                              map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                         ),
+                         use_container_width=True
+                         )
+
 
                 else:
                     st.info("Coluna COORDENADAS não encontrada na BASE.")
