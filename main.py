@@ -1929,7 +1929,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
 
-
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
 elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
@@ -2087,9 +2086,17 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         else:
             estados_usuario = None
 
+    # ✅ (NOVO - MÍNIMO) pega o ANALISTA do vendedor pela BASE usando NOME (VENDEDOR)
+    analista_usuario = None
+    if is_vendedor and ("VENDEDOR" in df_base_perm.columns) and ("ANALISTA" in df_base_perm.columns):
+        tmp_analista = df_base_perm.loc[df_base_perm["VENDEDOR"] == user_atual, "ANALISTA"].dropna().unique().tolist()
+        if tmp_analista:
+            analista_usuario = str(tmp_analista[0]).strip().upper()
+
     # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo;
     # ✅ (AJUSTE) Analista agora filtra pelo ANALISTA + estado(s) dele(s) (evita ver outros estados)
-    # ✅ (AJUSTE) Supervisor e Vendedor continuam no estado deles (e podem ver equipe do estado)
+    # ✅ (AJUSTE) Supervisor continua no estado dele (e pode ver equipe do estado)
+    # ✅ (NOVO) Vendedor agora enxerga SOMENTE o que for do seu ANALISTA (equipes do analista)
     if is_analista:
         if "ANALISTA" in df_f.columns:
             df_f = df_f[df_f["ANALISTA"] == user_atual]
@@ -2116,12 +2123,24 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             ].dropna().unique().tolist()
 
     elif is_vendedor:
-        if col_estado_perm and estados_usuario:
+        # ✅ (NOVO - MÍNIMO) regra principal do vendedor vira o ANALISTA dele
+        if analista_usuario:
+            # 1) filtra df_f pelo analista do vendedor (garantia total)
+            if "ANALISTA" in df_f.columns:
+                df_f = df_f[df_f["ANALISTA"] == analista_usuario]
+
+            # 2) libera somente vendedores que pertencem ao mesmo analista
             vendedores_permitidos = df_base_perm.loc[
-                df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
+                df_base_perm["ANALISTA"] == analista_usuario, "VENDEDOR"
             ].dropna().unique().tolist()
         else:
-            vendedores_permitidos = [user_atual]
+            # fallback: mantém seu comportamento atual
+            if col_estado_perm and estados_usuario:
+                vendedores_permitidos = df_base_perm.loc[
+                    df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
+                ].dropna().unique().tolist()
+            else:
+                vendedores_permitidos = [user_atual]
 
     if vendedores_permitidos:
         if "VENDEDOR" in df_f.columns:
@@ -2582,6 +2601,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 
