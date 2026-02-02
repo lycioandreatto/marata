@@ -1044,13 +1044,20 @@ if menu == "📅 Agendamentos do Dia":
                             axis=1
                         )
 
-                        # ✅ ÍCONE (DICT) - constante (mais estável)
-                        icone_url = "https://cdn-icons-png.flaticon.com/512/684/684908.png"
-                        icon_dict = {"url": icone_url, "width": 128, "height": 128, "anchorY": 128}
-                        df_map["ICON"] = [icon_dict] * len(df_map)
+                                               # ✅ ÍCONES DIFERENTES (vermelho/verde) - deck não tinge PNG pronto
+                        icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                        icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+
+                        def _icon_por_status(s):
+                            s = str(s).strip().upper()
+                            url = icone_verde if s == "REALIZADO" else icone_vermelho
+                            return {"url": url, "width": 25, "height": 41, "anchorY": 41}
+
+                        df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
                         # ✅ (MUITO IMPORTANTE) envia pro pydeck como LISTA DE DICTS (records)
                         dados_mapa = df_map[['LON', 'LAT', 'COR', 'ICON', 'TOOLTIP']].to_dict(orient="records")
+
 
                         # --- CENTRO DO MAPA ---
                         lat_center = float(df_map['LAT'].mean())
