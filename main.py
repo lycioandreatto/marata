@@ -1678,77 +1678,48 @@ elif menu_interna == "📊 Desempenho de Vendas":
     vendedores_permitidos = None
 
     # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo; Analista vê seus supervisores/vendedores; Supervisor vê seus vendedores; Vendedor vê só ele
-if is_analista:
-    vendedores_permitidos = (
-        df_base_perm.loc[df_base_perm["ANALISTA"] == user_atual, "VENDEDOR"]
-        .dropna()
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        .unique()
-        .tolist()
-    )
+    if is_analista:
+        vendedores_permitidos = df_base_perm.loc[
+            df_base_perm["ANALISTA"] == user_atual, "VENDEDOR"
+        ].dropna().unique().tolist()
 
-elif is_supervisor:
-    vendedores_permitidos = (
-        df_base_perm.loc[df_base_perm["SUPERVISOR"] == user_atual, "VENDEDOR"]
-        .dropna()
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        .unique()
-        .tolist()
-    )
+    elif is_supervisor:
+        vendedores_permitidos = df_base_perm.loc[
+            df_base_perm["SUPERVISOR"] == user_atual, "VENDEDOR"
+        ].dropna().unique().tolist()
 
-elif is_vendedor:
-    vendedores_permitidos = [user_atual]
-
-# 🔒 APLICA O FILTRO CORRETO POR PERFIL
-if vendedores_permitidos:
-    # Normaliza colunas pra não falhar comparação
-    if "VENDEDOR" in df_f.columns:
-        df_f["VENDEDOR"] = df_f["VENDEDOR"].astype(str).str.strip().str.upper()
-    if "VENDEDOR_NOME" in df_f.columns:
-        df_f["VENDEDOR_NOME"] = df_f["VENDEDOR_NOME"].astype(str).str.strip().str.upper()
-
-    # Analista e Supervisor filtram pelo VENDEDOR (coluna do df_base após merge)
-    if is_analista or is_supervisor:
-        if "VENDEDOR" in df_f.columns:
-            df_f = df_f[df_f["VENDEDOR"].isin(vendedores_permitidos)]
-        else:
-            # fallback de segurança (caso não exista a coluna VENDEDOR)
-            df_f = df_f[df_f["VENDEDOR_NOME"].isin(vendedores_permitidos)]
-
-    # Vendedor vê SOMENTE ele mesmo (pelo nome do faturado)
     elif is_vendedor:
-        df_f = df_f[df_f["VENDEDOR_NOME"] == user_atual]
+        vendedores_permitidos = [user_atual]
 
-# ============================
-# 🔍 FILTROS
-# ============================
-st.markdown("### 🔍 Filtros")
-c1, c2, c3 = st.columns(3)
+    if vendedores_permitidos:
+        df_f["VENDEDOR"] = df_f["VENDEDOR"].astype(str).str.strip().str.upper()
+        df_f = df_f[df_f["VENDEDOR"].isin(vendedores_permitidos)]
 
-with c1:
-    # ✅ Estado vem do df_base ("Estado"); como no seu código estava "EscrV", aqui mantemos sem quebrar:
-    # se existir "EscrV" usa; senão usa "Estado"
-    col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
-    sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique())) if col_estado else []
-if sel_estado and col_estado:
-    df_f = df_f[df_f[col_estado].isin(sel_estado)]
+    # ============================
+    # 🔍 FILTROS
+    # ============================
+    st.markdown("### 🔍 Filtros")
+    c1, c2, c3 = st.columns(3)
 
-with c2:
-    sel_supervisor = st.multiselect("Supervisor", sorted(df_f["SUPERVISOR"].dropna().unique()))
-if sel_supervisor:
-    df_f = df_f[df_f["SUPERVISOR"].isin(sel_supervisor)]
+    with c1:
+        # ✅ Estado vem do df_base ("Estado"); como no seu código estava "EscrV", aqui mantemos sem quebrar:
+        # se existir "EscrV" usa; senão usa "Estado"
+        col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
+        sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique())) if col_estado else []
+    if sel_estado and col_estado:
+        df_f = df_f[df_f[col_estado].isin(sel_estado)]
 
-with c3:
-    sel_vendedor = st.multiselect("Vendedor", sorted(df_f["VENDEDOR_NOME"].dropna().unique()))
-if sel_vendedor:
-    df_f = df_f[df_f["VENDEDOR_NOME"].isin(sel_vendedor)]
+    with c2:
+        sel_supervisor = st.multiselect("Supervisor", sorted(df_f["SUPERVISOR"].dropna().unique()))
+    if sel_supervisor:
+        df_f = df_f[df_f["SUPERVISOR"].isin(sel_supervisor)]
 
-vendedores_ids = df_f["VENDEDOR_COD"].unique()
+    with c3:
+        sel_vendedor = st.multiselect("Vendedor", sorted(df_f["VENDEDOR_NOME"].dropna().unique()))
+    if sel_vendedor:
+        df_f = df_f[df_f["VENDEDOR_NOME"].isin(sel_vendedor)]
 
+    vendedores_ids = df_f["VENDEDOR_COD"].unique()
 
     # ============================
     # BASE TOTAL (NECESSÁRIA PARA CARDS/TABELA)
