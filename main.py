@@ -1516,7 +1516,22 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # --- PROCESSAMENTO DA TABELA ---
         # 1. Volume e Positivação Real por Hierarquia
+        df_ag # --- PROCESSAMENTO DA TABELA ---
+        # 1. Volume e Positivação Real por Hierarquia
         df_agrup_f = df_f.groupby('HIERARQUIA').agg({
+            'QTD_VENDAS': 'sum',
+            col_cod_cliente: 'nunique'
+        }).rename(columns={'QTD_VENDAS': 'VOLUME', col_cod_cliente: 'POSITIVAÇÃO'}).reset_index()
+
+        # 2. Metas de Volume (Sincronizadas com o filtro de RG)
+        df_agrup_25 = df_2025[df_2025['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QUANTIDADE'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QUANTIDADE': 'META 2025'}) if df_2025 is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2025'])
+        df_agrup_26 = df_meta_sistema[df_meta_sistema['RG'].isin(vendedores_ids)].groupby('HIERARQUIA DE PRODUTOS')['QTD'].sum().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA', 'QTD': 'META 2026'}) if df_meta_sistema is not None else pd.DataFrame(columns=['HIERARQUIA', 'META 2026'])
+        
+        # 3. Metas de Cobertura (%)
+        df_meta_cob_h = df_metas_cob.groupby('HIERARQUIA DE PRODUTOS')['META COBERTURA'].mean().reset_index().rename(columns={'HIERARQUIA DE PRODUTOS': 'HIERARQUIA'})
+
+        # 4. Montagem Final
+        df_final = pd.DataFrame(lista_hierarquia_fixa, columns=['HIrup_f = df_f.groupby('HIERARQUIA').agg({
             'QTD_VENDAS': 'sum',
             col_cod_cliente: 'nunique'
         }).rename(columns={'QTD_VENDAS': 'VOLUME', col_cod_cliente: 'POSITIVAÇÃO'}).reset_index()
@@ -1534,6 +1549,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
         df_final = df_final.merge(df_meta_cob_h, on='HIERARQUIA', how='left')
         df_final = df_final.merge(df_agrup_25, on='HIERARQUIA', how='left')
         df_final = df_final.merge(df_agrup_26, on='HIERARQUIA', how='left').fillna(0)
+        df_final['META COBERTURA'] = df_final['META COBERTURA'].apply(lambda x: f"{x:.0%}")
+
 
         # --- CÁLCULOS DAS COLUNAS COM ERRO ---
         # Meta Clientes (ABS) = (Meta % / 100) * Base Total do Vendedor Selecionado
