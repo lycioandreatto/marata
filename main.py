@@ -1542,7 +1542,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         vendedores_ids = df_f["VENDEDOR_COD"].unique()
 
-        # --- CÁLCULO DA BASE DE CLIENTES (CARD) ---
+        # --- CÁLCULULO DA BASE DE CLIENTES (CARD) ---
         if not (sel_supervisor or sel_vendedor):
             dados_base = df_param_metas[df_param_metas["EscrV"].isin(df_f["EscrV"].unique())]
             base_total = dados_base["BASE"].sum()
@@ -1630,7 +1630,13 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # ✅ CARD 2 (NOVO): POSITIVAÇÃO (META COBXPOSIT -> colunas RG, BASE, META)
         with col_pos:
-            positivos_total = df_f[col_cod_cliente].nunique()
+            # ✅ AJUSTE MÍNIMO AQUI:
+            # Se NÃO tiver vendedor ou supervisor selecionado, desconsidera EqVs = STR e SMX na contagem dos positivados
+            if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
+                positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
+            else:
+                positivos_total = df_f[col_cod_cliente].nunique()
+
             dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG")
 
             base_pos = pd.to_numeric(dados_pos["BASE"], errors="coerce").fillna(0).sum() if "BASE" in dados_pos.columns else 0
