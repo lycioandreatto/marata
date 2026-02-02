@@ -1958,29 +1958,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         except:
             return str(v)
 
-    # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) SEM PERDER 1 CLIENTE:
-    # - NÃO transforma NaN em "nan"
-    # - NÃO zera/descarta valores como "0" (porque pode existir cliente "0"/outra exceção)
-    # - só faz strip e remove ".0" quando for valor válido (não nulo)
-    def _norm_cliente(df, col):
-        if df is None or df.empty or col not in df.columns:
-            return df
-
-        s = df[col]
-
-        mask = s.notna()
-        s2 = s.copy()
-
-        s2.loc[mask] = (
-            s.loc[mask]
-            .astype(str)
-            .str.strip()
-            .str.replace(r"\.0$", "", regex=True)
-        )
-
-        df[col] = s2
-        return df
-
     try:
         # 1. Leitura das abas
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
@@ -2017,14 +1994,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 "Hierarquia de produtos": "HIERARQUIA"
             }, inplace=True)
 
-            # ✅ Cliente é a coluna K (índice 10) da aba FATURADO
             col_cod_cliente = df_faturado.columns[10]
 
             df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
             df_faturado["VENDEDOR_COD"] = df_faturado["VENDEDOR_COD"].astype(str).str.replace(r"\.0$", "", regex=True)
-
-            # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) sem perder 1 cliente
-            df_faturado = _norm_cliente(df_faturado, col_cod_cliente)
 
             df_relacao = df_base[["VENDEDOR","SUPERVISOR","ANALISTA"]].drop_duplicates("VENDEDOR")
             df_faturado = df_faturado.merge(
@@ -2076,9 +2049,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # BASE PRINCIPAL
     # ============================
     df_f = df_faturado.copy()
-
-    # ✅ (AJUSTE MÍNIMO) garante novamente Cliente normalizado após merge/cópia
-    df_f = _norm_cliente(df_f, col_cod_cliente)
 
     # ============================
     # 🔒 CONTROLE DE ACESSO
@@ -2226,16 +2196,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     with c1:
         if col_estado:
-            # ✅ BLOQUEIO: vendedor/supervisor NÃO podem trocar estado (fica travado no(s) estado(s) permitido(s))
-            if (is_vendedor or is_supervisor) and estados_usuario:
-                sel_estado = st.multiselect(
-                    "Estado",
-                    sorted(estados_usuario),
-                    default=sorted(estados_usuario),
-                    disabled=True
-                )
-            # ✅ analista continua podendo ver só o(s) dele(s), mas se quiser deixar editável pra analista, mantém como estava:
-            elif is_analista and estados_usuario:
+            # ✅ Para vendedor/supervisor/analista: slicer mostra APENAS o(s) estado(s) dele(s) e já seleciona
+            if (is_vendedor or is_supervisor or is_analista) and estados_usuario:
                 sel_estado = st.multiselect("Estado", sorted(estados_usuario), default=sorted(estados_usuario))
             else:
                 sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique()))
@@ -2348,8 +2310,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     # ✅ CARD 2 (NOVO): POSITIVAÇÃO (ajuste só visual do Positivados)
     with col_pos:
-        # ✅ regra: quando NÃO tem vendedor nem supervisor selecionado, exclui STR/SMX pela EqVs
-        # ✅ contagem SEMPRE é pela coluna Cliente (coluna K) da FATURADO (col_cod_cliente)
         if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
             positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
         else:
@@ -2675,9 +2635,6 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
-
-
-
 
 
 
