@@ -2217,20 +2217,35 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     # ✅ BOTÃO: APARECE SOMENTE AQUI (porque está DENTRO do elif)
         # ✅ BOTÃO: APARECE SOMENTE AQUI
+        # ✅ BOTÃO: APARECE SOMENTE AQUI
     if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
         import smtplib
 
-        # ✅ GARANTIAS (evita NameError)
-        if "df_f" not in locals() or df_f is None or df_f.empty:
-            st.error("Base df_f não foi carregada. Verifique a leitura da aba FATURADO.")
+        # ✅ Escolhe a base correta para disparo:
+        # - prioriza df_f (já filtrado/permissões)
+        # - se df_f estiver vazio, usa df_faturado (bruto) para não quebrar
+        df_envio = None
+
+        if "df_f" in locals() and df_f is not None and not df_f.empty:
+            df_envio = df_f.copy()
+        elif "df_faturado" in locals() and df_faturado is not None and not df_faturado.empty:
+            df_envio = df_faturado.copy()
+
+        if df_envio is None or df_envio.empty:
+            st.error("Sem dados para enviar. Verifique leitura do FATURADO ou permissões/filtros.")
             st.stop()
 
+        # ✅ Garantir coluna VENDEDOR_NOME no df_envio (caso esteja usando df_faturado)
+        if "VENDEDOR_NOME" not in df_envio.columns:
+            if "Região de vendas" in df_envio.columns:
+                df_envio.rename(columns={"Região de vendas": "VENDEDOR_NOME"}, inplace=True)
+            else:
+                st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
+                st.stop()
+
+        # ✅ df_final precisa existir (é o excel que você está enviando)
         if "df_final" not in locals() or df_final is None or df_final.empty:
-            st.error("Tabela df_final não foi gerada. Verifique o processamento do dashboard.")
-            st.stop()
-
-        if "VENDEDOR_NOME" not in df_f.columns:
-            st.error("Coluna 'VENDEDOR_NOME' não existe em df_f. Verifique o rename do FATURADO.")
+            st.error("df_final não foi gerado. Não há planilha para enviar.")
             st.stop()
 
         email_origem = st.secrets["email"]["sender_email"]
@@ -2242,7 +2257,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         server.starttls()
         server.login(email_origem, senha_origem)
 
-        vendedores = df_f["VENDEDOR_NOME"].dropna().unique()
+        vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
 
         for vendedor in vendedores:
             vendedor_up = str(vendedor).strip().upper()
@@ -2269,6 +2284,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
         server.quit()
         st.success("📨 E-mails enviados com sucesso!")
+
 
 
     # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
