@@ -831,6 +831,171 @@ if menu == "📅 Agendamentos do Dia":
 
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
 
+    # ============================
+    # ✅ BOTÃO: FINALIZAR O DIA (SEMPRE APARECE PRA QUALQUER UM)
+    # ============================
+    st.markdown("---")
+    st.markdown("### 🏁 Finalizar o Dia (Enviar Resumo por E-mail)")
+
+    obs_final = st.text_area(
+        "Resumo do dia (opcional) — o que aconteceu de relevante?",
+        placeholder="Ex.: clientes fechados, pedidos enviados, dificuldades, inadimplência, etc.",
+        key="txt_resumo_final_dia",
+    )
+
+    cfr1, cfr2 = st.columns([0.5, 0.5])
+    with cfr1:
+        confirmar_final = st.checkbox(
+            "Confirmo que finalizei meu dia",
+            key="chk_finalizar_dia",
+        )
+
+    with cfr2:
+        if st.button(
+            "📧 FINALIZAR O DIA (enviar e-mail ao analista)",
+            use_container_width=True,
+            disabled=not confirmar_final,
+            key="btn_finalizar_dia",
+        ):
+            # Hora do envio
+            try:
+                hora_envio = datetime.now(fuso_br).strftime("%H:%M")
+            except Exception:
+                hora_envio = datetime.now().strftime("%H:%M")
+
+            # Defaults seguros
+            vendedor_nome = str(user_atual).strip()
+            analista_dest = "NÃO LOCALIZADO"
+            email_analista = ""
+
+            total_aprovados = 0
+            total_realizados = 0
+            pedidos = 0
+            pendentes = 0
+            taxa = 0.0
+
+            link_final = "N/A"
+
+            # Tenta montar resumo se tiver df_agenda
+            try:
+                if df_agenda is not None and not df_agenda.empty:
+                    tmp = df_agenda[df_agenda["DATA"] == hoje_str].copy()
+
+                    # se não for admin/diretoria, tenta filtrar pelo usuário
+                    try:
+                        if "VENDEDOR" in tmp.columns:
+                            tmp_user = tmp[tmp["VENDEDOR"].astype(str).str.upper() == str(user_atual).upper()]
+                            if not tmp_user.empty:
+                                tmp = tmp_user
+                    except Exception:
+                        pass
+
+                    # pega vendedor e analista se existirem
+                    try:
+                        if "VENDEDOR" in tmp.columns and not tmp.empty:
+                            vendedor_nome = str(tmp["VENDEDOR"].iloc[0]).strip()
+                    except Exception:
+                        pass
+
+                    try:
+                        if "ANALISTA" in tmp.columns and not tmp.empty:
+                            analistas2 = tmp["ANALISTA"].dropna().astype(str).str.strip().unique().tolist()
+                            analista_dest = sorted(analistas2)[0] if analistas2 else "NÃO LOCALIZADO"
+                    except Exception:
+                        pass
+
+                    # contagens
+                    try:
+                        total_aprovados = int(len(tmp))
+                    except Exception:
+                        total_aprovados = 0
+
+                    try:
+                        if "STATUS" in tmp.columns:
+                            total_realizados = int((tmp["STATUS"].astype(str).str.upper() == "REALIZADO").sum())
+                        else:
+                            total_realizados = 0
+                    except Exception:
+                        total_realizados = 0
+
+                    pendentes = int(max(total_aprovados - total_realizados, 0))
+
+                    # taxa (Pedidos/Visitas) -> você não disse onde tem "PEDIDO",
+                    # então mantive pedidos=0, igual você vinha fazendo.
+                    try:
+                        taxa = (pedidos / total_realizados * 100.0) if total_realizados > 0 else 0.0
+                    except Exception:
+                        taxa = 0.0
+
+                    # link final: última coordenada do dia
+                    try:
+                        if "COORDENADAS" in tmp.columns and not tmp.empty:
+                            coords = (
+                                tmp["COORDENADAS"]
+                                .dropna()
+                                .astype(str)
+                                .str.strip()
+                                .replace(["", "nan", "None"], "")
+                            )
+                            coords = [c for c in coords.tolist() if c]
+                            if coords:
+                                ultima = coords[-1].replace(";", ",")
+                                if "," in ultima:
+                                    lat, lon = ultima.split(",", 1)
+                                    lat = lat.strip().replace(" ", "")
+                                    lon = lon.strip().replace(" ", "")
+                                    link_final = f"https://www.google.com/maps?q={lat},{lon}"
+                    except Exception:
+                        link_final = "N/A"
+
+            except Exception:
+                pass
+
+            # email do analista
+            try:
+                if analista_dest and analista_dest != "NÃO LOCALIZADO":
+                    email_analista = MAPA_EMAIL_ANALISTAS.get(str(analista_dest).strip().upper(), "")
+            except Exception:
+                email_analista = ""
+
+            if not email_analista:
+                try:
+                    email_analista = st.secrets["email"].get("fallback_to", "")
+                except Exception:
+                    email_analista = ""
+
+            if not email_analista:
+                st.warning(
+                    "⚠️ Não encontrei destinatário. "
+                    "Cadastre no MAPA_EMAIL_ANALISTAS ou defina email.fallback_to no secrets."
+                )
+            else:
+                dados_resumo = {
+                    "total": int(total_aprovados),
+                    "realizados": int(total_realizados),
+                    "pedidos": int(pedidos),
+                    "pendentes": int(pendentes),
+                }
+
+                ok = enviar_resumo_rota(
+                    destinatarios_lista=email_analista,
+                    vendedor=vendedor_nome,
+                    dados_resumo=dados_resumo,
+                    nome_analista=analista_dest,
+                    taxa=float(taxa),
+                    hora=hora_envio,
+                    link=link_final,
+                )
+
+                if ok:
+                    st.success("✅ Dia finalizado! E-mail enviado.")
+                else:
+                    st.error("❌ Falha ao enviar o e-mail de finalização.")
+
+    # -------------------------------------------------------------------------
+    # A PARTIR DAQUI: SEU CÓDIGO ORIGINAL SEM ALTERAÇÃO
+    # -------------------------------------------------------------------------
+
     if df_agenda is not None and not df_agenda.empty:
 
         # ✅ Permissão de validação: Gestão + Analista
@@ -908,170 +1073,6 @@ if menu == "📅 Agendamentos do Dia":
         m2.metric("Realizados", len(df_dia[df_dia["STATUS"] == "Realizado"]) if not df_dia.empty else 0)
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]) if not df_dia.empty else 0)
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]) if not df_dia.empty else 0, delta_color="inverse")
-
-        # ============================
-        # ✅ BOTÃO: FINALIZAR O DIA (SEMPRE APARECE PRO VENDEDOR)
-        # ============================
-        if is_vendedor:
-            st.markdown("---")
-            st.markdown("### 🏁 Finalizar o Dia (Vendedor)")
-
-            # tenta descobrir analista do vendedor hoje:
-            # 1) se df_dia tiver analista, pega o primeiro
-            # 2) senão tenta descobrir na própria df_agenda (qualquer registro do dia do vendedor)
-            analista_dest = ""
-
-            try:
-                if (df_dia is not None) and (not df_dia.empty) and ("ANALISTA" in df_dia.columns):
-                    analistas_do_dia = df_dia["ANALISTA"].dropna().astype(str).str.strip().unique().tolist()
-                    analista_dest = sorted(analistas_do_dia)[0] if analistas_do_dia else ""
-            except Exception:
-                analista_dest = ""
-
-            if not analista_dest:
-                try:
-                    tmp = df_agenda[df_agenda["DATA"] == hoje_str].copy()
-                    tmp = tmp[tmp["VENDEDOR"].astype(str).str.upper() == user_atual.upper()]
-                    if "ANALISTA" in tmp.columns and not tmp.empty:
-                        analistas2 = tmp["ANALISTA"].dropna().astype(str).str.strip().unique().tolist()
-                        analista_dest = sorted(analistas2)[0] if analistas2 else ""
-                except Exception:
-                    analista_dest = ""
-
-            # nome do vendedor (mais confiável)
-            vendedor_nome = user_atual
-            try:
-                if (df_dia is not None) and (not df_dia.empty) and ("VENDEDOR" in df_dia.columns):
-                    vendedor_nome = str(df_dia["VENDEDOR"].iloc[0]).strip()
-            except Exception:
-                vendedor_nome = user_atual
-
-            # resumo automático (se df_dia vazio => tudo 0)
-            total_aprovados = int(len(df_dia)) if df_dia is not None else 0
-            total_realizados = int((df_dia["STATUS"] == "Realizado").sum()) if (df_dia is not None and not df_dia.empty and "STATUS" in df_dia.columns) else 0
-            total_planejados = int((df_dia["STATUS"] == "Planejado").sum()) if (df_dia is not None and not df_dia.empty and "STATUS" in df_dia.columns) else 0
-            total_reagendados = int((df_dia["STATUS"] == "Reagendado").sum()) if (df_dia is not None and not df_dia.empty and "STATUS" in df_dia.columns) else 0
-
-            try:
-                dist_series = pd.to_numeric(df_dia.get("DISTANCIA_LOG", 0), errors="coerce").fillna(0) if (df_dia is not None and not df_dia.empty) else pd.Series([0])
-                fora_raio_50m = int((dist_series > 50).sum()) if (df_dia is not None and not df_dia.empty) else 0
-            except Exception:
-                fora_raio_50m = 0
-
-            # observações registradas nas visitas (JUSTIFICATIVA)
-            obs_lista = []
-            try:
-                if (df_dia is not None) and (not df_dia.empty) and (col_just in df_dia.columns):
-                    obs_lista = (
-                        df_dia[col_just]
-                        .dropna()
-                        .astype(str)
-                        .str.strip()
-                        .replace(["", "nan", "None"], "")
-                    )
-                    obs_lista = [x for x in obs_lista.tolist() if x]
-            except Exception:
-                obs_lista = []
-
-            obs_final = st.text_area(
-                "Resumo do dia (opcional) — o que aconteceu de relevante?",
-                placeholder="Ex.: clientes fechados, pedidos enviados, dificuldades, inadimplência, etc.",
-                key="txt_resumo_final_dia",
-            )
-
-            cfr1, cfr2 = st.columns([0.5, 0.5])
-            with cfr1:
-                confirmar_final = st.checkbox(
-                    "Confirmo que finalizei meu dia",
-                    key="chk_finalizar_dia",
-                )
-
-            with cfr2:
-                if st.button(
-                    "📧 FINALIZAR O DIA (enviar e-mail ao analista)",
-                    use_container_width=True,
-                    disabled=not confirmar_final,
-                    key="btn_finalizar_dia",
-                ):
-                    # ✅ AJUSTE MÍNIMO: garante que SEMPRE vai enviar usando a função já existente
-                    # e garante que SEMPRE existe um "link" e "hora" válidos.
-
-                    # Hora do envio
-                    try:
-                        hora_envio = datetime.now(fuso_br).strftime("%H:%M")
-                    except Exception:
-                        hora_envio = datetime.now().strftime("%H:%M")
-
-                    # Link final (usa última coordenada da agenda do vendedor no dia; se não tiver, "N/A")
-                    link_final = "N/A"
-                    try:
-                        tmp_link = df_agenda[df_agenda["DATA"] == hoje_str].copy()
-                        tmp_link = tmp_link[tmp_link["VENDEDOR"].astype(str).str.upper() == user_atual.upper()]
-                        if "COORDENADAS" in tmp_link.columns and not tmp_link.empty:
-                            coords = (
-                                tmp_link["COORDENADAS"]
-                                .dropna()
-                                .astype(str)
-                                .str.strip()
-                                .replace(["", "nan", "None"], "")
-                            )
-                            coords = [c for c in coords.tolist() if c]
-                            if coords:
-                                ultima = coords[-1].replace(";", ",")
-                                if "," in ultima:
-                                    lat, lon = ultima.split(",", 1)
-                                    lat = lat.strip().replace(" ", "")
-                                    lon = lon.strip().replace(" ", "")
-                                    link_final = f"https://www.google.com/maps?q={lat},{lon}"
-                    except Exception:
-                        link_final = "N/A"
-
-                    # dados_resumo no formato que sua função espera
-                    dados_resumo = {
-                        "total": int(total_aprovados),
-                        "realizados": int(total_realizados),
-                        "pedidos": 0,  # mantém 0 (não inventei regra)
-                        "pendentes": int(max(total_aprovados - total_realizados, 0)),
-                    }
-
-                    # ✅ destinatários: usa mapa se tiver, e se não tiver, envia para "Gestão" (fallback)
-                    email_analista = ""
-                    try:
-                        email_analista = MAPA_EMAIL_ANALISTAS.get(str(analista_dest).strip().upper(), "")
-                    except Exception:
-                        email_analista = ""
-
-                    # fallback de destinatário (se você tiver outro e-mail padrão, coloque no secrets)
-                    if not email_analista:
-                        try:
-                            email_analista = st.secrets["email"].get("fallback_to", "")
-                        except Exception:
-                            email_analista = ""
-
-                    # Se ainda assim não tiver, avisa e não tenta enviar
-                    if not email_analista:
-                        if not analista_dest:
-                            st.warning("⚠️ Não consegui identificar o ANALISTA do vendedor hoje e não há fallback_to no secrets.")
-                        else:
-                            st.warning(
-                                f"⚠️ Não encontrei e-mail do analista: {analista_dest}. "
-                                f"Cadastre no MAPA_EMAIL_ANALISTAS ou defina email.fallback_to no secrets."
-                            )
-                    else:
-                        ok = enviar_resumo_rota(
-                            destinatarios_lista=email_analista,
-                            vendedor=vendedor_nome,
-                            dados_resumo=dados_resumo,
-                            nome_analista=analista_dest if analista_dest else "NÃO LOCALIZADO",
-                            taxa=float(taxa) if "taxa" in locals() else 0.0,
-                            hora=hora_envio,
-                            link=link_final,
-                        )
-
-                        if ok:
-                            st.success("✅ Dia finalizado! E-mail enviado.")
-                        else:
-                            st.error("❌ Falha ao enviar o e-mail de finalização.")
 
         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
@@ -1512,6 +1513,7 @@ if menu == "📅 Agendamentos do Dia":
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
 
 
