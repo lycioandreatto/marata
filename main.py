@@ -1454,6 +1454,16 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             if col not in df_agenda.columns:
                 df_agenda[col] = 0 if col == 'DISTANCIA_LOG' else ""
 
+        # ✅ AJUSTE (NECESSÁRIO): garantir que DISTANCIA_LOG seja numérica (senão a tabela pode ficar em branco)
+        if 'DISTANCIA_LOG' in df_agenda.columns:
+            df_agenda['DISTANCIA_LOG'] = (
+                df_agenda['DISTANCIA_LOG']
+                .astype(str)
+                .str.replace(",", ".", regex=False)
+                .str.strip()
+            )
+            df_agenda['DISTANCIA_LOG'] = pd.to_numeric(df_agenda['DISTANCIA_LOG'], errors='coerce').fillna(0)
+
         # Padronização de valores vazios
         df_agenda['APROVACAO'] = df_agenda['APROVACAO'].fillna("Pendente").replace(["", "none", "None", "nan", "NaN"], "Pendente")
 
@@ -1595,6 +1605,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
+
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
 elif menu_interna == "📊 Desempenho de Vendas":
     st.header("📊 Desempenho de Vendas (Faturado)")
