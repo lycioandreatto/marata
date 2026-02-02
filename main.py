@@ -1409,19 +1409,19 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
     col_titulo, col_btn = st.columns([0.8, 0.2])
     with col_titulo:
         st.header("🔍 Minha Agenda Completa")
-    
+
     with col_btn:
         if st.button("🔄 Atualizar Dados", key="btn_refresh_agenda"):
             st.cache_data.clear()
             st.rerun()
-    
+
     if df_agenda is not None and not df_agenda.empty:
         # --- 1. LIMPEZA DE DUPLICADOS E RESET DE ÍNDICE ---
         df_agenda = df_agenda.drop_duplicates(
-            subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'], 
+            subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'],
             keep='first'
         ).reset_index(drop=True)
-        
+
         # Garantir que colunas essenciais existam
         colunas_necessarias = ['APROVACAO', 'OBS_GESTAO', 'ANALISTA', 'SUPERVISOR', 'VENDEDOR', 'DISTANCIA_LOG']
         for col in colunas_necessarias:
@@ -1429,7 +1429,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_agenda[col] = 0 if col == 'DISTANCIA_LOG' else ""
 
         # Padronização de valores vazios
-        df_agenda['APROVACAO'] = df_agenda['APROVACAO'].fillna("Pendente").replace(["", "none", "None", "nan", "NaN"], "Pendente")
+        df_agenda['APROVACAO'] = df_agenda['APROVACAO'].fillna("Pendente").replace(
+            ["", "none", "None", "nan", "NaN"],
+            "Pendente"
+        )
 
         # --- 2. PREPARAÇÃO DE DATAS ---
         df_agenda['DT_COMPLETA'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
@@ -1458,26 +1461,30 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- 4. FILTROS DINÂMICOS ---
             with st.expander("🎯 Filtros de Visualização", expanded=False):
                 f_col1, f_col2, f_col3 = st.columns(3)
+
                 def get_options(df, col):
                     return ["Todos"] + sorted([str(x) for x in df[col].unique() if x and str(x).lower() != 'nan'])
 
                 ana_f = f_col1.selectbox("Filtrar Analista:", get_options(df_user, 'ANALISTA'))
                 df_temp = df_user if ana_f == "Todos" else df_user[df_user['ANALISTA'] == ana_f]
-                
+
                 sup_f = f_col2.selectbox("Filtrar Supervisor:", get_options(df_temp, 'SUPERVISOR'))
                 df_temp = df_temp if sup_f == "Todos" else df_temp[df_temp['SUPERVISOR'] == sup_f]
-                
+
                 vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, 'VENDEDOR'))
-                
-                if ana_f != "Todos": df_user = df_user[df_user['ANALISTA'] == ana_f]
-                if sup_f != "Todos": df_user = df_user[df_user['SUPERVISOR'] == sup_f]
-                if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
+
+                if ana_f != "Todos":
+                    df_user = df_user[df_user['ANALISTA'] == ana_f]
+                if sup_f != "Todos":
+                    df_user = df_user[df_user['SUPERVISOR'] == sup_f]
+                if vend_f != "Todos":
+                    df_user = df_user[df_user['VENDEDOR'] == vend_f]
+
                 df_user = df_user.reset_index(drop=True)
 
             # --- 5. MÉTRICAS ---
             m1, m2, m3 = st.columns(3)
             m1.metric("📅 Total Agendado", len(df_user))
-            # Ajustado para mostrar o que está planejado (já aprovado)
             m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Planejado"]))
             m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
             st.markdown("---")
@@ -1490,30 +1497,37 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     vend_alvo = col_ap1.selectbox("Vendedor:", ["Todos"] + vends_na_lista, key="sel_massa_v")
                     status_massa = col_ap2.selectbox("Definir:", ["Aprovado", "Reprovado"], key="sel_massa_s")
                     obs_massa = col_ap3.text_input("Observação:", key="obs_massa_input")
-                    
+
                     if st.button("🚀 Aplicar Decisão em Massa"):
                         mask = df_agenda['VENDEDOR'] == vend_alvo if vend_alvo != "Todos" else df_agenda['VENDEDOR'].isin(vends_na_lista)
                         df_agenda.loc[mask, 'APROVACAO'] = status_massa
                         df_agenda.loc[mask, 'OBS_GESTAO'] = obs_massa
+
                         if status_massa == "Reprovado":
                             df_agenda.loc[mask, 'STATUS'] = "Reprovado"
                         else:
-                            # Se aprovado em massa, muda de Pendente para Planejado
                             df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Planejado"
-                        
+
                         df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_save.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore')
+                        )
+                        st.cache_data.clear()
+                        st.success("Atualizado!")
+                        time.sleep(1)
+                        st.rerun()
 
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
-            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
+            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             edicao_user = st.data_editor(
-                df_display, 
-                key="edit_agenda_final_v3", 
-                hide_index=True, 
+                df_display,
+                key="edit_agenda_final_v3",
+                hide_index=True,
                 use_container_width=True,
                 column_config={
                     "AÇÃO": st.column_config.CheckboxColumn("📌"),
@@ -1523,52 +1537,77 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 },
                 disabled=[c for c in df_display.columns if c != "AÇÃO"]
             )
-            
+
             # --- 8. GERENCIAMENTO INDIVIDUAL ---
             marcados = edicao_user[edicao_user["AÇÃO"] == True]
             if not marcados.empty:
                 idx_selecionado = marcados.index[0]
                 sel_row = df_user.iloc[idx_selecionado]
-                
+
                 st.markdown(f"### ⚙️ Gerenciar: {sel_row['CLIENTE']}")
                 t1, t2, t3 = st.tabs(["⚖️ Aprovação", "🔄 Reagendar", "🗑️ Excluir"])
-                
+
                 with t1:
                     if is_admin or is_diretoria or is_analista:
                         col_ind1, col_ind2 = st.columns(2)
                         n_status = col_ind1.selectbox("Decisão:", ["Aprovado", "Reprovado"], key="n_status_ind")
                         n_obs = col_ind2.text_input("Motivo:", value=str(sel_row['OBS_GESTAO']), key="n_obs_ind")
-                        
+
                         if st.button("Salvar Decisão Individual"):
                             df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['APROVACAO', 'OBS_GESTAO']] = [n_status, n_obs]
+
                             if n_status == "Reprovado":
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Reprovado"
                             else:
-                                # Se aprovado individualmente, muda de Pendente para Planejado
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Planejado"
-                            
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
-                            st.cache_data.clear(); st.success("Salvo!"); time.sleep(1); st.rerun()
+
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore')
+                            )
+                            st.cache_data.clear()
+                            st.success("Salvo!")
+                            time.sleep(1)
+                            st.rerun()
                     else:
                         st.warning("Apenas gestores podem alterar a aprovação.")
 
                 with t2:
                     n_data = st.date_input("Nova Data:", value=datetime.now(), key="date_reag")
                     if st.button("Confirmar Reagendamento"):
-                        # Reagendamento volta para Planejado ou Pendente? 
-                        # Aqui mantive Planejado como estava no seu código original
-                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Planejado", "Pendente"]
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
-                
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [
+                            n_data.strftime('%d/%m/%Y'),
+                            "Planejado",
+                            "Pendente"
+                        ]
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore')
+                        )
+                        st.cache_data.clear()
+                        st.success("Reagendado!")
+                        time.sleep(1)
+                        st.rerun()
+
                 with t3:
                     st.error("Atenção: Esta ação excluirá o registro permanentemente.")
                     if st.button("🗑️ CONFIRMAR EXCLUSÃO"):
                         df_agenda = df_agenda[df_agenda['ID'] != sel_row['ID']]
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore')
+                        )
+                        st.cache_data.clear()
+                        st.success("Excluído")
+                        time.sleep(1)
+                        st.rerun()
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
+
+
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
 elif menu_interna == "📊 Desempenho de Vendas":
     st.header("📊 Desempenho de Vendas (Faturado)")
@@ -1695,134 +1734,130 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
+    # --- UI: CARDS E TABELA ---
+    st.markdown("---")
+    col_res, col_cob, col_pos = st.columns([1.2, 1, 1])
 
-        # --- UI: CARDS E TABELA ---
-        st.markdown("---")
-        col_res, col_cob, col_pos = st.columns([1.2, 1, 1])
-
-        # ✅ CARD 1 (MANTIDO): COBERTURA ATUAL (NÃO MEXIDO)
-        with col_cob:
-            real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
-            st.markdown(
-                f"""
-                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small>COBERTURA ATUAL</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b></span><br>
-                    Atingido: <span style="color:#28a745; font-size: 1.8em; font-weight: bold;">{real_perc:.1f}%</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        # ✅ CARD 2 (NOVO): POSITIVAÇÃO (META COBXPOSIT -> colunas RG, BASE, META)
-        with col_pos:
-            # Se NÃO tiver vendedor ou supervisor selecionado, desconsidera EqVs = STR e SMX na contagem dos positivados
-            if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
-                positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
-            else:
-                positivos_total = df_f[col_cod_cliente].nunique()
-
-            dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG")
-
-            base_pos = pd.to_numeric(dados_pos["BASE"], errors="coerce").fillna(0).sum() if "BASE" in dados_pos.columns else 0
-
-            meta_pos = pd.to_numeric(dados_pos["META"], errors="coerce").fillna(0).mean() if "META" in dados_pos.columns else 0
-            meta_pos = (meta_pos / 100) if meta_pos > 1 else meta_pos  # garante fração (1 = 100%)
-
-            meta_abs = math.ceil(base_pos * meta_pos) if base_pos > 0 else 0
-            perc_pos = (positivos_total / meta_abs * 100) if meta_abs > 0 else 0
-
-            st.markdown(
-                f"""
-                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small>POSITIVAÇÃO</small><br>
-                    <span style="font-size: 1.1em;">Meta: <b>{meta_pos:.0%}</b></span><br>
-                    <span style="font-size: 1.1em;">Positivados: <b>{positivos_total:,.0f}</b></span><br>
-                    Atingido: <span style="color:#1f77b4; font-size: 1.8em; font-weight: bold;">{perc_pos:.1f}%</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        st.markdown("### 📈 Desempenho por Hierarquia")
-
-        # ✅ (AJUSTE MÍNIMO) adiciona colunas "espaço" só para exibição
-        df_view = df_final.copy()
-        df_view[" "] = ""
-        df_view["  "] = ""
-        df_view["   "] = ""
-        df_view["    "] = ""
-
-        cols_view = [
-            "HIERARQUIA DE PRODUTOS",
-            "META COBERTURA",
-            "META CLIENTES (ABS)",
-            "POSITIVAÇÃO",
-            "PENDÊNCIA CLIENTES",
-            " ",  # pequeno espaço
-            "META 2025",
-            "META 2026",
-            "  ",  # pequeno espaço
-            "VOLUME",
-            "   ",  # pequeno espaço
-            "CRESCIMENTO 2025",
-            "ATINGIMENTO % (VOL 2025)",
-            "    ",  # pequeno espaço
-            "CRESCIMENTO 2026",
-            "ATINGIMENTO % (VOL 2026)",
-        ]
-
-        # --- TABELA "MODERNA" (leve) ---
-        def zebra_rows(row):
-            return ["background-color: #FAFAFA" if row.name % 2 else "" for _ in row]
-
-        def destacar_negativos(s):
-            return ["background-color: #FFE5E5; color: #7A0000; font-weight: 600" if v < 0 else "" for v in s]
-
-        def destacar_pendencia(s):
-            return ["background-color: #FFD6D6; color: #7A0000; font-weight: 700" if v > 0 else "" for v in s]
-
-        def limpar_espacos(s):
-            # deixa colunas de "espaço" totalmente limpas
-            return ["background-color: transparent" for _ in s]
-
-        sty = (
-            df_view[cols_view]
-            .sort_values(by="HIERARQUIA DE PRODUTOS")
-            .style
-            .format(
-                {
-                    "META COBERTURA": "{:.0%}",
-                    "META CLIENTES (ABS)": "{:,.0f}",
-                    "POSITIVAÇÃO": "{:,.0f}",
-                    "PENDÊNCIA CLIENTES": "{:,.0f}",
-                    "META 2025": "{:,.0f}",
-                    "META 2026": "{:,.0f}",
-                    "VOLUME": "{:,.0f}",
-                    "CRESCIMENTO 2025": "{:,.0f}",
-                    "ATINGIMENTO % (VOL 2025)": "{:.1f}%",
-                    "CRESCIMENTO 2026": "{:,.0f}",
-                    "ATINGIMENTO % (VOL 2026)": "{:.1f}%",
-                }
-            )
-            .apply(zebra_rows, axis=1)
-            .apply(destacar_pendencia, subset=["PENDÊNCIA CLIENTES"])
-            .apply(destacar_negativos, subset=["CRESCIMENTO 2025", "CRESCIMENTO 2026"])
-            .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
-            .set_table_styles(
-                [
-                    {"selector": "th", "props": [("background-color", "#F2F2F2"), ("color", "#111"), ("font-weight", "700")]},
-                    {"selector": "td", "props": [("border-bottom", "1px solid #EEE")]},
-                ]
-            )
+    # ✅ CARD 1 (MANTIDO): COBERTURA ATUAL (NÃO MEXIDO)
+    with col_cob:
+        real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
+        st.markdown(
+            f"""
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                <small>COBERTURA ATUAL</small><br>
+                <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b></span><br>
+                Atingido: <span style="color:#28a745; font-size: 1.8em; font-weight: bold;">{real_perc:.1f}%</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        st.dataframe(
-            sty,
-            use_container_width=True,
-            hide_index=True,
-            height=560,
+    # ✅ CARD 2 (NOVO): POSITIVAÇÃO (META COBXPOSIT -> colunas RG, BASE, META)
+    with col_pos:
+        if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
+            positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
+        else:
+            positivos_total = df_f[col_cod_cliente].nunique()
+
+        dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG")
+
+        base_pos = pd.to_numeric(dados_pos["BASE"], errors="coerce").fillna(0).sum() if "BASE" in dados_pos.columns else 0
+
+        meta_pos = pd.to_numeric(dados_pos["META"], errors="coerce").fillna(0).mean() if "META" in dados_pos.columns else 0
+        meta_pos = (meta_pos / 100) if meta_pos > 1 else meta_pos
+
+        meta_abs = math.ceil(base_pos * meta_pos) if base_pos > 0 else 0
+        perc_pos = (positivos_total / meta_abs * 100) if meta_abs > 0 else 0
+
+        st.markdown(
+            f"""
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                <small>POSITIVAÇÃO</small><br>
+                <span style="font-size: 1.1em;">Meta: <b>{meta_pos:.0%}</b></span><br>
+                <span style="font-size: 1.1em;">Positivados: <b>{positivos_total:,.0f}</b></span><br>
+                Atingido: <span style="color:#1f77b4; font-size: 1.8em; font-weight: bold;">{perc_pos:.1f}%</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+
+    st.markdown("### 📈 Desempenho por Hierarquia")
+
+    df_view = df_final.copy()
+    df_view[" "] = ""
+    df_view["  "] = ""
+    df_view["   "] = ""
+    df_view["    "] = ""
+
+    cols_view = [
+        "HIERARQUIA DE PRODUTOS",
+        "META COBERTURA",
+        "META CLIENTES (ABS)",
+        "POSITIVAÇÃO",
+        "PENDÊNCIA CLIENTES",
+        " ",
+        "META 2025",
+        "META 2026",
+        "  ",
+        "VOLUME",
+        "   ",
+        "CRESCIMENTO 2025",
+        "ATINGIMENTO % (VOL 2025)",
+        "    ",
+        "CRESCIMENTO 2026",
+        "ATINGIMENTO % (VOL 2026)",
+    ]
+
+    def zebra_rows(row):
+        return ["background-color: #FAFAFA" if row.name % 2 else "" for _ in row]
+
+    def destacar_negativos(s):
+        return ["background-color: #FFE5E5; color: #7A0000; font-weight: 600" if v < 0 else "" for v in s]
+
+    def destacar_pendencia(s):
+        return ["background-color: #FFD6D6; color: #7A0000; font-weight: 700" if v > 0 else "" for v in s]
+
+    def limpar_espacos(s):
+        return ["background-color: transparent" for _ in s]
+
+    sty = (
+        df_view[cols_view]
+        .sort_values(by="HIERARQUIA DE PRODUTOS")
+        .style
+        .format(
+            {
+                "META COBERTURA": "{:.0%}",
+                "META CLIENTES (ABS)": "{:,.0f}",
+                "POSITIVAÇÃO": "{:,.0f}",
+                "PENDÊNCIA CLIENTES": "{:,.0f}",
+                "META 2025": "{:,.0f}",
+                "META 2026": "{:,.0f}",
+                "VOLUME": "{:,.0f}",
+                "CRESCIMENTO 2025": "{:,.0f}",
+                "ATINGIMENTO % (VOL 2025)": "{:.1f}%",
+                "CRESCIMENTO 2026": "{:,.0f}",
+                "ATINGIMENTO % (VOL 2026)": "{:.1f}%",
+            }
+        )
+        .apply(zebra_rows, axis=1)
+        .apply(destacar_pendencia, subset=["PENDÊNCIA CLIENTES"])
+        .apply(destacar_negativos, subset=["CRESCIMENTO 2025", "CRESCIMENTO 2026"])
+        .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
+        .set_table_styles(
+            [
+                {"selector": "th", "props": [("background-color", "#F2F2F2"), ("color", "#111"), ("font-weight", "700")]},
+                {"selector": "td", "props": [("border-bottom", "1px solid #EEE")]},
+            ]
+        )
+    )
+
+    st.dataframe(
+        sty,
+        use_container_width=True,
+        hide_index=True,
+        height=560,
+    )
+
 
         # Exportação
         buffer = io.BytesIO()
