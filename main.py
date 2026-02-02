@@ -1519,6 +1519,190 @@ elif menu == "📋 Novo Agendamento":
             except:
                 analista_vinc = "N/I"; supervisor_vinc = "N/I"
 
+            # ============================
+            # 🗺️ MAPA (NOVO - VISÃO GERAL)
+            # ============================
+            st.markdown("---")
+            st.markdown("### 🗺️ Mapa de Agendamentos (Visão Geral)")
+
+            try:
+                if df_base is not None and ("COORDENADAS" in df_base.columns):
+
+                    # 🔧 COORDENADAS DA BASE (somente do vendedor selecionado)
+                    df_coords = clientes_f[['Cliente', 'COORDENADAS']].drop_duplicates(subset='Cliente').copy()
+                    df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
+                    df_coords['Cliente'] = df_coords['Cliente'].astype(str).str.strip()
+
+                    # --- EXTRAI LAT / LON DA BASE ---
+                    def _parse_coord(x):
+                        try:
+                            if isinstance(x, str) and ',' in x:
+                                lat, lon = x.split(',', 1)
+                                return float(lat.strip()), float(lon.strip())
+                        except:
+                            pass
+                        return None, None
+
+                    # ✅ 1) PONTOS AGENDADOS (Planejado/Realizado/Pendente)
+                    df_ag_m = df_agenda[
+                        (df_agenda['VENDEDOR'].astype(str).str.upper() == ven_sel.upper()) &
+                        (df_agenda['STATUS'].isin(['Planejado', 'Realizado', 'Pendente']))
+                    ].copy()
+
+                    if not df_ag_m.empty:
+                        df_ag_m['CÓDIGO CLIENTE'] = df_ag_m['CÓDIGO CLIENTE'].astype(str).str.strip()
+                        df_ag_m = df_ag_m.merge(
+                            df_coords,
+                            left_on='CÓDIGO CLIENTE',
+                            right_on='Cliente',
+                            how='left'
+                        )
+                        df_ag_m['LAT'] = df_ag_m['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
+                        df_ag_m['LON'] = df_ag_m['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
+                        df_ag_m = df_ag_m.dropna(subset=['LAT', 'LON']).copy()
+
+                        # padroniza colunas para tooltip
+                        for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
+                            if c in df_ag_m.columns:
+                                df_ag_m[c] = df_ag_m[c].astype(str).replace(["nan", "None"], "").fillna("")
+                    else:
+                        df_ag_m = pd.DataFrame(columns=['LON', 'LAT', 'STATUS', 'CLIENTE', 'VENDEDOR'])
+
+                    # ✅ 2) PONTOS NÃO AGENDADOS (Base do vendedor que ainda não foi agendada)
+                    df_na = clientes_pendentes_ag[['Cliente']].copy()
+                    df_na['Cliente'] = df_na['Cliente'].astype(str).str.strip()
+                    df_na = df_na.merge(
+                        df_coords,
+                        on='Cliente',
+                        how='left'
+                    )
+                    df_na['LAT'] = df_na['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
+                    df_na['LON'] = df_na['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
+                    df_na = df_na.dropna(subset=['LAT', 'LON']).copy()
+
+                    if not df_na.empty:
+                        df_na['VENDEDOR'] = ven_sel
+                        df_na['CLIENTE'] = df_na['Cliente']  # código
+                        df_na['STATUS'] = "NAO_AGENDADO"
+
+                    # ✅ junta tudo no mesmo dataframe do mapa
+                    df_map = pd.concat(
+                        [
+                            df_ag_m[['LON', 'LAT', 'STATUS', 'CLIENTE', 'VENDEDOR']],
+                            df_na[['LON', 'LAT', 'STATUS', 'CLIENTE', 'VENDEDOR']]
+                        ],
+                        ignore_index=True
+                    )
+
+                    # Remove sem coordenadas válidas
+                    df_map = df_map.dropna(subset=['LAT', 'LON']).copy()
+
+                    if df_map.empty:
+                        st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
+                    else:
+                        # --- LIMPEZA EXTRA ---
+                        for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
+                            if c in df_map.columns:
+                                df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
+
+                        # --- CORES (pino) ---
+                        def _cor_pino(s):
+                            s = str(s).strip().upper()
+                            if s == "REALIZADO":
+                                return [0, 160, 0, 255]      # verde
+                            if s == "NAO_AGENDADO":
+                                return [230, 180, 0, 255]    # amarelo
+                            return [200, 0, 0, 255]         # vermelho (planejado/pendente)
+
+                        df_map['COR_PINO'] = df_map['STATUS'].apply(_cor_pino)
+
+                        # Círculo 1km (cinza)
+                        df_map['COR_RAIO'] = [[160, 160, 160, 70]] * len(df_map)
+
+                        # --- TOOLTIP ---
+                        df_map['TOOLTIP'] = df_map.apply(
+                            lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
+                            axis=1
+                        )
+
+                        # --- ÍCONES ---
+                        icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                        icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+                        icone_amarelo  = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png"
+
+                        def _icon_por_status(s):
+                            s = str(s).strip().upper()
+                            if s == "REALIZADO":
+                                url = icone_verde
+                            elif s == "NAO_AGENDADO":
+                                url = icone_amarelo
+                            else:
+                                url = icone_vermelho
+                            return {"url": url, "width": 25, "height": 41, "anchorY": 41}
+
+                        df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
+
+                        # --- DADOS PARA O MAPA ---
+                        dados_mapa = df_map[['LON', 'LAT', 'COR_PINO', 'COR_RAIO', 'ICON', 'TOOLTIP']].to_dict(orient="records")
+
+                        # --- CENTRO ---
+                        lat_center = float(df_map['LAT'].mean())
+                        lon_center = float(df_map['LON'].mean())
+
+                        import pydeck as pdk
+
+                        # --- CÍRCULO 1 KM ---
+                        layer_raio = pdk.Layer(
+                            "CircleLayer",
+                            data=dados_mapa,
+                            get_position='[LON, LAT]',
+                            get_radius=1000,
+                            radius_units='meters',
+                            get_fill_color="COR_RAIO",
+                            get_line_color=[120, 120, 120, 180],
+                            line_width_min_pixels=2,
+                            filled=True,
+                            stroked=True,
+                            pickable=False,
+                        )
+
+                        # --- PINOS ---
+                        layer_pinos = pdk.Layer(
+                            "IconLayer",
+                            data=dados_mapa,
+                            get_position='[LON, LAT]',
+                            get_icon="ICON",
+                            get_size=4,
+                            size_scale=10,
+                            pickable=True,
+                        )
+
+                        view_state = pdk.ViewState(
+                            latitude=lat_center,
+                            longitude=lon_center,
+                            zoom=11,
+                            pitch=0
+                        )
+
+                        tooltip = {"text": "{TOOLTIP}"}
+
+                        st.pydeck_chart(
+                           pdk.Deck(
+                              layers=[layer_raio, layer_pinos],
+                              initial_view_state=view_state,
+                              tooltip=tooltip,
+                              # ✅ estilo público (não precisa token) -> não fica branco
+                              map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                         ),
+                         use_container_width=True
+                         )
+
+                else:
+                    st.info("Coluna COORDENADAS não encontrada na BASE.")
+
+            except Exception as e:
+                st.warning(f"Não foi possível renderizar o mapa: {e}")
+
             lista_c = sorted(clientes_pendentes_ag.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             
             if not lista_c:
@@ -1566,6 +1750,7 @@ elif menu == "📋 Novo Agendamento":
                             st.info("🔔 Agendamento enviado! Aguardando aprovação na tela de Aprovações.")
                             time.sleep(2)
                             st.rerun()
+
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
