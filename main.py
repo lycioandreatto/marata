@@ -1958,6 +1958,26 @@ elif menu_interna == "📊 Desempenho de Vendas":
         server.quit()
         st.success("📨 E-mails enviados com sucesso!")
 
+df_rank_base = (
+    df_f.groupby("VENDEDOR_NOME")
+    .agg(
+        VOLUME_REAL=("QTD_VENDAS", "sum"),
+        META_2025=("META 2025", "sum"),
+        META_2026=("META 2026", "sum"),
+    )
+    .reset_index()
+)
+
+# Evita divisão por zero
+df_rank_base["ATINGIMENTO % 2025"] = (
+    df_rank_base["VOLUME_REAL"] / df_rank_base["META_2025"]
+).replace([np.inf, -np.inf], 0).fillna(0)
+
+df_rank_base["ATINGIMENTO % 2026"] = (
+    df_rank_base["VOLUME_REAL"] / df_rank_base["META_2026"]
+).replace([np.inf, -np.inf], 0).fillna(0)
+
+
 
 # --- PÁGINA: APROVAÇÕES ---
 elif menu_interna == "🔔 Aprovações":
