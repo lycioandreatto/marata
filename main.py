@@ -3008,50 +3008,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ✅ BLOCO DUPLICADO DO SEU CÓDIGO (MANTIDO, MAS NÃO EXECUTA)
     # Se isso rodar, você lê/reescreve tudo duas vezes e volta o bug.
     # ===========================================================
-    """
-    # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
-    def fmt_pt_int(v):
-        try:
-            return f"{float(v):,.0f}".replace(",", ".")
-        except:
-            return str(v)
-
-    def _norm_cliente(df, col):
-        if df is None or df.empty or col not in df.columns:
-            return df
-        s = df[col]
-        mask = s.notna()
-        s2 = s.copy()
-        s2.loc[mask] = (
-            s.loc[mask]
-            .astype(str)
-            .str.strip()
-            .str.replace(r"\.0$", "", regex=True)
-        )
-        df[col] = s2
-        return df
-
-    try:
-        # (trecho repetido)
-        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
-        df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
-        df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
-        df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
-        ...
-    except Exception as e:
-        st.error(f"Erro no processamento: {e}")
-        st.stop()
-    """
-
-
-
-
-
-
-
-
-
+   
 
 
 
