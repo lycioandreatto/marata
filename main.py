@@ -1916,6 +1916,175 @@ elif menu_interna == "📊 Desempenho de Vendas":
         height=560,
     )
 
+    # ============================
+    # ✅ ADIÇÕES (RANKINGS) — VOLUME (META 2025 e META 2026) + POSITIVAÇÃO
+    # ============================
+    try:
+        st.markdown("---")
+        st.markdown("## 📌 Quem está puxando pra cima e pra baixo")
+
+        # --- Base por vendedor (volume + positivação real)
+        df_rank_real = (
+            df_f.groupby(["VENDEDOR_COD", "VENDEDOR_NOME"])
+            .agg(
+                VOLUME_REAL=("QTD_VENDAS", "sum"),
+                POSITIVADOS=(col_cod_cliente, "nunique")
+            )
+            .reset_index()
+        )
+
+        # --- Metas por vendedor (2025/2026) somadas por RG
+        df_meta_v25 = (
+            df_2025[df_2025["RG"].isin(vendedores_ids)]
+            .groupby("RG")["QUANTIDADE"].sum()
+            .reset_index()
+            .rename(columns={"RG": "VENDEDOR_COD", "QUANTIDADE": "META_TOTAL_2025"})
+            if df_2025 is not None and not df_2025.empty and "RG" in df_2025.columns and "QUANTIDADE" in df_2025.columns
+            else pd.DataFrame(columns=["VENDEDOR_COD", "META_TOTAL_2025"])
+        )
+
+        df_meta_v26 = (
+            df_meta_sistema[df_meta_sistema["RG"].isin(vendedores_ids)]
+            .groupby("RG")["QTD"].sum()
+            .reset_index()
+            .rename(columns={"RG": "VENDEDOR_COD", "QTD": "META_TOTAL_2026"})
+            if df_meta_sistema is not None and not df_meta_sistema.empty and "RG" in df_meta_sistema.columns and "QTD" in df_meta_sistema.columns
+            else pd.DataFrame(columns=["VENDEDOR_COD", "META_TOTAL_2026"])
+        )
+
+        # --- Meta de positivação por vendedor (RG, BASE, META)
+        df_pos_meta = (
+            df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)]
+            .drop_duplicates("RG")
+            .copy()
+            if df_metas_cob is not None and not df_metas_cob.empty and "RG" in df_metas_cob.columns
+            else pd.DataFrame(columns=["RG", "BASE", "META"])
+        )
+
+        if not df_pos_meta.empty:
+            df_pos_meta.rename(columns={"RG": "VENDEDOR_COD"}, inplace=True)
+            if "META" in df_pos_meta.columns:
+                df_pos_meta["META"] = df_pos_meta["META"].apply(lambda x: x / 100 if x > 1 else x)
+            if ("BASE" in df_pos_meta.columns) and ("META" in df_pos_meta.columns):
+                df_pos_meta["META_ABS_POSIT"] = (df_pos_meta["BASE"] * df_pos_meta["META"]).apply(lambda x: math.ceil(x) if x > 0 else 0)
+            else:
+                df_pos_meta["META_ABS_POSIT"] = 0
+        else:
+            df_pos_meta = pd.DataFrame(columns=["VENDEDOR_COD", "META_ABS_POSIT"])
+
+        # --- Junta tudo
+        df_rank = df_rank_real.merge(df_meta_v25, on="VENDEDOR_COD", how="left")
+        df_rank = df_rank.merge(df_meta_v26, on="VENDEDOR_COD", how="left")
+        df_rank = df_rank.merge(df_pos_meta[["VENDEDOR_COD", "META_ABS_POSIT"]] if "META_ABS_POSIT" in df_pos_meta.columns else df_pos_meta, on="VENDEDOR_COD", how="left")
+        df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]] = df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]].fillna(0)
+
+        # --- Atingimentos
+        df_rank["ATINGIMENTO_VOL_2025"] = (df_rank["VOLUME_REAL"] / df_rank["META_TOTAL_2025"]).replace([np.inf, -np.inf], 0).fillna(0)
+        df_rank["ATINGIMENTO_VOL_2026"] = (df_rank["VOLUME_REAL"] / df_rank["META_TOTAL_2026"]).replace([np.inf, -np.inf], 0).fillna(0)
+        df_rank["ATINGIMENTO_POSIT"] = (df_rank["POSITIVADOS"] / df_rank["META_ABS_POSIT"]).replace([np.inf, -np.inf], 0).fillna(0)
+
+        # ============================
+        # 1) VOLUME (META 2025)
+        # ============================
+        st.markdown("### 📦 Ranking — Volume x Meta 2025")
+        rank_2025 = df_rank.sort_values("ATINGIMENTO_VOL_2025", ascending=False)
+
+        top_2025 = rank_2025.head(10)[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2025", "ATINGIMENTO_VOL_2025"]]
+        bot_2025 = rank_2025.tail(10).sort_values("ATINGIMENTO_VOL_2025")[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2025", "ATINGIMENTO_VOL_2025"]]
+
+        c25_1, c25_2 = st.columns(2)
+        with c25_1:
+            st.markdown("**🟢 Puxando pra cima (2025)**")
+            st.dataframe(
+                top_2025.style.format({
+                    "VOLUME_REAL": "{:,.0f}",
+                    "META_TOTAL_2025": "{:,.0f}",
+                    "ATINGIMENTO_VOL_2025": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        with c25_2:
+            st.markdown("**🔴 Puxando pra baixo (2025)**")
+            st.dataframe(
+                bot_2025.style.format({
+                    "VOLUME_REAL": "{:,.0f}",
+                    "META_TOTAL_2025": "{:,.0f}",
+                    "ATINGIMENTO_VOL_2025": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+        # ============================
+        # 2) VOLUME (META 2026)
+        # ============================
+        st.markdown("### 📦 Ranking — Volume x Meta 2026")
+        rank_2026 = df_rank.sort_values("ATINGIMENTO_VOL_2026", ascending=False)
+
+        top_2026 = rank_2026.head(10)[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2026", "ATINGIMENTO_VOL_2026"]]
+        bot_2026 = rank_2026.tail(10).sort_values("ATINGIMENTO_VOL_2026")[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2026", "ATINGIMENTO_VOL_2026"]]
+
+        c26_1, c26_2 = st.columns(2)
+        with c26_1:
+            st.markdown("**🟢 Puxando pra cima (2026)**")
+            st.dataframe(
+                top_2026.style.format({
+                    "VOLUME_REAL": "{:,.0f}",
+                    "META_TOTAL_2026": "{:,.0f}",
+                    "ATINGIMENTO_VOL_2026": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        with c26_2:
+            st.markdown("**🔴 Puxando pra baixo (2026)**")
+            st.dataframe(
+                bot_2026.style.format({
+                    "VOLUME_REAL": "{:,.0f}",
+                    "META_TOTAL_2026": "{:,.0f}",
+                    "ATINGIMENTO_VOL_2026": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+        # ============================
+        # 3) POSITIVAÇÃO
+        # ============================
+        st.markdown("### 🎯 Ranking — Positivação")
+        rank_pos = df_rank.sort_values("ATINGIMENTO_POSIT", ascending=False)
+
+        top_pos = rank_pos.head(10)[["VENDEDOR_NOME", "POSITIVADOS", "META_ABS_POSIT", "ATINGIMENTO_POSIT"]]
+        bot_pos = rank_pos.tail(10).sort_values("ATINGIMENTO_POSIT")[["VENDEDOR_NOME", "POSITIVADOS", "META_ABS_POSIT", "ATINGIMENTO_POSIT"]]
+
+        cp_1, cp_2 = st.columns(2)
+        with cp_1:
+            st.markdown("**🟢 Puxando pra cima (Positivação)**")
+            st.dataframe(
+                top_pos.style.format({
+                    "POSITIVADOS": "{:,.0f}",
+                    "META_ABS_POSIT": "{:,.0f}",
+                    "ATINGIMENTO_POSIT": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        with cp_2:
+            st.markdown("**🔴 Puxando pra baixo (Positivação)**")
+            st.dataframe(
+                bot_pos.style.format({
+                    "POSITIVADOS": "{:,.0f}",
+                    "META_ABS_POSIT": "{:,.0f}",
+                    "ATINGIMENTO_POSIT": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+    except Exception as e:
+        st.warning(f"Não foi possível gerar os rankings finais: {e}")
+
     # Exportação
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
@@ -1957,26 +2126,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         server.quit()
         st.success("📨 E-mails enviados com sucesso!")
-
-  df_rank_base = (
-    df_f.groupby("VENDEDOR_NOME")
-    .agg(
-        VOLUME_REAL=("QTD_VENDAS", "sum"),
-        META_2025=("META 2025", "sum"),
-        META_2026=("META 2026", "sum"),
-    )
-    .reset_index()
-)
-
-# Evita divisão por zero
-  df_rank_base["ATINGIMENTO % 2025"] = (
-    df_rank_base["VOLUME_REAL"] / df_rank_base["META_2025"]
-).replace([np.inf, -np.inf], 0).fillna(0)
-
-  df_rank_base["ATINGIMENTO % 2026"] = (
-    df_rank_base["VOLUME_REAL"] / df_rank_base["META_2026"]
-).replace([np.inf, -np.inf], 0).fillna(0)
-
 
 
 # --- PÁGINA: APROVAÇÕES ---
