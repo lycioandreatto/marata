@@ -996,76 +996,112 @@ if menu == "📅 Agendamentos do Dia":
                 else:
                     nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
 
-                # ✅ SALVAR (CORRIGIDO: evita NameError e corrige indentação do if)
+                                # ✅ SALVAR (NÃO INTERFERE NO GPS DO VENDEDOR)
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
-                    lat_tmp, lon_tmp = capturar_coordenadas()
 
-                    if lat_tmp and lon_tmp:
-                        lat_v = lat_tmp
-                        lon_v = lon_tmp
-                        st.session_state.lat = lat_v
-                        st.session_state.lon = lon_v
+                    # ✅ se for gestão (admin/diretoria/analista), NÃO atualiza GPS nem distância
+                    if pode_validar:
+                        # mantém coordenadas e distância já existentes no registro
+                        coord_atual = str(sel_row.get("COORDENADAS", "") or "")
+                        dist_atual = sel_row.get("DISTANCIA_LOG", 0.0)
+
+                        try:
+                            dist_atual = float(str(dist_atual).replace(",", ".").strip())
+                        except:
+                            dist_atual = 0.0
+
+                        df_agenda.loc[
+                            df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                            ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
+                        ] = [
+                            novo_status,
+                            nova_val,
+                            nova_just,
+                            coord_atual,
+                            dist_atual,
+                        ]
+
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                        )
+
+                        st.success("Dados atualizados! (GPS do vendedor preservado)")
+                        time.sleep(1)
+                        st.rerun()
+
+                    # ✅ caso contrário (vendedor/supervisor), aí sim captura coordenadas e recalcula distância
                     else:
-                        lat_v = st.session_state.get("lat", 0)
-                        lon_v = st.session_state.get("lon", 0)
+                        lat_tmp, lon_tmp = capturar_coordenadas()
 
-                    distancia_m = 0.0
+                        if lat_tmp and lon_tmp:
+                            lat_v = lat_tmp
+                            lon_v = lon_tmp
+                            # ✅ só salva session_state para quem está na rua (não gestão)
+                            st.session_state.lat = lat_v
+                            st.session_state.lon = lon_v
+                        else:
+                            lat_v = st.session_state.get("lat", 0)
+                            lon_v = st.session_state.get("lon", 0)
 
-                    try:
-                        cod_sel = str(sel_row["CÓDIGO CLIENTE"]).strip().replace(".0", "")
+                        distancia_m = 0.0
 
-                        base_cliente = df_base.copy()
-                        if "Cliente" in base_cliente.columns:
-                            base_cliente["Cliente"] = (
-                                base_cliente["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
-                            )
+                        try:
+                            cod_sel = str(sel_row["CÓDIGO CLIENTE"]).strip().replace(".0", "")
 
-                        coord = None
-                        if (base_cliente is not None) and (not base_cliente.empty) and ("COORDENADAS" in base_cliente.columns):
-                            linha_cli = base_cliente[base_cliente["Cliente"] == cod_sel]
-                            if not linha_cli.empty:
-                                coord = linha_cli.iloc[0]["COORDENADAS"]
-
-                        if isinstance(coord, str) and ("," in coord):
-                            lat_c, lon_c = coord.split(",", 1)
-
-                            # só calcula se GPS válido
-                            if float(lat_v) != 0 and float(lon_v) != 0:
-                                distancia_m = calcular_distancia(
-                                    lat_c.strip(),
-                                    lon_c.strip(),
-                                    lat_v,
-                                    lon_v,
+                            base_cliente = df_base.copy()
+                            if "Cliente" in base_cliente.columns:
+                                base_cliente["Cliente"] = (
+                                    base_cliente["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
                                 )
+
+                            coord = None
+                            if (base_cliente is not None) and (not base_cliente.empty) and ("COORDENADAS" in base_cliente.columns):
+                                linha_cli = base_cliente[base_cliente["Cliente"] == cod_sel]
+                                if not linha_cli.empty:
+                                    coord = linha_cli.iloc[0]["COORDENADAS"]
+
+                            if isinstance(coord, str) and ("," in coord):
+                                lat_c, lon_c = coord.split(",", 1)
+
+                                if float(lat_v) != 0 and float(lon_v) != 0:
+                                    distancia_m = calcular_distancia(
+                                        lat_c.strip(),
+                                        lon_c.strip(),
+                                        lat_v,
+                                        lon_v,
+                                    )
+                                else:
+                                    distancia_m = 0.0
                             else:
                                 distancia_m = 0.0
-                        else:
+
+                        except Exception as e:
                             distancia_m = 0.0
+                            st.warning(f"Falha ao calcular distância: {e}")
 
-                    except Exception as e:
-                        distancia_m = 0.0
-                        st.warning(f"Falha ao calcular distância: {e}")
+                        df_agenda.loc[
+                            df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                            ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
+                        ] = [
+                            novo_status,
+                            nova_val,
+                            nova_just,
+                            f"{lat_v}, {lon_v}",
+                            round(float(distancia_m), 1),
+                        ]
 
-                    df_agenda.loc[
-                        df_agenda["ID"].astype(str) == str(sel_row["ID"]),
-                        ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
-                    ] = [
-                        novo_status,
-                        nova_val,
-                        nova_just,
-                        f"{lat_v}, {lon_v}",
-                        round(float(distancia_m), 1),
-                    ]
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                        )
 
-                    conn.update(
-                        spreadsheet=url_planilha,
-                        worksheet="AGENDA",
-                        data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
-                    )
+                        st.success("Dados atualizados!")
+                        time.sleep(1)
+                        st.rerun()
 
-                    st.success("Dados atualizados!")
-                    time.sleep(1)
-                    st.rerun()
 
             # ============================
             # 🗺️ MAPA (AO FINAL)
