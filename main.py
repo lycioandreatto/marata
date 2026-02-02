@@ -690,7 +690,7 @@ with st.sidebar:
         texto_ver_agenda
     ]
     
-    if user_atual.upper() == "LYCIO":
+    
         opcoes_menu.append("📊 Desempenho de Vendas")
     
     if eh_gestao:
