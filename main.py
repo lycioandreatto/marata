@@ -2042,6 +2042,12 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         if c in df_base_perm.columns:
             df_base_perm[c] = df_base_perm[c].astype(str).str.strip().str.upper()
 
+    # ✅ (NOVO) normaliza coluna de estado na base de permissão (se existir)
+    if "EscrV" in df_base_perm.columns:
+        df_base_perm["EscrV"] = df_base_perm["EscrV"].astype(str).str.strip().str.upper()
+    if "Estado" in df_base_perm.columns:
+        df_base_perm["Estado"] = df_base_perm["Estado"].astype(str).str.strip().str.upper()
+
     user_atual = user_atual.strip().upper()
     vendedores_permitidos = None
 
@@ -2069,11 +2075,36 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.markdown("### 🔍 Filtros")
     c1, c2, c3 = st.columns(3)
 
+    # ✅ Estado vem do df_base ("Estado"); como no seu código estava "EscrV", aqui mantemos sem quebrar:
+    col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
+
+    # ✅ (NOVO) Restrição de Estado para Vendedor/Supervisor: só o(s) estado(s) dele(s)
+    estados_permitidos = None
+    if col_estado and (is_vendedor or is_supervisor):
+        if is_vendedor:
+            estados_permitidos = df_base_perm.loc[
+                df_base_perm["VENDEDOR"] == user_atual, col_estado
+            ].dropna().unique().tolist()
+        elif is_supervisor:
+            estados_permitidos = df_base_perm.loc[
+                df_base_perm["SUPERVISOR"] == user_atual, col_estado
+            ].dropna().unique().tolist()
+
+        if estados_permitidos:
+            estados_permitidos = [str(x).strip().upper() for x in estados_permitidos if str(x).strip()]
+            df_f[col_estado] = df_f[col_estado].astype(str).str.strip().str.upper()
+            df_f = df_f[df_f[col_estado].isin(estados_permitidos)]
+
     with c1:
-        # ✅ Estado vem do df_base ("Estado"); como no seu código estava "EscrV", aqui mantemos sem quebrar:
-        # se existir "EscrV" usa; senão usa "Estado"
-        col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
-        sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique())) if col_estado else []
+        if col_estado:
+            # ✅ (NOVO) Para vendedor/supervisor, o slicer só mostra o(s) estado(s) permitido(s)
+            if (is_vendedor or is_supervisor) and estados_permitidos:
+                sel_estado = st.multiselect("Estado", sorted(estados_permitidos), default=sorted(estados_permitidos))
+            else:
+                sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique()))
+        else:
+            sel_estado = []
+
     if sel_estado and col_estado:
         df_f = df_f[df_f[col_estado].isin(sel_estado)]
 
@@ -2507,6 +2538,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 # --- PÁGINA: APROVAÇÕES ---
