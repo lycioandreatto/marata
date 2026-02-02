@@ -1386,6 +1386,44 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
+            def gerar_df_final(df_f_base):
+    # 1. Volume e Positivação por Hierarquia
+    df_agrup_f = (
+        df_f_base
+        .groupby('HIERARQUIA')
+        .agg(
+            VOLUME=('QTD_VENDAS', 'sum'),
+            POSITIVAÇÃO=(col_cod_cliente, 'nunique')
+        )
+        .reset_index()
+    )
+
+    # 2. Montagem base
+    df_final = pd.DataFrame(lista_hierarquia_fixa, columns=['HIERARQUIA'])
+    df_final = df_final.merge(df_agrup_f, on='HIERARQUIA', how='left')
+
+    # 3. Metas
+    df_final = df_final.merge(df_meta_cob_h, on='HIERARQUIA', how='left')
+    df_final = df_final.merge(df_agrup_25, on='HIERARQUIA', how='left')
+    df_final = df_final.merge(df_agrup_26, on='HIERARQUIA', how='left')
+
+    df_final.fillna(0, inplace=True)
+
+    # 4. Cálculos
+    df_final['META CLIENTES (ABS)'] = (df_final['META COBERTURA'] * base_total).apply(math.ceil)
+    df_final['PENDÊNCIA CLIENTES'] = (
+        df_final['META CLIENTES (ABS)'] - df_final['POSITIVAÇÃO']
+    ).apply(lambda x: x if x > 0 else 0)
+
+    df_final['CRESCIMENTO 2025'] = df_final['VOLUME'] - df_final['META 2025']
+    df_final['ATINGIMENTO % (VOL 2025)'] = (
+        df_final['VOLUME'] / df_final['META 2025'] * 100
+    ).replace([np.inf, -np.inf], 0).fillna(0)
+
+    df_final.rename(columns={'HIERARQUIA': 'HIERARQUIA DE PRODUTOS'}, inplace=True)
+
+    return df_final
+
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO) 
 elif menu_interna == "📊 Desempenho de Vendas":
     st.header("📊 Desempenho de Vendas (Faturado)")
