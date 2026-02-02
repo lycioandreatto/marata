@@ -1679,6 +1679,73 @@ elif menu_interna == "📊 Desempenho de Vendas":
     if df_faturado is not None:
         df_f = df_faturado.copy()
 
+        if df_faturado is not None:
+    df_f = df_faturado.copy()
+
+    # ⬇️⬇️⬇️ COLE O BLOCO AQUI ⬇️⬇️⬇️
+
+    # 🔒 CONTROLE DE ACESSO POR PERFIL
+    df_base_perm = df_base.copy()
+
+    for c in ["VENDEDOR", "SUPERVISOR", "ANALISTA"]:
+        if c in df_base_perm.columns:
+            df_base_perm[c] = (
+                df_base_perm[c]
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+
+    user_atual = user_atual.strip().upper()
+
+    vendedores_permitidos = None
+
+    if is_analista and "ANALISTA" in df_base_perm.columns:
+        vendedores_permitidos = (
+            df_base_perm.loc[
+                df_base_perm["ANALISTA"] == user_atual, "VENDEDOR"
+            ]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+    elif is_supervisor and "SUPERVISOR" in df_base_perm.columns:
+        vendedores_permitidos = (
+            df_base_perm.loc[
+                df_base_perm["SUPERVISOR"] == user_atual, "VENDEDOR"
+            ]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+    elif is_vendedor and "VENDEDOR" in df_base_perm.columns:
+        vendedores_permitidos = [user_atual]
+
+    if vendedores_permitidos:
+        if "VENDEDOR" in df_f.columns:
+            df_f["VENDEDOR"] = (
+                df_f["VENDEDOR"]
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+            df_f = df_f[df_f["VENDEDOR"].isin(vendedores_permitidos)]
+        else:
+            df_f["VENDEDOR_NOME"] = (
+                df_f["VENDEDOR_NOME"]
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+            df_f = df_f[df_f["VENDEDOR_NOME"].isin(vendedores_permitidos)]
+
+    # ⬆️⬆️⬆️ FIM DO BLOCO ⬆️⬆️⬆️
+
+    st.markdown("### 🔍 Filtros")
+
+
         # --- FILTROS ---
         st.markdown("### 🔍 Filtros")
         c1, c2, c3 = st.columns(3)
