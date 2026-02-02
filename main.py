@@ -794,6 +794,9 @@ if menu == "📅 Agendamentos do Dia":
     
     if df_agenda is not None and not df_agenda.empty:
 
+        # ✅ (NOVO) Permissão de validação: Gestão + Analista
+        pode_validar = (is_admin or is_diretoria or is_analista)
+
         # --- LIMPEZA ---
         df_agenda = df_agenda.drop_duplicates(
             subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'], 
@@ -828,7 +831,7 @@ if menu == "📅 Agendamentos do Dia":
         df_dia = df_dia.reset_index(drop=True)
 
         # --- SLICERS (GESTÃO / ANALISTA) ---
-        if is_admin or is_diretoria or is_analista:
+        if pode_validar:
             st.markdown("### 🔍 Filtros")
             f1, f2 = st.columns(2)
 
@@ -855,8 +858,8 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-        # --- BOTÃO APROVAR EM MASSA (SÓ GESTÃO) ---
-        if (is_admin or is_diretoria) and not df_dia.empty:
+        # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+        if pode_validar and not df_dia.empty:
             if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
                 ids = df_dia[df_dia['STATUS'] == "Realizado"]['ID'].tolist()
                 if ids:
@@ -882,7 +885,9 @@ if menu == "📅 Agendamentos do Dia":
                 ).rename(columns={'Local': 'CIDADE'})
 
             cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA']
-            if is_admin or is_diretoria:
+
+            # ✅ (AJUSTE) Auditoria só aparece para quem pode validar
+            if pode_validar:
                 cols_v.append(col_aprov_exec)
                 cols_v.append('DISTANCIA_LOG')
 
@@ -899,12 +904,90 @@ if menu == "📅 Agendamentos do Dia":
                         "AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]
                     ),
                 },
-                disabled=True if not (is_admin or is_diretoria) else
-                [c for c in df_display.columns if c not in ["EDITAR", col_aprov_exec]]
+                # ✅ (AJUSTE) Todo mundo pode clicar em EDITAR.
+                # Quem NÃO pode validar não edita auditoria (e auditoria nem aparece).
+                disabled=[c for c in df_display.columns if c not in (["EDITAR", col_aprov_exec] if pode_validar else ["EDITAR"])]
             )
+
+            # --- EDIÇÃO INDIVIDUAL ---
+            marcados = edicao_dia[edicao_dia["EDITAR"] == True]
+            if not marcados.empty:
+                idx = marcados.index[0]
+                sel_row = df_dia.iloc[idx]
+
+                st.markdown("---")
+                st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
+
+                # ✅ Vendedor pode marcar realizado
+                status_list = ["Planejado", "Realizado", "Reagendado"]
+                status_atual = sel_row['STATUS'] if sel_row['STATUS'] in status_list else "Planejado"
+                novo_status = st.selectbox(
+                    "Status:",
+                    status_list,
+                    index=status_list.index(status_atual)
+                )
+
+                # ✅ Só quem valida vê auditoria
+                val_list = ["PENDENTE", "OK", "REPROVADO"]
+                valor_atual = str(sel_row.get(col_aprov_exec, "PENDENTE")).strip().upper()
+                if valor_atual not in val_list:
+                    valor_atual = "PENDENTE"
+
+                if pode_validar:
+                    nova_val = st.selectbox(
+                        "Validar:",
+                        val_list,
+                        index=val_list.index(valor_atual)
+                    )
+                else:
+                    nova_val = valor_atual  # mantém como está
+
+                nova_just = st.text_input("Justificativa:", value=(sel_row.get(col_just, "") or ""))
+
+                if st.button("💾 SALVAR ATUALIZAÇÃO"):
+                    lat_v = st.session_state.get('lat', 0)
+                    lon_v = st.session_state.get('lon', 0)
+                    distancia_m = 0
+
+                    try:
+                        base_cliente = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
+                        if not base_cliente.empty and 'COORDENADAS' in base_cliente.columns:
+                            coord = base_cliente.iloc[0]['COORDENADAS']
+                            if isinstance(coord, str) and ',' in coord:
+                                lat_c, lon_c = coord.split(',')
+                                distancia_m = calcular_distancia(
+                                    lat_c.strip(),
+                                    lon_c.strip(),
+                                    lat_v,
+                                    lon_v
+                                )
+                    except:
+                        distancia_m = 0
+
+                    df_agenda.loc[
+                        df_agenda['ID'] == str(sel_row['ID']),
+                        ['STATUS', col_aprov_exec, col_just, 'COORDENADAS', 'DISTANCIA_LOG']
+                    ] = [
+                        novo_status,
+                        nova_val,
+                        nova_just,
+                        f"{lat_v}, {lon_v}",
+                        round(distancia_m, 1)
+                    ]
+
+                    conn.update(
+                        spreadsheet=url_planilha,
+                        worksheet="AGENDA",
+                        data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore')
+                    )
+
+                    st.success("Dados atualizados!")
+                    time.sleep(1)
+                    st.rerun()
 
         else:
             st.info("Nenhum agendamento para hoje.")
+
 
 
 
