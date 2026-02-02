@@ -905,40 +905,63 @@ if menu == "📅 Agendamentos do Dia":
         # --- MÉTRICAS ---
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Aprovados p/ Hoje", len(df_dia))
-        m2.metric("Realizados", len(df_dia[df_dia["STATUS"] == "Realizado"]))
-        m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
-        m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
+        m2.metric("Realizados", len(df_dia[df_dia["STATUS"] == "Realizado"]) if not df_dia.empty else 0)
+        m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]) if not df_dia.empty else 0)
+        m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]) if not df_dia.empty else 0, delta_color="inverse")
 
         # ============================
-        # ✅ BOTÃO: FINALIZAR ROTA (SÓ VENDEDOR)
+        # ✅ BOTÃO: FINALIZAR O DIA (SEMPRE APARECE PRO VENDEDOR)
         # ============================
-        if is_vendedor and not df_dia.empty:
+        if is_vendedor:
             st.markdown("---")
-            st.markdown("### 🏁 Finalizar Rota (Vendedor)")
+            st.markdown("### 🏁 Finalizar o Dia (Vendedor)")
 
-            # tenta pegar analista do dia (normalmente 1)
-            analistas_do_dia = (
-                df_dia["ANALISTA"].dropna().astype(str).str.strip().unique().tolist()
-                if "ANALISTA" in df_dia.columns else []
-            )
-            analista_dest = sorted(analistas_do_dia)[0] if analistas_do_dia else ""
-
-            # resumo automático
-            total_aprovados = int(len(df_dia))
-            total_realizados = int((df_dia["STATUS"] == "Realizado").sum()) if "STATUS" in df_dia.columns else 0
-            total_planejados = int((df_dia["STATUS"] == "Planejado").sum()) if "STATUS" in df_dia.columns else 0
-            total_reagendados = int((df_dia["STATUS"] == "Reagendado").sum()) if "STATUS" in df_dia.columns else 0
+            # tenta descobrir analista do vendedor hoje:
+            # 1) se df_dia tiver analista, pega o primeiro
+            # 2) senão tenta descobrir na própria df_agenda (qualquer registro do dia do vendedor)
+            analista_dest = ""
 
             try:
-                dist_series = pd.to_numeric(df_dia.get("DISTANCIA_LOG", 0), errors="coerce").fillna(0)
-                fora_raio_50m = int((dist_series > 50).sum())
+                if (df_dia is not None) and (not df_dia.empty) and ("ANALISTA" in df_dia.columns):
+                    analistas_do_dia = df_dia["ANALISTA"].dropna().astype(str).str.strip().unique().tolist()
+                    analista_dest = sorted(analistas_do_dia)[0] if analistas_do_dia else ""
+            except Exception:
+                analista_dest = ""
+
+            if not analista_dest:
+                try:
+                    tmp = df_agenda[df_agenda["DATA"] == hoje_str].copy()
+                    tmp = tmp[tmp["VENDEDOR"].astype(str).str.upper() == user_atual.upper()]
+                    if "ANALISTA" in tmp.columns and not tmp.empty:
+                        analistas2 = tmp["ANALISTA"].dropna().astype(str).str.strip().unique().tolist()
+                        analista_dest = sorted(analistas2)[0] if analistas2 else ""
+                except Exception:
+                    analista_dest = ""
+
+            # nome do vendedor (mais confiável)
+            vendedor_nome = user_atual
+            try:
+                if (df_dia is not None) and (not df_dia.empty) and ("VENDEDOR" in df_dia.columns):
+                    vendedor_nome = str(df_dia["VENDEDOR"].iloc[0]).strip()
+            except Exception:
+                vendedor_nome = user_atual
+
+            # resumo automático (se df_dia vazio => tudo 0)
+            total_aprovados = int(len(df_dia)) if df_dia is not None else 0
+            total_realizados = int((df_dia["STATUS"] == "Realizado").sum()) if (df_dia is not None and not df_dia.empty and "STATUS" in df_dia.columns) else 0
+            total_planejados = int((df_dia["STATUS"] == "Planejado").sum()) if (df_dia is not None and not df_dia.empty and "STATUS" in df_dia.columns) else 0
+            total_reagendados = int((df_dia["STATUS"] == "Reagendado").sum()) if (df_dia is not None and not df_dia.empty and "STATUS" in df_dia.columns) else 0
+
+            try:
+                dist_series = pd.to_numeric(df_dia.get("DISTANCIA_LOG", 0), errors="coerce").fillna(0) if (df_dia is not None and not df_dia.empty) else pd.Series([0])
+                fora_raio_50m = int((dist_series > 50).sum()) if (df_dia is not None and not df_dia.empty) else 0
             except Exception:
                 fora_raio_50m = 0
 
             # observações registradas nas visitas (JUSTIFICATIVA)
             obs_lista = []
             try:
-                if col_just in df_dia.columns:
+                if (df_dia is not None) and (not df_dia.empty) and (col_just in df_dia.columns):
                     obs_lista = (
                         df_dia[col_just]
                         .dropna()
@@ -953,31 +976,33 @@ if menu == "📅 Agendamentos do Dia":
             obs_final = st.text_area(
                 "Resumo do dia (opcional) — o que aconteceu de relevante?",
                 placeholder="Ex.: clientes fechados, pedidos enviados, dificuldades, inadimplência, etc.",
-                key="txt_resumo_final_rota",
+                key="txt_resumo_final_dia",
             )
 
             cfr1, cfr2 = st.columns([0.5, 0.5])
             with cfr1:
                 confirmar_final = st.checkbox(
-                    "Confirmo que finalizei minha rota de hoje",
-                    key="chk_finalizar_rota",
+                    "Confirmo que finalizei meu dia",
+                    key="chk_finalizar_dia",
                 )
 
             with cfr2:
                 if st.button(
-                    "🏁 FINALIZAR ROTA (enviar e-mail ao analista)",
+                    "📧 FINALIZAR O DIA (enviar e-mail ao analista)",
                     use_container_width=True,
                     disabled=not confirmar_final,
-                    key="btn_finalizar_rota",
+                    key="btn_finalizar_dia",
                 ):
-                    # precisa existir no seu código: MAPA_EMAIL_ANALISTAS = {"NOME ANALISTA": "email@..."}
+                    # pega email do analista pelo mapa
                     email_analista = ""
                     try:
                         email_analista = MAPA_EMAIL_ANALISTAS.get(str(analista_dest).strip().upper())
                     except Exception:
                         email_analista = ""
 
-                    if not email_analista:
+                    if not analista_dest:
+                        st.warning("⚠️ Não consegui identificar o ANALISTA do vendedor hoje.")
+                    elif not email_analista:
                         st.warning(
                             f"⚠️ Não encontrei e-mail do analista: {analista_dest}. "
                             f"Cadastre no MAPA_EMAIL_ANALISTAS."
@@ -991,24 +1016,18 @@ if menu == "📅 Agendamentos do Dia":
                         smtp_server = st.secrets["email"]["smtp_server"]
                         smtp_port = st.secrets["email"]["smtp_port"]
 
-                        vendedor_nome = (
-                            str(df_dia["VENDEDOR"].iloc[0]).strip()
-                            if ("VENDEDOR" in df_dia.columns and not df_dia.empty)
-                            else user_atual
-                        )
-
                         # limita observações para não virar e-mail enorme
                         if obs_lista:
                             obs_unicas = list(dict.fromkeys(obs_lista))[:10]
                             linhas_obs = "\n- " + "\n- ".join(obs_unicas)
                         else:
-                            linhas_obs = "\n(Nenhuma observação registrada)"
+                            linhas_obs = "\n(Nenhuma observação registrada nas visitas aprovadas)"
 
                         corpo = f"""Olá, {analista_dest}.
 
-O vendedor {vendedor_nome} finalizou a rota do dia {hoje_str}.
+O vendedor {vendedor_nome} finalizou o dia {hoje_str}.
 
-Resumo automático:
+Resumo automático (visitas APROVADAS para o dia):
 - Aprovados para hoje: {total_aprovados}
 - Realizados: {total_realizados}
 - Planejados: {total_planejados}
@@ -1026,7 +1045,7 @@ Atenciosamente.
                         msg = EmailMessage()
                         msg["From"] = email_origem
                         msg["To"] = email_analista
-                        msg["Subject"] = f"🏁 Rota finalizada — {vendedor_nome} — {hoje_str}"
+                        msg["Subject"] = f"📌 Finalização do dia — {vendedor_nome} — {hoje_str}"
                         msg.set_content(corpo)
 
                         try:
@@ -1035,8 +1054,7 @@ Atenciosamente.
                             server_mail.login(email_origem, senha_origem)
                             server_mail.send_message(msg)
                             server_mail.quit()
-
-                            st.success("✅ Rota finalizada! E-mail enviado para o analista.")
+                            st.success("✅ Dia finalizado! E-mail enviado para o analista.")
                         except Exception as e:
                             st.error(f"Erro ao enviar e-mail: {e}")
 
@@ -1317,7 +1335,6 @@ Atenciosamente.
             try:
                 if df_base is not None and ("COORDENADAS" in df_base.columns):
 
-                    # 🔧 Função única para normalizar códigos (BASE e AGENDA)
                     def _limpa_cod(x):
                         try:
                             if x is None:
@@ -1334,7 +1351,6 @@ Atenciosamente.
                         except Exception:
                             return ""
 
-                    # 🔧 COORDENADAS DA BASE (normaliza para o merge não falhar)
                     df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
                     df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
 
@@ -1343,12 +1359,7 @@ Atenciosamente.
                     if "COORDENADAS_BASE" in df_coords.columns:
                         df_coords["COORDENADAS_BASE"] = df_coords["COORDENADAS_BASE"].astype(str).str.strip()
 
-                    mapa_coords = dict(
-                        zip(
-                            df_coords["Cliente"].astype(str),
-                            df_coords["COORDENADAS_BASE"].astype(str)
-                        )
-                    )
+                    mapa_coords = dict(zip(df_coords["Cliente"].astype(str), df_coords["COORDENADAS_BASE"].astype(str)))
 
                     df_map = df_dia.copy()
                     if "CÓDIGO CLIENTE" in df_map.columns:
@@ -1486,6 +1497,7 @@ Atenciosamente.
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
 
 
