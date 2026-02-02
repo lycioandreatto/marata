@@ -2540,6 +2540,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
     st.success("📨 E-mails enviados com sucesso!")
 
 
+
 # --- PÁGINA: APROVAÇÕES ---
 elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
