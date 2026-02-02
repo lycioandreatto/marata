@@ -1062,202 +1062,201 @@ if menu == "📅 Agendamentos do Dia":
                     st.success("Dados atualizados!")
                     time.sleep(1)
                     st.rerun()
+            # ============================
+            # 🗺️ MAPA (AO FINAL)
+            # ============================
+            st.markdown("---")
+            st.markdown("### 🗺️ Mapa das Visitas do Dia")
 
-# ============================
-# 🗺️ MAPA (AO FINAL)
-# ============================
-st.markdown("---")
-st.markdown("### 🗺️ Mapa das Visitas do Dia")
-
-try:
-    if df_base is not None and ("COORDENADAS" in df_base.columns):
-
-        # 🔧 Função única para normalizar códigos (BASE e AGENDA)
-        def _limpa_cod(x):
             try:
-                if x is None:
-                    return ""
-                s = str(x).strip()
-                if s.lower() in ["nan", "none", ""]:
-                    return ""
-                s = s.replace("\n", " ").replace("\t", " ").strip()
-                s = s.replace(".0", "") if s.endswith(".0") else s
-                import re
-                s = re.sub(r"\.0$", "", s)
-                return s.strip()
-            except Exception:
-                return ""
+                if df_base is not None and ("COORDENADAS" in df_base.columns):
 
-        # 🔧 COORDENADAS DA BASE (normaliza para o merge não falhar)
-        df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
-        df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
+                    # 🔧 Função única para normalizar códigos (BASE e AGENDA)
+                    def _limpa_cod(x):
+                        try:
+                            if x is None:
+                                return ""
+                            s = str(x).strip()
+                            if s.lower() in ["nan", "none", ""]:
+                                return ""
+                            s = s.replace("\n", " ").replace("\t", " ").strip()
+                            # remove ".0" no final (caso venha de float)
+                            if s.endswith(".0"):
+                                s = s[:-2]
+                            import re
+                            s = re.sub(r"\.0$", "", s)
+                            return s.strip()
+                        except Exception:
+                            return ""
 
-        # normaliza Cliente (chave)
-        df_coords["Cliente"] = df_coords["Cliente"].apply(_limpa_cod)
+                    # 🔧 COORDENADAS DA BASE (normaliza para o merge não falhar)
+                    df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
+                    df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
 
-        # normaliza coordenadas (remove espaços extras)
-        if "COORDENADAS_BASE" in df_coords.columns:
-            df_coords["COORDENADAS_BASE"] = df_coords["COORDENADAS_BASE"].astype(str).str.strip()
+                    # normaliza Cliente (chave)
+                    df_coords["Cliente"] = df_coords["Cliente"].apply(_limpa_cod)
 
-        # cria um dicionário fallback: codigo_cliente -> coordenadas_base
-        mapa_coords = dict(
-            zip(
-                df_coords["Cliente"].astype(str),
-                df_coords["COORDENADAS_BASE"].astype(str)
-            )
-        )
+                    # normaliza coordenadas (remove espaços extras)
+                    if "COORDENADAS_BASE" in df_coords.columns:
+                        df_coords["COORDENADAS_BASE"] = df_coords["COORDENADAS_BASE"].astype(str).str.strip()
 
-        df_map = df_dia.copy()
+                    # cria um dicionário fallback: codigo_cliente -> coordenadas_base
+                    mapa_coords = dict(
+                        zip(
+                            df_coords["Cliente"].astype(str),
+                            df_coords["COORDENADAS_BASE"].astype(str)
+                        )
+                    )
 
-        # normaliza código cliente na agenda
-        if "CÓDIGO CLIENTE" in df_map.columns:
-            df_map["CÓDIGO CLIENTE"] = df_map["CÓDIGO CLIENTE"].apply(_limpa_cod)
+                    df_map = df_dia.copy()
+                    if "CÓDIGO CLIENTE" in df_map.columns:
+                        df_map["CÓDIGO CLIENTE"] = df_map["CÓDIGO CLIENTE"].apply(_limpa_cod)
 
-        df_map = df_map.merge(
-            df_coords,
-            left_on="CÓDIGO CLIENTE",
-            right_on="Cliente",
-            how="left",
-        )
+                    df_map = df_map.merge(
+                        df_coords,
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left",
+                    )
 
-        # fallback: se o merge não achou COORDENADAS_BASE, tenta no dict
-        if "COORDENADAS_BASE" in df_map.columns:
-            df_map["COORDENADAS_BASE"] = df_map.apply(
-                lambda r: (
-                    r["COORDENADAS_BASE"]
-                    if pd.notnull(r["COORDENADAS_BASE"]) and str(r["COORDENADAS_BASE"]).strip() not in ["", "nan", "None", "-"]
-                    else mapa_coords.get(str(r.get("CÓDIGO CLIENTE", "")).strip(), None)
-                ),
-                axis=1
-            )
+                    # fallback: se o merge não achou COORDENADAS_BASE, tenta no dict
+                    if "COORDENADAS_BASE" in df_map.columns:
+                        df_map["COORDENADAS_BASE"] = df_map.apply(
+                            lambda r: (
+                                r["COORDENADAS_BASE"]
+                                if pd.notnull(r["COORDENADAS_BASE"]) and str(r["COORDENADAS_BASE"]).strip() not in ["", "nan", "None", "-"]
+                                else mapa_coords.get(str(r.get("CÓDIGO CLIENTE", "")).strip(), None)
+                            ),
+                            axis=1
+                        )
 
-        # --- EXTRAI LAT/LON DA BASE ---
-        def _parse_coord(x):
-            try:
-                if x is None:
-                    return None, None
-                s = str(x).strip()
-                if s.lower() in ["nan", "none", ""]:
-                    return None, None
+                    # --- EXTRAI LAT/LON DA BASE ---
+                    def _parse_coord(x):
+                        try:
+                            if x is None:
+                                return None, None
+                            s = str(x).strip()
+                            if s.lower() in ["nan", "none", ""]:
+                                return None, None
 
-                # aceita "lat, lon" e também "lat; lon"
-                s = s.replace(";", ",")
-                if "," not in s:
-                    return None, None
+                            # aceita "lat, lon" e também "lat; lon"
+                            s = s.replace(";", ",")
+                            if "," not in s:
+                                return None, None
 
-                lat, lon = s.split(",", 1)
-                lat = lat.strip().replace(" ", "")
-                lon = lon.strip().replace(" ", "")
+                            lat, lon = s.split(",", 1)
+                            lat = lat.strip().replace(" ", "")
+                            lon = lon.strip().replace(" ", "")
 
-                # troca vírgula decimal por ponto, se vier " -10,123 "
-                lat = lat.replace(",", ".")
-                lon = lon.replace(",", ".")
+                            # troca vírgula decimal por ponto, se vier "-10,123"
+                            lat = lat.replace(",", ".")
+                            lon = lon.replace(",", ".")
 
-                lat_f = float(lat)
-                lon_f = float(lon)
+                            lat_f = float(lat)
+                            lon_f = float(lon)
 
-                # valida range
-                if not (-90 <= lat_f <= 90 and -180 <= lon_f <= 180):
-                    return None, None
+                            # valida range
+                            if not (-90 <= lat_f <= 90 and -180 <= lon_f <= 180):
+                                return None, None
 
-                return lat_f, lon_f
-            except Exception:
-                return None, None
+                            return lat_f, lon_f
+                        except Exception:
+                            return None, None
 
-        df_map["LAT"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[0])
-        df_map["LON"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[1])
+                    df_map["LAT"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[0])
+                    df_map["LON"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[1])
 
-        # Remove sem coordenadas válidas
-        df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
+                    # Remove sem coordenadas válidas
+                    df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
 
-        if df_map.empty:
-            st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
-        else:
-            # Limpeza extra
-            for c in ["VENDEDOR", "CLIENTE", "STATUS"]:
-                if c in df_map.columns:
-                    df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
+                    if df_map.empty:
+                        st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
+                    else:
+                        # Limpeza extra
+                        for c in ["VENDEDOR", "CLIENTE", "STATUS"]:
+                            if c in df_map.columns:
+                                df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
 
-            # Cores
-            df_map["COR_PINO"] = df_map["STATUS"].astype(str).str.upper().apply(
-                lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
-            )
-            df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
+                        # Cores
+                        df_map["COR_PINO"] = df_map["STATUS"].astype(str).str.upper().apply(
+                            lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
+                        )
+                        df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
 
-            # Tooltip
-            df_map["TOOLTIP"] = df_map.apply(
-                lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
-                axis=1,
-            )
+                        # Tooltip
+                        df_map["TOOLTIP"] = df_map.apply(
+                            lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
+                            axis=1,
+                        )
 
-            # Ícones
-            icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-            icone_verde = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+                        # Ícones
+                        icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                        icone_verde = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
 
-            def _icon_por_status(s):
-                s = str(s).strip().upper()
-                url = icone_verde if s == "REALIZADO" else icone_vermelho
-                return {"url": url, "width": 25, "height": 41, "anchorY": 41}
+                        def _icon_por_status(s):
+                            s = str(s).strip().upper()
+                            url = icone_verde if s == "REALIZADO" else icone_vermelho
+                            return {"url": url, "width": 25, "height": 41, "anchorY": 41}
 
-            df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
+                        df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
-            # Dados pro mapa
-            dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
+                        # Dados pro mapa
+                        dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
 
-            # Centro
-            lat_center = float(df_map["LAT"].mean())
-            lon_center = float(df_map["LON"].mean())
+                        # Centro
+                        lat_center = float(df_map["LAT"].mean())
+                        lon_center = float(df_map["LON"].mean())
 
-            import pydeck as pdk
+                        import pydeck as pdk
 
-            layer_raio = pdk.Layer(
-                "CircleLayer",
-                data=dados_mapa,
-                get_position="[LON, LAT]",
-                get_radius=1000,
-                radius_units="meters",
-                get_fill_color="COR_RAIO",
-                get_line_color=[120, 120, 120, 180],
-                line_width_min_pixels=2,
-                filled=True,
-                stroked=True,
-                pickable=False,
-            )
+                        layer_raio = pdk.Layer(
+                            "CircleLayer",
+                            data=dados_mapa,
+                            get_position="[LON, LAT]",
+                            get_radius=1000,
+                            radius_units="meters",
+                            get_fill_color="COR_RAIO",
+                            get_line_color=[120, 120, 120, 180],
+                            line_width_min_pixels=2,
+                            filled=True,
+                            stroked=True,
+                            pickable=False,
+                        )
 
-            layer_pinos = pdk.Layer(
-                "IconLayer",
-                data=dados_mapa,
-                get_position="[LON, LAT]",
-                get_icon="ICON",
-                get_size=4,
-                size_scale=10,
-                pickable=True,
-            )
+                        layer_pinos = pdk.Layer(
+                            "IconLayer",
+                            data=dados_mapa,
+                            get_position="[LON, LAT]",
+                            get_icon="ICON",
+                            get_size=4,
+                            size_scale=10,
+                            pickable=True,
+                        )
 
-            view_state = pdk.ViewState(
-                latitude=lat_center,
-                longitude=lon_center,
-                zoom=11,
-                pitch=0,
-            )
+                        view_state = pdk.ViewState(
+                            latitude=lat_center,
+                            longitude=lon_center,
+                            zoom=11,
+                            pitch=0,
+                        )
 
-            tooltip = {"text": "{TOOLTIP}"}
+                        tooltip = {"text": "{TOOLTIP}"}
 
-            st.pydeck_chart(
-                pdk.Deck(
-                    layers=[layer_raio, layer_pinos],
-                    initial_view_state=view_state,
-                    tooltip=tooltip,
-                    map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-                ),
-                use_container_width=True,
-            )
+                        st.pydeck_chart(
+                            pdk.Deck(
+                                layers=[layer_raio, layer_pinos],
+                                initial_view_state=view_state,
+                                tooltip=tooltip,
+                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                            ),
+                            use_container_width=True,
+                        )
 
-    else:
-        st.info("Coluna COORDENADAS não encontrada na BASE.")
+                else:
+                    st.info("Coluna COORDENADAS não encontrada na BASE.")
 
-except Exception as e:
-    st.warning(f"Não foi possível renderizar o mapa: {e}")
+            except Exception as e:
+                st.warning(f"Não foi possível renderizar o mapa: {e}")
 
 
 
