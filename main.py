@@ -2212,7 +2212,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
-elif menu_interna == "📊 ACOMP. DIÁRIO":
+elif menu == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
 
     # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
@@ -2944,7 +2944,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
 
 # --- PÁGINA: APROVAÇÕES ---
-elif menu_interna == "🔔 Aprovações":
+elif menu == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
     
     # SEGURANÇA: Se por algum erro de estado um vendedor/supervisor cair aqui, bloqueia.
