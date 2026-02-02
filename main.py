@@ -993,70 +993,85 @@ if menu == "📅 Agendamentos do Dia":
                     disabled=not confirmar_final,
                     key="btn_finalizar_dia",
                 ):
-                    # pega email do analista pelo mapa
+                    # ✅ AJUSTE MÍNIMO: garante que SEMPRE vai enviar usando a função já existente
+                    # e garante que SEMPRE existe um "link" e "hora" válidos.
+
+                    # Hora do envio
+                    try:
+                        hora_envio = datetime.now(fuso_br).strftime("%H:%M")
+                    except Exception:
+                        hora_envio = datetime.now().strftime("%H:%M")
+
+                    # Link final (usa última coordenada da agenda do vendedor no dia; se não tiver, "N/A")
+                    link_final = "N/A"
+                    try:
+                        tmp_link = df_agenda[df_agenda["DATA"] == hoje_str].copy()
+                        tmp_link = tmp_link[tmp_link["VENDEDOR"].astype(str).str.upper() == user_atual.upper()]
+                        if "COORDENADAS" in tmp_link.columns and not tmp_link.empty:
+                            coords = (
+                                tmp_link["COORDENADAS"]
+                                .dropna()
+                                .astype(str)
+                                .str.strip()
+                                .replace(["", "nan", "None"], "")
+                            )
+                            coords = [c for c in coords.tolist() if c]
+                            if coords:
+                                ultima = coords[-1].replace(";", ",")
+                                if "," in ultima:
+                                    lat, lon = ultima.split(",", 1)
+                                    lat = lat.strip().replace(" ", "")
+                                    lon = lon.strip().replace(" ", "")
+                                    link_final = f"https://www.google.com/maps?q={lat},{lon}"
+                    except Exception:
+                        link_final = "N/A"
+
+                    # dados_resumo no formato que sua função espera
+                    dados_resumo = {
+                        "total": int(total_aprovados),
+                        "realizados": int(total_realizados),
+                        "pedidos": 0,  # mantém 0 (não inventei regra)
+                        "pendentes": int(max(total_aprovados - total_realizados, 0)),
+                    }
+
+                    # ✅ destinatários: usa mapa se tiver, e se não tiver, envia para "Gestão" (fallback)
                     email_analista = ""
                     try:
-                        email_analista = MAPA_EMAIL_ANALISTAS.get(str(analista_dest).strip().upper())
+                        email_analista = MAPA_EMAIL_ANALISTAS.get(str(analista_dest).strip().upper(), "")
                     except Exception:
                         email_analista = ""
 
-                    if not analista_dest:
-                        st.warning("⚠️ Não consegui identificar o ANALISTA do vendedor hoje.")
-                    elif not email_analista:
-                        st.warning(
-                            f"⚠️ Não encontrei e-mail do analista: {analista_dest}. "
-                            f"Cadastre no MAPA_EMAIL_ANALISTAS."
-                        )
-                    else:
-                        import smtplib
-                        from email.message import EmailMessage
-
-                        email_origem = st.secrets["email"]["sender_email"]
-                        senha_origem = st.secrets["email"]["sender_password"]
-                        smtp_server = st.secrets["email"]["smtp_server"]
-                        smtp_port = st.secrets["email"]["smtp_port"]
-
-                        # limita observações para não virar e-mail enorme
-                        if obs_lista:
-                            obs_unicas = list(dict.fromkeys(obs_lista))[:10]
-                            linhas_obs = "\n- " + "\n- ".join(obs_unicas)
-                        else:
-                            linhas_obs = "\n(Nenhuma observação registrada nas visitas aprovadas)"
-
-                        corpo = f"""Olá, {analista_dest}.
-
-O vendedor {vendedor_nome} finalizou o dia {hoje_str}.
-
-Resumo automático (visitas APROVADAS para o dia):
-- Aprovados para hoje: {total_aprovados}
-- Realizados: {total_realizados}
-- Planejados: {total_planejados}
-- Reagendados: {total_reagendados}
-- Fora do raio (+50m): {fora_raio_50m}
-
-Observações registradas nas visitas:{linhas_obs}
-
-Resumo do vendedor:
-{obs_final.strip() if obs_final and obs_final.strip() else "(Não informou resumo manual)"}
-
-Atenciosamente.
-"""
-
-                        msg = EmailMessage()
-                        msg["From"] = email_origem
-                        msg["To"] = email_analista
-                        msg["Subject"] = f"📌 Finalização do dia — {vendedor_nome} — {hoje_str}"
-                        msg.set_content(corpo)
-
+                    # fallback de destinatário (se você tiver outro e-mail padrão, coloque no secrets)
+                    if not email_analista:
                         try:
-                            server_mail = smtplib.SMTP(smtp_server, smtp_port)
-                            server_mail.starttls()
-                            server_mail.login(email_origem, senha_origem)
-                            server_mail.send_message(msg)
-                            server_mail.quit()
-                            st.success("✅ Dia finalizado! E-mail enviado para o analista.")
-                        except Exception as e:
-                            st.error(f"Erro ao enviar e-mail: {e}")
+                            email_analista = st.secrets["email"].get("fallback_to", "")
+                        except Exception:
+                            email_analista = ""
+
+                    # Se ainda assim não tiver, avisa e não tenta enviar
+                    if not email_analista:
+                        if not analista_dest:
+                            st.warning("⚠️ Não consegui identificar o ANALISTA do vendedor hoje e não há fallback_to no secrets.")
+                        else:
+                            st.warning(
+                                f"⚠️ Não encontrei e-mail do analista: {analista_dest}. "
+                                f"Cadastre no MAPA_EMAIL_ANALISTAS ou defina email.fallback_to no secrets."
+                            )
+                    else:
+                        ok = enviar_resumo_rota(
+                            destinatarios_lista=email_analista,
+                            vendedor=vendedor_nome,
+                            dados_resumo=dados_resumo,
+                            nome_analista=analista_dest if analista_dest else "NÃO LOCALIZADO",
+                            taxa=float(taxa) if "taxa" in locals() else 0.0,
+                            hora=hora_envio,
+                            link=link_final,
+                        )
+
+                        if ok:
+                            st.success("✅ Dia finalizado! E-mail enviado.")
+                        else:
+                            st.error("❌ Falha ao enviar o e-mail de finalização.")
 
         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
@@ -1497,6 +1512,7 @@ Atenciosamente.
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
 
 
