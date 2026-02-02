@@ -985,7 +985,7 @@ if menu == "📅 Agendamentos do Dia":
                     time.sleep(1)
                     st.rerun()
 
-                       # ============================
+                      # ============================
             # 🗺️ MAPA (NOVO - AO FINAL)
             # ============================
             st.markdown("---")
@@ -994,7 +994,7 @@ if menu == "📅 Agendamentos do Dia":
             try:
                 if df_base is not None and ("COORDENADAS" in df_base.columns):
 
-                    # 🔧 RENOMEIA PARA EVITAR CONFLITO
+                    # 🔧 COORDENADAS DA BASE
                     df_coords = df_base[['Cliente', 'COORDENADAS']].drop_duplicates(subset='Cliente').copy()
                     df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
                     df_coords['Cliente'] = df_coords['Cliente'].astype(str).str.strip()
@@ -1022,33 +1022,35 @@ if menu == "📅 Agendamentos do Dia":
                     df_map['LAT'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
                     df_map['LON'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
 
-                    # Remove linhas sem coordenadas válidas
+                    # Remove sem coordenadas válidas
                     df_map = df_map.dropna(subset=['LAT', 'LON']).copy()
 
                     if df_map.empty:
                         st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
                     else:
+                        # --- LIMPEZA EXTRA (evita NaN/None no tooltip) ---
+                        for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
+                            if c in df_map.columns:
+                                df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
+
                         # --- COR POR STATUS ---
                         df_map['COR'] = df_map['STATUS'].astype(str).str.upper().apply(
                             lambda s: [0, 160, 0, 220] if s == "REALIZADO" else [200, 0, 0, 220]
                         )
 
-                        # --- TOOLTIP ---
+                        # --- TOOLTIP (sem \n pra não quebrar) ---
                         df_map['TOOLTIP'] = df_map.apply(
-                            lambda r: (
-                                f"Vendedor: {r.get('VENDEDOR','')}\n"
-                                f"Cliente: {r.get('CLIENTE','')}\n"
-                                f"Status: {r.get('STATUS','')}"
-                            ),
+                            lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
                             axis=1
                         )
 
-                        # ✅ ÍCONE (DICT) - CORREÇÃO DO ERRO "Unexpected {"
+                        # ✅ ÍCONE (DICT) - constante (mais estável)
                         icone_url = "https://cdn-icons-png.flaticon.com/512/684/684908.png"
-                        df_map["ICON"] = df_map.apply(
-                            lambda _: {"url": icone_url, "width": 128, "height": 128, "anchorY": 128},
-                            axis=1
-                        )
+                        icon_dict = {"url": icone_url, "width": 128, "height": 128, "anchorY": 128}
+                        df_map["ICON"] = [icon_dict] * len(df_map)
+
+                        # ✅ (MUITO IMPORTANTE) envia pro pydeck como LISTA DE DICTS (records)
+                        dados_mapa = df_map[['LON', 'LAT', 'COR', 'ICON', 'TOOLTIP']].to_dict(orient="records")
 
                         # --- CENTRO DO MAPA ---
                         lat_center = float(df_map['LAT'].mean())
@@ -1059,7 +1061,7 @@ if menu == "📅 Agendamentos do Dia":
                         # --- RAIO 1KM ---
                         layer_raio = pdk.Layer(
                             "ScatterplotLayer",
-                            data=df_map,
+                            data=dados_mapa,
                             get_position='[LON, LAT]',
                             get_radius=1000,
                             radius_units='meters',
@@ -1074,9 +1076,9 @@ if menu == "📅 Agendamentos do Dia":
                         # --- PINOS ---
                         layer_pinos = pdk.Layer(
                             "IconLayer",
-                            data=df_map,
+                            data=dados_mapa,
                             get_position='[LON, LAT]',
-                            get_icon="ICON",     # ✅ agora é COLUNA com dict (python), não string JSON
+                            get_icon="ICON",
                             get_size=4,
                             size_scale=10,
                             get_color="COR",
