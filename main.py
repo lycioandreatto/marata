@@ -61,9 +61,11 @@ MAPA_EMAIL_ANALISTAS = {
 }
 
 MAPA_EMAIL_VENDEDORES = {
-    "ALIF NUNES": "alif.nunes@marata.com.br",
-    "JOAO SILVA": "joao.silva@marata.com.br",
-    "MARIA COSTA": "maria.costa@marata.com.br",
+    "ALIF NUNES": ["alif.nunes@marata.com.br"],
+    "JOAO SILVA": ["joao.silva@marata.com.br"],
+    "MARIA COSTA": ["maria.costa@marata.com.br"]
+}
+
 
     # TESTE
     "EMAIL_ADMIN": "lycio.oliveira@marata.com.br"
@@ -80,6 +82,7 @@ MAPA_EMAILS = {
 
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
+EMAIL_ADMIN = EMAILS_GESTAO[0]
 
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
     import smtplib
