@@ -1775,7 +1775,8 @@ elif menu == "📋 Novo Agendamento":
         if ven_sel != "Selecione..." and not bloqueado:
             clientes_f = df_base[df_base[col_ven_base] == ven_sel].copy()
             
-            if 'VENDEDOR' not in df_agenda.columns: df_agenda['VENDEDOR'] = ""
+            if 'VENDEDOR' not in df_agenda.columns: 
+                df_agenda['VENDEDOR'] = ""
 
             # Normalização para comparação
             df_agenda['CÓDIGO CLIENTE'] = df_agenda['CÓDIGO CLIENTE'].astype(str)
@@ -1802,43 +1803,55 @@ elif menu == "📋 Novo Agendamento":
                 analista_vinc = str(amostra[col_ana_base]).upper()
                 supervisor_vinc = str(amostra[col_sup_base]).upper()
             except:
-                analista_vinc = "N/I"; supervisor_vinc = "N/I"
+                analista_vinc = "N/I"
+                supervisor_vinc = "N/I"
 
-       
             lista_c = sorted(clientes_pendentes_ag.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
             
             if not lista_c:
                 st.success(f"✅ Todos os clientes de {ven_sel} já foram processados!")
             else:
-                cliente_sel = st.selectbox("Selecione o Cliente:", ["Selecione..."] + lista_c)
-                if cliente_sel != "Selecione...":
+                # ✅ AQUI: agora pode selecionar MAIS DE 1 cliente
+                clientes_sel = st.multiselect("Selecione o(s) Cliente(s):", lista_c)
+
+                if clientes_sel:
                     qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
                     
                     with st.form("form_novo_v", clear_on_submit=True):
                         cols_datas = st.columns(qtd_visitas)
                         hoje_dt = datetime.now(fuso_br).date()
-                        datas_sel = [cols_datas[i].date_input(f"Data {i+1}:", value=hoje_dt, min_value=hoje_dt, key=f"d_{i}") for i in range(qtd_visitas)]
+                        datas_sel = [
+                            cols_datas[i].date_input(
+                                f"Data {i+1}:",
+                                value=hoje_dt,
+                                min_value=hoje_dt,
+                                key=f"d_{i}"
+                            )
+                            for i in range(qtd_visitas)
+                        ]
                         
                         if st.form_submit_button("💾 ENVIAR PARA APROVAÇÃO"):
-                            cod_c, nom_c = cliente_sel.split(" - ", 1)
                             agora = datetime.now(fuso_br)
                             novas_linhas = []
-                            
-                            for i, dt in enumerate(datas_sel):
-                                nid = agora.strftime("%Y%m%d%H%M%S") + str(i)
-                                novas_linhas.append({
-                                    "ID": nid, 
-                                    "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
-                                    "DATA": dt.strftime("%d/%m/%Y"), 
-                                    "ANALISTA": analista_vinc, 
-                                    "SUPERVISOR": supervisor_vinc, 
-                                    "VENDEDOR": ven_sel,
-                                    "CÓDIGO CLIENTE": str(cod_c), 
-                                    "CLIENTE": nom_c, 
-                                    "JUSTIFICATIVA": "-", 
-                                    "STATUS": "Pendente", # <--- AQUI ESTÁ A MUDANÇA PARA O WORKFLOW
-                                    "AGENDADO POR": user_atual 
-                                })
+
+                            for j, cliente_item in enumerate(clientes_sel):
+                                cod_c, nom_c = cliente_item.split(" - ", 1)
+
+                                for i, dt in enumerate(datas_sel):
+                                    nid = agora.strftime("%Y%m%d%H%M%S") + f"{j}{i}"
+                                    novas_linhas.append({
+                                        "ID": nid, 
+                                        "REGISTRO": agora.strftime("%d/%m/%Y %H:%M"), 
+                                        "DATA": dt.strftime("%d/%m/%Y"), 
+                                        "ANALISTA": analista_vinc, 
+                                        "SUPERVISOR": supervisor_vinc, 
+                                        "VENDEDOR": ven_sel,
+                                        "CÓDIGO CLIENTE": str(cod_c), 
+                                        "CLIENTE": nom_c, 
+                                        "JUSTIFICATIVA": "-", 
+                                        "STATUS": "Pendente",  # <--- AQUI ESTÁ A MUDANÇA PARA O WORKFLOW
+                                        "AGENDADO POR": user_atual 
+                                    })
                             
                             df_antigo = df_agenda.drop(columns=['LINHA'], errors='ignore').copy()
                             df_novo = pd.DataFrame(novas_linhas)
@@ -1852,6 +1865,7 @@ elif menu == "📋 Novo Agendamento":
                             st.info("🔔 Agendamento enviado! Aguardando aprovação na tela de Aprovações.")
                             time.sleep(2)
                             st.rerun()
+
 
       
 
