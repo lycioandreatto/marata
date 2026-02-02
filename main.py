@@ -1570,7 +1570,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("---")
         col_res, col_cob = st.columns([1.5, 1])
         
-       with col_cob:
+    with col_cob:
     # ✅ Positivação real (geral) = clientes únicos no df filtrado
     positivos_total = df_f[col_cod_cliente].nunique()
 
