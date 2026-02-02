@@ -2232,7 +2232,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         st.session_state["pedir_envio_excel_acomp_diario"] = True
         st.rerun()
 
-    # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
+   
     def fmt_pt_int(v):
         try:
             return f"{float(v):,.0f}".replace(",", ".")
