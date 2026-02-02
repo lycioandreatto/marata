@@ -1580,7 +1580,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         perc_pos = (positivos_total / meta_pos * 100) if meta_pos > 0 else 0
 
-            st.markdown(f"""
+        st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9; margin-top: 10px;">
                     <small>POSITIVAÇÃO (GERAL)</small><br>
                     <span style="font-size: 1.05em;">Base (META COBXPOSIT): <b>{base_pos:,.0f}</b></span><br>
