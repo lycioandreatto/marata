@@ -2092,6 +2092,13 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         tmp_analista = df_base_perm.loc[df_base_perm["VENDEDOR"] == user_atual, "ANALISTA"].dropna().unique().tolist()
         if tmp_analista:
             analista_usuario = str(tmp_analista[0]).strip().upper()
+    # ✅ (NOVO - MÍNIMO) fallback: se não achou o analista na BASE, tenta achar no FATURADO (já mergeado)
+    if is_vendedor and not analista_usuario:
+        if ("VENDEDOR" in df_f.columns) and ("ANALISTA" in df_f.columns):
+            tmp_a = df_f.loc[df_f["VENDEDOR"] == user_atual, "ANALISTA"].dropna().unique().tolist()
+            if tmp_a:
+                analista_usuario = str(tmp_a[0]).strip().upper()
+
 
     # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo;
     # ✅ (AJUSTE) Analista agora filtra pelo ANALISTA + estado(s) dele(s) (evita ver outros estados)
@@ -2153,7 +2160,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     c1, c2, c3 = st.columns(3)
 
     # ✅ (AJUSTE) Estado no FATURADO é EscrV. Se não existir, cai para Estado.
-    col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
+    col_estado = "EscrV" if "EscrV" in df_f.columns else None
+
 
     # ✅ (AJUSTE) garante que df_f fique somente no(s) estado(s) do usuário (AGORA incluindo analista)
     if col_estado and (is_vendedor or is_supervisor or is_analista) and estados_usuario:
