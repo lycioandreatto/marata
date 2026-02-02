@@ -1630,7 +1630,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # ✅ CARD 2 (NOVO): POSITIVAÇÃO (META COBXPOSIT -> colunas RG, BASE, META)
         with col_pos:
-            # ✅ AJUSTE MÍNIMO AQUI:
             # Se NÃO tiver vendedor ou supervisor selecionado, desconsidera EqVs = STR e SMX na contagem dos positivados
             if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
                 positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
@@ -1651,7 +1650,6 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
                     <small>POSITIVAÇÃO</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_pos:,.0f}</b></span><br>
                     <span style="font-size: 1.1em;">Meta: <b>{meta_pos:.0%}</b></span><br>
                     <span style="font-size: 1.1em;">Positivados: <b>{positivos_total:,.0f}</b></span><br>
                     Atingido: <span style="color:#1f77b4; font-size: 1.8em; font-weight: bold;">{perc_pos:.1f}%</span>
