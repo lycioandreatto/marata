@@ -338,20 +338,6 @@ if not cookies.ready():
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Maratá - GVP", page_icon="📅", layout="wide")
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.markdown(
-    """
-    <style>
-    /* Força modo claro mesmo se o sistema estiver em dark */
-    :root { color-scheme: light !important; }
-    html, body, [data-testid="stAppViewContainer"] {
-        background: #ffffff !important;
-        color: #000000 !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 
 # --- ESTILIZAÇÃO DOS CARDS E PERFIL ---
 st.markdown("""
