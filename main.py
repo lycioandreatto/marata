@@ -696,7 +696,7 @@ with st.sidebar:
     # --- AJUSTE: SINO DE NOTIFICAÇÃO FILTRADO ---
     # Só mostra se for Gestão (Adm/Analista). Supervisor e Vendedor não entram aqui.
     if eh_gestao:
-    if df_agenda is not None:
+        if df_agenda is not None:
         # Se for Admin, vê tudo. Se for Analista, vê apenas o que é dele.
         if is_admin:
             df_filtrado_sino = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
