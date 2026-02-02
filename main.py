@@ -842,6 +842,11 @@ if menu == "📅 Agendamentos do Dia":
         if col_just not in df_agenda.columns:
             df_agenda[col_just] = ""
 
+        # ✅ NOVO: coluna para observação da gestão na validação diária (sem mexer no botão do vendedor)
+        col_obs_rotina = "OBS_VALIDACAO_GESTAO"
+        if col_obs_rotina not in df_agenda.columns:
+            df_agenda[col_obs_rotina] = ""
+
         if "DISTANCIA_LOG" not in df_agenda.columns:
             df_agenda["DISTANCIA_LOG"] = 0.0
         if "COORDENADAS" not in df_agenda.columns:
@@ -996,7 +1001,57 @@ if menu == "📅 Agendamentos do Dia":
                 else:
                     nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
 
-                                # ✅ SALVAR (NÃO INTERFERE NO GPS DO VENDEDOR)
+                # ✅ NOVO: BLOCO SEPARADO DA GESTÃO PARA VALIDAR A ROTINA + OBSERVAÇÃO (SEM MEXER NO BOTÃO DO VENDEDOR)
+                if pode_validar:
+                    st.markdown("#### ✅ Validação da Rotina (Gestão)")
+                    obs_gestao_rotina = st.text_input(
+                        "Observação da gestão (opcional):",
+                        value=str(sel_row.get(col_obs_rotina, "") or ""),
+                        key="obs_validacao_gestao_rotina",
+                    )
+
+                    c_val1, c_val2 = st.columns(2)
+                    with c_val1:
+                        if st.button("✅ APROVAR ROTINA (Gestão)", key="btn_aprovar_rotina_gestao"):
+                            df_agenda.loc[
+                                df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                                [col_aprov_exec, col_obs_rotina],
+                            ] = [
+                                "OK",
+                                obs_gestao_rotina,
+                            ]
+
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                            )
+
+                            st.success("Rotina aprovada pela gestão!")
+                            time.sleep(1)
+                            st.rerun()
+
+                    with c_val2:
+                        if st.button("❌ REPROVAR ROTINA (Gestão)", key="btn_reprovar_rotina_gestao"):
+                            df_agenda.loc[
+                                df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                                [col_aprov_exec, col_obs_rotina],
+                            ] = [
+                                "REPROVADO",
+                                obs_gestao_rotina,
+                            ]
+
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                            )
+
+                            st.error("Rotina reprovada pela gestão!")
+                            time.sleep(1)
+                            st.rerun()
+
+                # ✅ BOTÃO DO VENDEDOR (FICA QUIETO / INTACTO — NÃO ALTERADO)
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
 
                     # ✅ se for gestão (admin/diretoria/analista), NÃO atualiza GPS nem distância
@@ -1101,6 +1156,7 @@ if menu == "📅 Agendamentos do Dia":
                         st.success("Dados atualizados!")
                         time.sleep(1)
                         st.rerun()
+
 
 
             # ============================
