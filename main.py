@@ -1653,11 +1653,15 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 df_user = df_user.reset_index(drop=True)
 
             # --- 5. MÉTRICAS ---
-            m1, m2, m3 = st.columns(3)
+            # ✅ (NOVO) Card de "fora do raio" > 50 metros
+            fora_raio_50m = int((df_user['DISTANCIA_LOG'] > 50).sum()) if 'DISTANCIA_LOG' in df_user.columns else 0
+
+            m1, m2, m3, m4 = st.columns(4)
             m1.metric("📅 Total Agendado", len(df_user))
             # Ajustado para mostrar o que está planejado (já aprovado)
             m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Planejado"]))
             m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
+            m4.metric("📍 Fora do Raio (+50m)", fora_raio_50m, delta_color="inverse")
             st.markdown("---")
 
             # --- 6. APROVAÇÃO EM MASSA (GESTÃO) ---
