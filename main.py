@@ -2218,36 +2218,43 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ✅ BOTÃO: APARECE SOMENTE AQUI (porque está DENTRO do elif)
         # ✅ BOTÃO: APARECE SOMENTE AQUI
         # ✅ BOTÃO: APARECE SOMENTE AQUI
+        # ============================
+    # 📧 ENVIAR EXCEL POR VENDEDOR (SÓ NESTA PÁGINA)
+    # ============================
     if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
         import smtplib
 
-        # ✅ Escolhe a base correta para disparo:
-        # - prioriza df_f (já filtrado/permissões)
-        # - se df_f estiver vazio, usa df_faturado (bruto) para não quebrar
-        df_envio = None
+        # ✅ 1) Garante que o relatório existe (é ele que vai anexar)
+        if "df_final" not in locals() or df_final is None or df_final.empty:
+            st.error("Relatório (df_final) não foi gerado. Verifique a leitura/processamento do FATURADO.")
+            st.stop()
 
+        # ✅ 2) Base para pegar lista de vendedores (df_f se existir; senão df_faturado)
+        df_envio = None
         if "df_f" in locals() and df_f is not None and not df_f.empty:
             df_envio = df_f.copy()
         elif "df_faturado" in locals() and df_faturado is not None and not df_faturado.empty:
             df_envio = df_faturado.copy()
 
         if df_envio is None or df_envio.empty:
-            st.error("Sem dados para enviar. Verifique leitura do FATURADO ou permissões/filtros.")
+            st.error("Base de vendedores não carregada. Verifique a leitura da aba FATURADO.")
             st.stop()
 
-        # ✅ Garantir coluna VENDEDOR_NOME no df_envio (caso esteja usando df_faturado)
+        # ✅ 3) Garante coluna VENDEDOR_NOME para extrair vendedores
         if "VENDEDOR_NOME" not in df_envio.columns:
+            # fallback caso esteja bruto
             if "Região de vendas" in df_envio.columns:
-                df_envio.rename(columns={"Região de vendas": "VENDEDOR_NOME"}, inplace=True)
+                df_envio["VENDEDOR_NOME"] = df_envio["Região de vendas"]
             else:
                 st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
                 st.stop()
 
-        # ✅ df_final precisa existir (é o excel que você está enviando)
-        if "df_final" not in locals() or df_final is None or df_final.empty:
-            st.error("df_final não foi gerado. Não há planilha para enviar.")
+        vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
+        if len(vendedores) == 0:
+            st.warning("Não há vendedores disponíveis para envio (base filtrada ficou vazia).")
             st.stop()
 
+        # ✅ 4) Conecta no SMTP
         email_origem = st.secrets["email"]["sender_email"]
         senha_origem = st.secrets["email"]["sender_password"]
         smtp_server = st.secrets["email"]["smtp_server"]
@@ -2257,7 +2264,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         server.starttls()
         server.login(email_origem, senha_origem)
 
-        vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
+        enviados = 0
+        pulados = 0
 
         for vendedor in vendedores:
             vendedor_up = str(vendedor).strip().upper()
@@ -2265,25 +2273,30 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
             if not email_destino:
                 st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
+                pulados += 1
                 continue
 
+            # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
             if isinstance(email_destino, list):
                 email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
             else:
                 email_destino_str = str(email_destino).strip()
 
-            df_vendedor = df_final.copy()
-
+            # ✅ 5) Aqui é o ponto principal:
+            # sua função espera df_excel e ela mesma ajusta % e formata Excel.
+            # Então passa o df_final (relatório pronto).
             enviar_excel_vendedor(
                 server=server,
                 email_origem=email_origem,
                 email_destino=email_destino_str,
                 nome_vendedor=vendedor,
-                df_excel=df_vendedor,
+                df_excel=df_final
             )
+            enviados += 1
 
         server.quit()
-        st.success("📨 E-mails enviados com sucesso!")
+        st.success(f"📨 E-mails enviados com sucesso! Enviados: {enviados} | Pulados (sem e-mail): {pulados}")
+
 
 
 
