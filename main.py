@@ -2215,6 +2215,51 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
 
+    # ✅ BOTÃO: APARECE SOMENTE AQUI (porque está DENTRO do elif)
+    if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
+        import smtplib
+
+        email_origem = st.secrets["email"]["sender_email"]
+        senha_origem = st.secrets["email"]["sender_password"]
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(email_origem, senha_origem)
+
+        vendedores = df_f["VENDEDOR_NOME"].dropna().unique()
+
+        for vendedor in vendedores:
+            vendedor_up = str(vendedor).strip().upper()
+            email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
+
+            # Se não achou e-mail cadastrado, pula
+            if not email_destino:
+                st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
+                continue
+
+            # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
+            if isinstance(email_destino, list):
+                email_destino_str = ",".join(
+                    [str(x).strip() for x in email_destino if str(x).strip()]
+                )
+            else:
+                email_destino_str = str(email_destino).strip()
+
+            df_vendedor = df_final.copy()
+
+            enviar_excel_vendedor(
+                server=server,
+                email_origem=email_origem,
+                email_destino=email_destino_str,
+                nome_vendedor=vendedor,
+                df_excel=df_vendedor,
+            )
+
+        server.quit()
+        st.success("📨 E-mails enviados com sucesso!")
+
     # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
     def fmt_pt_int(v):
         try:
@@ -2780,7 +2825,11 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         # --- Junta tudo
         df_rank = df_rank_real.merge(df_meta_v25, on="VENDEDOR_COD", how="left")
         df_rank = df_rank.merge(df_meta_v26, on="VENDEDOR_COD", how="left")
-        df_rank = df_rank.merge(df_pos_meta[["VENDEDOR_COD", "META_ABS_POSIT"]] if "META_ABS_POSIT" in df_pos_meta.columns else df_pos_meta, on="VENDEDOR_COD", how="left")
+        df_rank = df_rank.merge(
+            df_pos_meta[["VENDEDOR_COD", "META_ABS_POSIT"]] if "META_ABS_POSIT" in df_pos_meta.columns else df_pos_meta,
+            on="VENDEDOR_COD",
+            how="left"
+        )
         df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]] = df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]].fillna(0)
 
         # --- Atingimentos
@@ -2897,53 +2946,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
 
-# ✅ Coloque ESTE trecho DENTRO da página "📊 Desempenho de Vendas"
-# (ou seja, dentro do bloco: elif menu_interna == "📊 Desempenho de Vendas":)
-
-if menu_interna == "📊 Desempenho de Vendas":
-    if st.button("📧 Enviar Excel por Vendedor"):
-        import smtplib
-
-        email_origem = st.secrets["email"]["sender_email"]
-        senha_origem = st.secrets["email"]["sender_password"]
-        smtp_server = st.secrets["email"]["smtp_server"]
-        smtp_port = st.secrets["email"]["smtp_port"]
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(email_origem, senha_origem)
-
-        vendedores = df_f["VENDEDOR_NOME"].dropna().unique()
-
-        for vendedor in vendedores:
-            vendedor_up = str(vendedor).strip().upper()
-            email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
-
-            # Se não achou e-mail cadastrado, pula
-            if not email_destino:
-                st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
-                continue
-
-            # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
-            if isinstance(email_destino, list):
-                email_destino_str = ",".join(
-                    [str(x).strip() for x in email_destino if str(x).strip()]
-                )
-            else:
-                email_destino_str = str(email_destino).strip()
-
-            df_vendedor = df_final.copy()
-
-            enviar_excel_vendedor(
-                server=server,
-                email_origem=email_origem,
-                email_destino=email_destino_str,
-                nome_vendedor=vendedor,
-                df_excel=df_vendedor,
-            )
-
-        server.quit()
-        st.success("📨 E-mails enviados com sucesso!")
+# ❌ IMPORTANTE: REMOVA COMPLETAMENTE este bloco do seu código (ele estava fora do elif e dava ruim):
+# if menu_interna == "📊 Desempenho de Vendas":
+#     if st.button("📧 Enviar Excel por Vendedor"):
+#         ...
 
 
 
