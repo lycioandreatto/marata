@@ -998,9 +998,14 @@ if menu == "📅 Agendamentos do Dia":
 
                 # ✅ SALVAR (corrigido: evita cair em except por coord indefinida / mismatch / indent)
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
+                    lat_v, lon_v = capturar_coordenadas()
+                if lat_v and lon_v:
+                    st.session_state.lat = lat_v
+                    st.session_state.lon = lon_v
+                else:
                     lat_v = st.session_state.get("lat", 0)
                     lon_v = st.session_state.get("lon", 0)
-                    distancia_m = 0.0
+
 
                     try:
                         cod_sel = str(sel_row["CÓDIGO CLIENTE"]).strip().replace(".0", "")
