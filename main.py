@@ -1570,13 +1570,23 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.markdown("---")
         col_res, col_cob = st.columns([1.5, 1])
         
-        with col_cob:
-            real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
+                   # --- CARD EXTRA: POSITIVAÇÃO (META COBXPOSIT) ---
+            positivos_total = df_f[col_cod_cliente].nunique()
+
+            dados_base_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)].drop_duplicates('RG')
+
+            base_pos = dados_base_meta['BASE'].sum()
+            meta_pos = pd.to_numeric(dados_base_meta['META'], errors='coerce').fillna(0).sum() if 'META' in dados_base_meta.columns else 0
+
+            perc_pos = (positivos_total / meta_pos * 100) if meta_pos > 0 else 0
+
             st.markdown(f"""
-                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
-                    <small>COBERTURA ATUAL</small><br>
-                    <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b></span><br>
-                    Atingido: <span style="color:#28a745; font-size: 1.8em; font-weight: bold;">{real_perc:.1f}%</span>
+                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9; margin-top: 10px;">
+                    <small>POSITIVAÇÃO (GERAL)</small><br>
+                    <span style="font-size: 1.05em;">Base (META COBXPOSIT): <b>{base_pos:,.0f}</b></span><br>
+                    <span style="font-size: 1.05em;">Meta (Clientes): <b>{meta_pos:,.0f}</b></span><br>
+                    <span style="font-size: 1.05em;">Positivados: <b>{positivos_total:,.0f}</b></span><br>
+                    Atingido: <span style="color:#28a745; font-size: 1.8em; font-weight: bold;">{perc_pos:.1f}%</span>
                 </div>
             """, unsafe_allow_html=True)
 
