@@ -67,10 +67,6 @@ MAPA_EMAIL_VENDEDORES = {
 }
 
 
-    # TESTE
-    "EMAIL_ADMIN": "lycio.oliveira@marata.com.br"
-}
-
 # --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
 MAPA_EMAILS = {
     "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br","marciajanaina@marata.com.br"],
