@@ -2622,14 +2622,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
                 st.stop()
 
-        # ✅ AJUSTE PEDIDO:
-        # se tiver vendedor selecionado no filtro, envia SOMENTE para ele(s).
-        # se não tiver, envia para todos da página.
-        if sel_vendedor:
-            vendedores = [v for v in sel_vendedor if str(v).strip()]
-        else:
-            vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
-
+        vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
         if len(vendedores) == 0:
             st.warning("Não há vendedores disponíveis para envio (base filtrada ficou vazia).")
             st.stop()
@@ -2672,6 +2665,287 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         server.quit()
         st.success(f"📨 E-mails enviados com sucesso! Enviados: {enviados} | Pulados (sem e-mail): {pulados}")
 
+    # --- UI: CARDS E TABELA ---
+    st.markdown("---")
+    col_res, col_cob, col_pos = st.columns([1.2, 1, 1])
+
+    with col_cob:
+        real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
+        st.markdown(
+            f"""
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                <small>COBERTURA ATUAL</small><br>
+                <span style="font-size: 1.1em;">Base: <b>{fmt_pt_int(base_total)}</b></span><br>
+                Atingido: <span style="color:#28a745; font-size: 1.8em; font-weight: bold;">{real_perc:.1f}%</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col_pos:
+        if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
+            positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
+        else:
+            positivos_total = df_f[col_cod_cliente].nunique()
+
+        dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG") if df_metas_cob is not None else pd.DataFrame()
+
+        base_pos = pd.to_numeric(dados_pos["BASE"], errors="coerce").fillna(0).sum() if "BASE" in dados_pos.columns else 0
+
+        meta_pos = pd.to_numeric(dados_pos["META"], errors="coerce").fillna(0).mean() if "META" in dados_pos.columns else 0
+        meta_pos = (meta_pos / 100) if meta_pos > 1 else meta_pos
+
+        meta_abs = math.ceil(base_pos * meta_pos) if base_pos > 0 else 0
+        perc_pos = (positivos_total / meta_abs * 100) if meta_abs > 0 else 0
+
+        st.markdown(
+            f"""
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                <small>POSITIVAÇÃO</small><br>
+                <span style="font-size: 1.1em;">Meta: <b>{meta_pos:.0%}</b></span><br>
+                <span style="font-size: 1.1em;">Positivados: <b>{fmt_pt_int(positivos_total)}</b></span><br>
+                Atingido: <span style="color:#1f77b4; font-size: 1.8em; font-weight: bold;">{perc_pos:.1f}%</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("### 📈 Desempenho por Hierarquia")
+
+    df_view = df_final.copy()
+    df_view[" "] = ""
+    df_view["  "] = ""
+    df_view["   "] = ""
+    df_view["    "] = ""
+
+    cols_view = [
+        "HIERARQUIA DE PRODUTOS",
+        "META COBERTURA",
+        "META CLIENTES (ABS)",
+        "POSITIVAÇÃO",
+        "PENDÊNCIA CLIENTES",
+        " ",
+        "META 2025",
+        "META 2026",
+        "  ",
+        "VOLUME",
+        "   ",
+        "CRESCIMENTO 2025",
+        "ATINGIMENTO % (VOL 2025)",
+        "    ",
+        "CRESCIMENTO 2026",
+        "ATINGIMENTO % (VOL 2026)",
+    ]
+
+    def zebra_rows(row):
+        return ["background-color: #FAFAFA" if row.name % 2 else "" for _ in row]
+
+    def destacar_negativos(s):
+        return ["background-color: #FFE5E5; color: #7A0000; font-weight: 600" if v < 0 else "" for v in s]
+
+    def destacar_pendencia(s):
+        return ["background-color: #FFD6D6; color: #7A0000; font-weight: 700" if v > 0 else "" for v in s]
+
+    def limpar_espacos(s):
+        return ["background-color: transparent" for _ in s]
+
+    sty = (
+        df_view[cols_view]
+        .sort_values(by="HIERARQUIA DE PRODUTOS")
+        .style
+        .format(
+            {
+                "META COBERTURA": "{:.0%}",
+                "META CLIENTES (ABS)": lambda v: fmt_pt_int(v),
+                "POSITIVAÇÃO": lambda v: fmt_pt_int(v),
+                "PENDÊNCIA CLIENTES": lambda v: fmt_pt_int(v),
+                "META 2025": lambda v: fmt_pt_int(v),
+                "META 2026": lambda v: fmt_pt_int(v),
+                "VOLUME": lambda v: fmt_pt_int(v),
+                "CRESCIMENTO 2025": lambda v: fmt_pt_int(v),
+                "CRESCIMENTO 2026": lambda v: fmt_pt_int(v),
+                "ATINGIMENTO % (VOL 2025)": "{:.1f}%",
+                "ATINGIMENTO % (VOL 2026)": "{:.1f}%",
+            }
+        )
+        .apply(zebra_rows, axis=1)
+        .apply(destacar_pendencia, subset=["PENDÊNCIA CLIENTES"])
+        .apply(destacar_negativos, subset=["CRESCIMENTO 2025", "CRESCIMENTO 2026"])
+        .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
+        .set_table_styles(
+            [
+                {"selector": "th", "props": [("background-color", "#F2F2F2"), ("color", "#111"), ("font-weight", "700")]},
+                {"selector": "td", "props": [("border-bottom", "1px solid #EEE")]},
+            ]
+        )
+    )
+
+    st.dataframe(
+        sty,
+        use_container_width=True,
+        hide_index=True,
+        height=560,
+    )
+
+    # ============================
+    # ✅ ADIÇÕES (RANKINGS)
+    # ============================
+    try:
+        st.markdown("---")
+        st.markdown("## 📌 Quem está puxando pra cima e pra baixo")
+
+        df_rank_real = (
+            df_f.groupby(["VENDEDOR_COD", "VENDEDOR_NOME"])
+            .agg(
+                VOLUME_REAL=("QTD_VENDAS", "sum"),
+                POSITIVADOS=(col_cod_cliente, "nunique")
+            )
+            .reset_index()
+        )
+
+        df_meta_v25 = (
+            df_2025[df_2025["RG"].isin(vendedores_ids)]
+            .groupby("RG")["QUANTIDADE"].sum()
+            .reset_index()
+            .rename(columns={"RG": "VENDEDOR_COD", "QUANTIDADE": "META_TOTAL_2025"})
+            if df_2025 is not None and not df_2025.empty and "RG" in df_2025.columns and "QUANTIDADE" in df_2025.columns
+            else pd.DataFrame(columns=["VENDEDOR_COD", "META_TOTAL_2025"])
+        )
+
+        df_meta_v26 = (
+            df_meta_sistema[df_meta_sistema["RG"].isin(vendedores_ids)]
+            .groupby("RG")["QTD"].sum()
+            .reset_index()
+            .rename(columns={"RG": "VENDEDOR_COD", "QTD": "META_TOTAL_2026"})
+            if df_meta_sistema is not None and not df_meta_sistema.empty and "RG" in df_meta_sistema.columns and "QTD" in df_meta_sistema.columns
+            else pd.DataFrame(columns=["VENDEDOR_COD", "META_TOTAL_2026"])
+        )
+
+        df_pos_meta = (
+            df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)]
+            .drop_duplicates("RG")
+            .copy()
+            if df_metas_cob is not None and not df_metas_cob.empty and "RG" in df_metas_cob.columns
+            else pd.DataFrame(columns=["RG", "BASE", "META"])
+        )
+
+        if not df_pos_meta.empty:
+            df_pos_meta.rename(columns={"RG": "VENDEDOR_COD"}, inplace=True)
+            if "META" in df_pos_meta.columns:
+                df_pos_meta["META"] = df_pos_meta["META"].apply(lambda x: x / 100 if x > 1 else x)
+            if ("BASE" in df_pos_meta.columns) and ("META" in df_pos_meta.columns):
+                df_pos_meta["META_ABS_POSIT"] = (df_pos_meta["BASE"] * df_pos_meta["META"]).apply(lambda x: math.ceil(x) if x > 0 else 0)
+            else:
+                df_pos_meta["META_ABS_POSIT"] = 0
+        else:
+            df_pos_meta = pd.DataFrame(columns=["VENDEDOR_COD", "META_ABS_POSIT"])
+
+        df_rank = df_rank_real.merge(df_meta_v25, on="VENDEDOR_COD", how="left")
+        df_rank = df_rank.merge(df_meta_v26, on="VENDEDOR_COD", how="left")
+        df_rank = df_rank.merge(
+            df_pos_meta[["VENDEDOR_COD", "META_ABS_POSIT"]] if "META_ABS_POSIT" in df_pos_meta.columns else df_pos_meta,
+            on="VENDEDOR_COD",
+            how="left"
+        )
+        df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]] = df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]].fillna(0)
+
+        df_rank["ATINGIMENTO_VOL_2025"] = (df_rank["VOLUME_REAL"] / df_rank["META_TOTAL_2025"]).replace([np.inf, -np.inf], 0).fillna(0)
+        df_rank["ATINGIMENTO_VOL_2026"] = (df_rank["VOLUME_REAL"] / df_rank["META_TOTAL_2026"]).replace([np.inf, -np.inf], 0).fillna(0)
+        df_rank["ATINGIMENTO_POSIT"] = (df_rank["POSITIVADOS"] / df_rank["META_ABS_POSIT"]).replace([np.inf, -np.inf], 0).fillna(0)
+
+        st.markdown("### 📦 Ranking — Volume x Meta 2025")
+        rank_2025 = df_rank.sort_values("ATINGIMENTO_VOL_2025", ascending=False)
+
+        top_2025 = rank_2025.head(10)[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2025", "ATINGIMENTO_VOL_2025"]]
+        bot_2025 = rank_2025.tail(10).sort_values("ATINGIMENTO_VOL_2025")[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2025", "ATINGIMENTO_VOL_2025"]]
+
+        c25_1, c25_2 = st.columns(2)
+        with c25_1:
+            st.markdown("**🟢 Puxando pra cima (2025)**")
+            st.dataframe(
+                top_2025.style.format({
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2025": lambda v: fmt_pt_int(v),
+                    "ATINGIMENTO_VOL_2025": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        with c25_2:
+            st.markdown("**🔴 Puxando pra baixo (2025)**")
+            st.dataframe(
+                bot_2025.style.format({
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2025": lambda v: fmt_pt_int(v),
+                    "ATINGIMENTO_VOL_2025": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+        st.markdown("### 📦 Ranking — Volume x Meta 2026")
+        rank_2026 = df_rank.sort_values("ATINGIMENTO_VOL_2026", ascending=False)
+
+        top_2026 = rank_2026.head(10)[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2026", "ATINGIMENTO_VOL_2026"]]
+        bot_2026 = rank_2026.tail(10).sort_values("ATINGIMENTO_VOL_2026")[["VENDEDOR_NOME", "VOLUME_REAL", "META_TOTAL_2026", "ATINGIMENTO_VOL_2026"]]
+
+        c26_1, c26_2 = st.columns(2)
+        with c26_1:
+            st.markdown("**🟢 Puxando pra cima (2026)**")
+            st.dataframe(
+                top_2026.style.format({
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2026": lambda v: fmt_pt_int(v),
+                    "ATINGIMENTO_VOL_2026": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        with c26_2:
+            st.markdown("**🔴 Puxando pra baixo (2026)**")
+            st.dataframe(
+                bot_2026.style.format({
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2026": lambda v: fmt_pt_int(v),
+                    "ATINGIMENTO_VOL_2026": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+        st.markdown("### 🎯 Ranking — Positivação")
+        rank_pos = df_rank.sort_values("ATINGIMENTO_POSIT", ascending=False)
+
+        top_pos = rank_pos.head(10)[["VENDEDOR_NOME", "POSITIVADOS", "META_ABS_POSIT", "ATINGIMENTO_POSIT"]]
+        bot_pos = rank_pos.tail(10).sort_values("ATINGIMENTO_POSIT")[["VENDEDOR_NOME", "POSITIVADOS", "META_ABS_POSIT", "ATINGIMENTO_POSIT"]]
+
+        cp_1, cp_2 = st.columns(2)
+        with cp_1:
+            st.markdown("**🟢 Puxando pra cima (Positivação)**")
+            st.dataframe(
+                top_pos.style.format({
+                    "POSITIVADOS": lambda v: fmt_pt_int(v),
+                    "META_ABS_POSIT": lambda v: fmt_pt_int(v),
+                    "ATINGIMENTO_POSIT": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        with cp_2:
+            st.markdown("**🔴 Puxando pra baixo (Positivação)**")
+            st.dataframe(
+                bot_pos.style.format({
+                    "POSITIVADOS": lambda v: fmt_pt_int(v),
+                    "META_ABS_POSIT": lambda v: fmt_pt_int(v),
+                    "ATINGIMENTO_POSIT": "{:.1%}",
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+    except Exception as e:
+        st.warning(f"Não foi possível gerar os rankings finais: {e}")
+
     # Exportação
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
@@ -2682,46 +2956,42 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ===========================================================
     # ✅ BLOCO DUPLICADO DO SEU CÓDIGO (MANTIDO, MAS NÃO EXECUTA)
     # Se isso rodar, você lê/reescreve tudo duas vezes e volta o bug.
-    # ✅ AJUSTE AQUI: agora fica dentro de if False para NÃO aparecer na página.
     # ===========================================================
-    if False:
-        """
-        # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
-        def fmt_pt_int(v):
-            try:
-                return f"{float(v):,.0f}".replace(",", ".")
-            except:
-                return str(v)
-
-        def _norm_cliente(df, col):
-            if df is None or df.empty or col not in df.columns:
-                return df
-            s = df[col]
-            mask = s.notna()
-            s2 = s.copy()
-            s2.loc[mask] = (
-                s.loc[mask]
-                .astype(str)
-                .str.strip()
-                .str.replace(r"\.0$", "", regex=True)
-            )
-            df[col] = s2
-            return df
-
+    """
+    # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
+    def fmt_pt_int(v):
         try:
-            # (trecho repetido)
-            df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-            df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
-            df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
-            df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
-            df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
-            ...
-        except Exception as e:
-            st.error(f"Erro no processamento: {e}")
-            st.stop()
-        """
+            return f"{float(v):,.0f}".replace(",", ".")
+        except:
+            return str(v)
 
+    def _norm_cliente(df, col):
+        if df is None or df.empty or col not in df.columns:
+            return df
+        s = df[col]
+        mask = s.notna()
+        s2 = s.copy()
+        s2.loc[mask] = (
+            s.loc[mask]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.0$", "", regex=True)
+        )
+        df[col] = s2
+        return df
 
+    try:
+        # (trecho repetido)
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
+        df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
+        df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
+        df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
+        ...
+    except Exception as e:
+        st.error(f"Erro no processamento: {e}")
+        st.stop()
+    """
 
 
 
