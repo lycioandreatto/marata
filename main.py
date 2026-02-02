@@ -542,15 +542,31 @@ if "logado" not in st.session_state:
         st.session_state.usuario = ""
 
 if not st.session_state.logado:
-    st.markdown(
-        """
-        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
-            <img src="https://raw.githubusercontent.com/lycioandreatto/marata/main/pngmarata" width="60">
-            <h1 style="color: #000C75; margin: 0;">GESTÃO DE VISITAS PDV</h1>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+
+    # ✅ LOGO LOCAL (funciona mesmo com repo privado)
+    # Coloque o arquivo na mesma pasta do main.py
+    # Ex.: "pngmarata.png" (recomendado) ou "pngmarata" (se estiver sem extensão)
+    import os
+
+    logo_path = None
+    for p in ["pngmarata.png", "pngmarata.jpg", "pngmarata.jpeg", "pngmarata", "assets/pngmarata.png"]:
+        if os.path.exists(p):
+            logo_path = p
+            break
+
+    col_logo, col_titulo = st.columns([0.12, 0.88], vertical_alignment="center")
+
+    with col_logo:
+        if logo_path:
+            st.image(logo_path, width=60)
+        else:
+            st.write("")
+
+    with col_titulo:
+        st.markdown(
+            "<h1 style='color:#000C75; margin:0;'>GESTÃO DE VISITAS PDV</h1>",
+            unsafe_allow_html=True
+        )
 
     tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
     
@@ -561,7 +577,10 @@ if not st.session_state.logado:
             lembrar = st.checkbox("Manter conectado")
             if st.form_submit_button("Entrar"):
                 if "USUARIO" in df_usuarios.columns and "SENHA" in df_usuarios.columns:
-                    valid = df_usuarios[(df_usuarios['USUARIO'].str.upper() == u_login) & (df_usuarios['SENHA'].astype(str) == p_login)]
+                    valid = df_usuarios[
+                        (df_usuarios["USUARIO"].str.upper() == u_login)
+                        & (df_usuarios["SENHA"].astype(str) == p_login)
+                    ]
                     if not valid.empty:
                         st.session_state.logado = True
                         st.session_state.usuario = u_login
@@ -588,7 +607,7 @@ if not st.session_state.logado:
                     else:
                         existente = False
                         if "USUARIO" in df_usuarios.columns:
-                            existente = u_cad in df_usuarios['USUARIO'].str.upper().values
+                            existente = u_cad in df_usuarios["USUARIO"].str.upper().values
                         
                         if not existente:
                             novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
@@ -599,6 +618,7 @@ if not st.session_state.logado:
                         else:
                             st.error("Este usuário já está cadastrado.")
     st.stop()
+
 
 # --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
 # --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
