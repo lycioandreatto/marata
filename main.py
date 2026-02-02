@@ -1751,6 +1751,7 @@ elif menu == "📋 Novo Agendamento":
                             time.sleep(2)
                             st.rerun()
 
+
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
