@@ -806,7 +806,7 @@ with st.sidebar:
 
 # --- TÍTULO CENTRAL NO TOPO ---
 st.markdown(
-    "<h4 style='text-align: center; color: black; margin-top: -110px;'>"
+    "<h4 style='text-align: center; color: black; margin-top: -20px;'>"
     "GESTÃO DE VISITAS PDV (GVP) - MARATÁ</h4>",
     unsafe_allow_html=True
 )
