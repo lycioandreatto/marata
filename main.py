@@ -1045,7 +1045,7 @@ if menu == "📅 Agendamentos do Dia":
                         base_cliente = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
                         if not base_cliente.empty and 'COORDENADAS' in base_cliente.columns:
                             coord = base_cliente.iloc[0]['COORDENADAS']
-                                if isinstance(coord, str) and ',' in coord:
+                        if isinstance(coord, str) and ',' in coord:
                                     lat_c, lon_c = coord.split(',', 1)
                                         distancia_m = calcular_distancia(
                                             lat_c.strip(),
