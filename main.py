@@ -942,7 +942,43 @@ if menu == "📅 Agendamentos do Dia":
                 else:
                     nova_val = valor_atual  # mantém como está
 
-                nova_just = st.text_input("Justificativa:", value=(sel_row.get(col_just, "") or ""))
+
+                # ✅✅✅ AJUSTE PEDIDO: VOLTAR MENU DE OBSERVAÇÕES (pré-selecionadas)
+                opcoes_obs = [
+                    "Selecione...",
+                    "Pedido enviado",
+                    "Cliente Inadimplente",
+                    "Cliente fechado",
+                    "Cliente inativo",
+                    "Cliente sem limite de crédito",
+                    "Outro (digitar)"
+                ]
+
+                just_atual = str(sel_row.get(col_just, "") or "").strip()
+
+                # tenta pré-selecionar se a justificativa atual for igual a alguma opção
+                idx_padrao = 0
+                for i, opt in enumerate(opcoes_obs):
+                    if just_atual.upper() == opt.upper():
+                        idx_padrao = i
+                        break
+
+                obs_sel = st.selectbox(
+                    "Observações:",
+                    opcoes_obs,
+                    index=idx_padrao,
+                    key="obs_pre_def"
+                )
+
+                # se escolher "Outro", libera digitação; senão permite editar o texto mas já vem preenchido
+                if obs_sel == "Outro (digitar)":
+                    nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
+                elif obs_sel != "Selecione...":
+                    nova_just = st.text_input("Justificativa:", value=obs_sel, key="just_txt")
+                else:
+                    nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
+                # ✅✅✅ FIM DO AJUSTE
+
 
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
                     lat_v = st.session_state.get('lat', 0)
