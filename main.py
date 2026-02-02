@@ -1519,34 +1519,33 @@ elif menu == "📋 Novo Agendamento":
             except:
                 analista_vinc = "N/I"; supervisor_vinc = "N/I"
 
-                   # ============================
-        # 🗺️ MAPA (NOVO - VISÃO GERAL)
+               # ============================
+        # 🗺️ MAPA (VISÃO GERAL / FILTRA SE ESCOLHER VENDEDOR)
         # ============================
         st.markdown("---")
-        st.markdown("### 🗺️ Mapa de Agendamentos (Visão Geral)")
+        st.markdown("### 🗺️ Mapa Geral (Agendados x Não Agendados)")
 
         try:
             if df_base is not None and ("COORDENADAS" in df_base.columns):
 
-                # ✅ BASE FILTRADA (respeita perfil / filtros de analista/supervisor)
+                # ✅ BASE FILTRADA (respeita perfil)
                 df_base_f = df_base.copy()
 
                 if is_analista:
                     df_base_f = df_base_f[df_base_f[col_ana_base].astype(str).str.upper() == user_atual.upper()]
-                elif any(df_base_f[col_sup_base].astype(str).str.upper() == user_atual.upper()):
+                elif is_supervisor:
                     df_base_f = df_base_f[df_base_f[col_sup_base].astype(str).str.upper() == user_atual.upper()]
                 # admin/diretoria vê tudo
 
                 # ✅ SE ESCOLHER VENDEDOR, FILTRA
                 if ven_sel != "Selecione...":
-                    df_base_f = df_base_f[df_base_f[col_ven_base].astype(str) == str(ven_sel)]
+                    df_base_f = df_base_f[df_base_f[col_ven_base].astype(str).str.upper() == str(ven_sel).upper()]
 
-                # 🔧 COORDENADAS DA BASE (já filtrada)
-                df_coords = df_base_f[['Cliente', 'COORDENADAS']].drop_duplicates(subset='Cliente').copy()
-                df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
+                # 🔧 PREPARA CLIENTES E COORDENADAS
+                df_coords = df_base_f[['Cliente', 'COORDENADAS', col_ven_base]].drop_duplicates(subset='Cliente').copy()
                 df_coords['Cliente'] = df_coords['Cliente'].astype(str).str.strip()
+                df_coords[col_ven_base] = df_coords[col_ven_base].astype(str)
 
-                # --- EXTRAI LAT / LON DA BASE ---
                 def _parse_coord(x):
                     try:
                         if isinstance(x, str) and ',' in x:
@@ -1556,78 +1555,70 @@ elif menu == "📋 Novo Agendamento":
                         pass
                     return None, None
 
-                # ✅ AGENDA FILTRADA (respeita visão: analista/supervisor/admin)
-                df_ag_m = df_agenda.copy()
-                if 'VENDEDOR' in df_ag_m.columns:
-                    df_ag_m['VENDEDOR'] = df_ag_m['VENDEDOR'].astype(str)
-                if 'CÓDIGO CLIENTE' in df_ag_m.columns:
-                    df_ag_m['CÓDIGO CLIENTE'] = df_ag_m['CÓDIGO CLIENTE'].astype(str).str.strip()
+                df_coords['LAT'] = df_coords['COORDENADAS'].apply(lambda v: _parse_coord(v)[0])
+                df_coords['LON'] = df_coords['COORDENADAS'].apply(lambda v: _parse_coord(v)[1])
+                df_coords = df_coords.dropna(subset=['LAT', 'LON']).copy()
 
-                if is_analista:
-                    df_ag_m = df_ag_m[df_ag_m['ANALISTA'].astype(str).str.upper() == user_atual.upper()]
-                elif any(df_ag_m['SUPERVISOR'].astype(str).str.upper() == user_atual.upper()):
-                    df_ag_m = df_ag_m[df_ag_m['SUPERVISOR'].astype(str).str.upper() == user_atual.upper()]
-                # admin/diretoria vê tudo
-
-                # ✅ SE ESCOLHER VENDEDOR, FILTRA A AGENDA
-                if ven_sel != "Selecione...":
-                    df_ag_m = df_ag_m[df_ag_m['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
-
-                # ✅ Considera agendados: Planejado / Realizado / Pendente
-                df_ag_m = df_ag_m[df_ag_m['STATUS'].isin(['Planejado', 'Realizado', 'Pendente'])].copy()
-
-                # Merge para pegar coordenadas da base filtrada
-                df_ag_m = df_ag_m.merge(
-                    df_coords,
-                    left_on='CÓDIGO CLIENTE',
-                    right_on='Cliente',
-                    how='left'
-                )
-
-                df_ag_m['LAT'] = df_ag_m['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
-                df_ag_m['LON'] = df_ag_m['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
-                df_ag_m = df_ag_m.dropna(subset=['LAT', 'LON']).copy()
-
-                for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
-                    if c in df_ag_m.columns:
-                        df_ag_m[c] = df_ag_m[c].astype(str).replace(["nan", "None"], "").fillna("")
-
-                codigos_agendados = df_ag_m['CÓDIGO CLIENTE'].unique() if ('CÓDIGO CLIENTE' in df_ag_m.columns and not df_ag_m.empty) else []
-
-                # ✅ NÃO AGENDADOS (amarelo): tudo que está na base filtrada e não está agendado
-                df_na = df_coords.copy()
-                if len(codigos_agendados) > 0:
-                    df_na = df_na[~df_na['Cliente'].astype(str).isin([str(x) for x in codigos_agendados])].copy()
-
-                df_na['LAT'] = df_na['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
-                df_na['LON'] = df_na['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
-                df_na = df_na.dropna(subset=['LAT', 'LON']).copy()
-
-                if not df_na.empty:
-                    df_na['STATUS'] = "NAO_AGENDADO"
-                    df_na['CLIENTE'] = df_na['Cliente'].astype(str)
-                    # tenta puxar o vendedor da base filtrada pra tooltip (caso geral)
-                    df_vmap = df_base_f[[col_ven_base, 'Cliente']].copy()
-                    df_vmap['Cliente'] = df_vmap['Cliente'].astype(str).str.strip()
-                    df_na = df_na.merge(df_vmap, on='Cliente', how='left')
-                    df_na.rename(columns={col_ven_base: 'VENDEDOR'}, inplace=True)
+                if df_coords.empty:
+                    st.info("Nenhuma coordenada válida encontrada na BASE para exibir no mapa.")
                 else:
-                    df_na = pd.DataFrame(columns=['LON', 'LAT', 'STATUS', 'CLIENTE', 'VENDEDOR'])
+                    # ✅ AGENDA FILTRADA (mesma lógica de visão)
+                    df_ag_m = df_agenda.copy()
 
-                # ✅ padroniza colunas e concatena
-                df_ag_plot = df_ag_m[['LON', 'LAT', 'STATUS', 'CLIENTE', 'VENDEDOR']].copy() if not df_ag_m.empty else pd.DataFrame(columns=['LON','LAT','STATUS','CLIENTE','VENDEDOR'])
-                df_na_plot = df_na[['LON', 'LAT', 'STATUS', 'CLIENTE', 'VENDEDOR']].copy() if not df_na.empty else pd.DataFrame(columns=['LON','LAT','STATUS','CLIENTE','VENDEDOR'])
+                    if 'CÓDIGO CLIENTE' in df_ag_m.columns:
+                        df_ag_m['CÓDIGO CLIENTE'] = df_ag_m['CÓDIGO CLIENTE'].astype(str).str.strip()
+                    else:
+                        df_ag_m['CÓDIGO CLIENTE'] = ""
 
-                df_map = pd.concat([df_ag_plot, df_na_plot], ignore_index=True)
-                df_map = df_map.dropna(subset=['LAT', 'LON']).copy()
+                    if 'VENDEDOR' in df_ag_m.columns:
+                        df_ag_m['VENDEDOR'] = df_ag_m['VENDEDOR'].astype(str)
+                    else:
+                        df_ag_m['VENDEDOR'] = ""
 
-                if df_map.empty:
-                    st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
-                else:
-                    for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
-                        if c in df_map.columns:
-                            df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
+                    if is_analista:
+                        df_ag_m = df_ag_m[df_ag_m['ANALISTA'].astype(str).str.upper() == user_atual.upper()]
+                    elif is_supervisor:
+                        df_ag_m = df_ag_m[df_ag_m['SUPERVISOR'].astype(str).str.upper() == user_atual.upper()]
+                    # admin/diretoria vê tudo
 
+                    if ven_sel != "Selecione...":
+                        df_ag_m = df_ag_m[df_ag_m['VENDEDOR'].astype(str).str.upper() == str(ven_sel).upper()]
+
+                    df_ag_m = df_ag_m[df_ag_m['STATUS'].isin(['Planejado', 'Realizado', 'Pendente'])].copy()
+
+                    # ✅ Mapeia "STATUS" por cliente (se existir agendamento)
+                    # prioridade: Realizado > Planejado/Pendente
+                    status_por_cliente = {}
+                    for _, r in df_ag_m.iterrows():
+                        cod = str(r.get('CÓDIGO CLIENTE', '')).strip()
+                        stt = str(r.get('STATUS', '')).strip().upper()
+                        if not cod:
+                            continue
+                        if cod not in status_por_cliente:
+                            status_por_cliente[cod] = stt
+                        else:
+                            if status_por_cliente[cod] != "REALIZADO" and stt == "REALIZADO":
+                                status_por_cliente[cod] = "REALIZADO"
+
+                    # ✅ MONTA DF DO MAPA A PARTIR DA BASE (mais robusto)
+                    df_map = df_coords[['Cliente', 'LAT', 'LON', col_ven_base]].copy()
+                    df_map.rename(columns={'Cliente': 'COD_CLIENTE', col_ven_base: 'VENDEDOR'}, inplace=True)
+
+                    def _status_base(cod):
+                        cod = str(cod).strip()
+                        if cod in status_por_cliente:
+                            return status_por_cliente[cod]
+                        return "NAO_AGENDADO"
+
+                    df_map['STATUS'] = df_map['COD_CLIENTE'].apply(_status_base)
+
+                    # TOOLTIP
+                    df_map['TOOLTIP'] = df_map.apply(
+                        lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('COD_CLIENTE','')} | Status: {r.get('STATUS','')}",
+                        axis=1
+                    )
+
+                    # CORES
                     def _cor_pino(s):
                         s = str(s).strip().upper()
                         if s == "REALIZADO":
@@ -1639,11 +1630,7 @@ elif menu == "📋 Novo Agendamento":
                     df_map['COR_PINO'] = df_map['STATUS'].apply(_cor_pino)
                     df_map['COR_RAIO'] = [[160, 160, 160, 70]] * len(df_map)
 
-                    df_map['TOOLTIP'] = df_map.apply(
-                        lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
-                        axis=1
-                    )
-
+                    # ÍCONES
                     icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
                     icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
                     icone_amarelo  = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png"
@@ -1660,13 +1647,16 @@ elif menu == "📋 Novo Agendamento":
 
                     df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
+                    # DADOS PARA O MAPA
                     dados_mapa = df_map[['LON', 'LAT', 'COR_PINO', 'COR_RAIO', 'ICON', 'TOOLTIP']].to_dict(orient="records")
 
+                    # CENTRO
                     lat_center = float(df_map['LAT'].mean())
                     lon_center = float(df_map['LON'].mean())
 
                     import pydeck as pdk
 
+                    # CÍRCULO 1 KM
                     layer_raio = pdk.Layer(
                         "CircleLayer",
                         data=dados_mapa,
@@ -1681,6 +1671,7 @@ elif menu == "📋 Novo Agendamento":
                         pickable=False,
                     )
 
+                    # PINOS
                     layer_pinos = pdk.Layer(
                         "IconLayer",
                         data=dados_mapa,
@@ -1715,6 +1706,7 @@ elif menu == "📋 Novo Agendamento":
 
         except Exception as e:
             st.warning(f"Não foi possível renderizar o mapa: {e}")
+
 
 
             lista_c = sorted(clientes_pendentes_ag.apply(lambda x: f"{x['Cliente']} - {x['Nome 1']}", axis=1).tolist())
