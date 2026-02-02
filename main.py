@@ -1568,6 +1568,234 @@ elif menu == "📋 Novo Agendamento":
                             time.sleep(2)
                             st.rerun()
 
+        # ============================
+        # 🗺️ MAPA (FIXO - BASE + AGENDADOS) - EMBAIXO DE TUDO
+        # ============================
+        st.markdown("---")
+        st.markdown("### 🗺️ Visão Geográfica (Agendados x Não Agendados)")
+
+        try:
+            if df_base is not None and ("COORDENADAS" in df_base.columns):
+
+                # 🔧 BASE VISÍVEL (respeita filtros de analista/supervisor/admin e seleção de vendedor)
+                df_base_vis = df_base.copy()
+                df_base_vis['Cliente'] = df_base_vis['Cliente'].astype(str).str.strip()
+                if 'VENDEDOR' in df_base_vis.columns:
+                    df_base_vis['VENDEDOR'] = df_base_vis['VENDEDOR'].astype(str)
+
+                # ✅ respeita cascata (admin/diretoria)
+                if (is_admin or is_diretoria):
+                    if 'ana_sel' in locals() and ana_sel != "Todos" and col_ana_base in df_base_vis.columns:
+                        df_base_vis = df_base_vis[df_base_vis[col_ana_base] == ana_sel]
+                    if 'sup_sel' in locals() and sup_sel != "Todos" and col_sup_base in df_base_vis.columns:
+                        df_base_vis = df_base_vis[df_base_vis[col_sup_base] == sup_sel]
+
+                # ✅ respeita cascata (analista)
+                if is_analista:
+                    if col_ana_base in df_base_vis.columns:
+                        df_base_vis = df_base_vis[df_base_vis[col_ana_base].astype(str).str.upper() == user_atual.upper()]
+                    if 'sup_sel' in locals() and sup_sel != "Todos" and col_sup_base in df_base_vis.columns:
+                        df_base_vis = df_base_vis[df_base_vis[col_sup_base] == sup_sel]
+
+                # ✅ respeita supervisor (só equipe)
+                if (not (is_admin or is_diretoria) and not is_analista) and any(df_base_vis[col_sup_base].astype(str).str.upper() == user_atual.upper()):
+                    df_base_vis = df_base_vis[df_base_vis[col_sup_base].astype(str).str.upper() == user_atual.upper()]
+
+                # ✅ vendedor (só própria base)
+                if (not (is_admin or is_diretoria) and not is_analista) and (not any(df_base[col_sup_base].str.upper() == user_atual)):
+                    if 'VENDEDOR' in df_base_vis.columns:
+                        df_base_vis = df_base_vis[df_base_vis['VENDEDOR'].astype(str).str.upper() == user_atual.upper()]
+
+                # ✅ se escolher vendedor, filtra só ele (senão fica geral)
+                if 'ven_sel' in locals() and ven_sel != "Selecione..." and 'VENDEDOR' in df_base_vis.columns:
+                    df_base_vis = df_base_vis[df_base_vis['VENDEDOR'].astype(str).str.upper() == ven_sel.upper()]
+
+                if df_base_vis.empty:
+                    st.info("Nenhum cliente na BASE para o filtro atual.")
+                else:
+                    # 🔧 COORDENADAS DA BASE (fonte principal do mapa)
+                    df_coords = df_base_vis[['Cliente', 'COORDENADAS']].drop_duplicates(subset='Cliente').copy()
+                    df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
+                    df_coords['Cliente'] = df_coords['Cliente'].astype(str).str.strip()
+
+                    # 🔧 Agenda (para marcar agendado/realizado) - respeita mesmos filtros
+                    df_ag_tmp = df_agenda.copy()
+
+                    if 'CÓDIGO CLIENTE' in df_ag_tmp.columns:
+                        df_ag_tmp['CÓDIGO CLIENTE'] = df_ag_tmp['CÓDIGO CLIENTE'].astype(str).str.strip()
+                    if 'VENDEDOR' in df_ag_tmp.columns:
+                        df_ag_tmp['VENDEDOR'] = df_ag_tmp['VENDEDOR'].astype(str)
+
+                    # limita a visão pelos filtros da base visível (evita puxar cliente fora da base visível)
+                    codigos_base_vis = set(df_coords['Cliente'].dropna().astype(str).str.strip().unique().tolist())
+                    if 'CÓDIGO CLIENTE' in df_ag_tmp.columns:
+                        df_ag_tmp = df_ag_tmp[df_ag_tmp['CÓDIGO CLIENTE'].astype(str).str.strip().isin(codigos_base_vis)]
+
+                    # ✅ se escolher vendedor, filtra agenda também
+                    if 'ven_sel' in locals() and ven_sel != "Selecione..." and 'VENDEDOR' in df_ag_tmp.columns:
+                        df_ag_tmp = df_ag_tmp[df_ag_tmp['VENDEDOR'].astype(str).str.upper() == ven_sel.upper()]
+
+                    # considera agendado o que existe na agenda
+                    df_ag_tmp = df_ag_tmp[df_ag_tmp['STATUS'].isin(['Planejado', 'Realizado', 'Pendente'])].copy()
+
+                    codigos_agendados = set(
+                        df_ag_tmp['CÓDIGO CLIENTE'].dropna().astype(str).str.strip().unique().tolist()
+                    )
+
+                    # 🔧 monta DF do mapa sempre pela BASE
+                    df_map = df_coords.copy().rename(columns={'Cliente': 'CÓDIGO CLIENTE'})
+                    df_map['CÓDIGO CLIENTE'] = df_map['CÓDIGO CLIENTE'].astype(str).str.strip()
+
+                    # Nome do cliente (se existir Nome 1)
+                    if 'Nome 1' in df_base_vis.columns:
+                        df_nome = df_base_vis[['Cliente', 'Nome 1']].drop_duplicates(subset='Cliente').copy()
+                        df_nome['Cliente'] = df_nome['Cliente'].astype(str).str.strip()
+                        df_map = df_map.merge(df_nome, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
+                        df_map['CLIENTE_NOME'] = df_map['Nome 1'].astype(str).replace(["nan", "None"], "").fillna("")
+                    else:
+                        df_map['CLIENTE_NOME'] = ""
+
+                    # Vendedor no tooltip (se existir)
+                    if 'VENDEDOR' in df_base_vis.columns:
+                        df_vend = df_base_vis[['Cliente', 'VENDEDOR']].drop_duplicates(subset='Cliente').copy()
+                        df_vend['Cliente'] = df_vend['Cliente'].astype(str).str.strip()
+                        df_map = df_map.merge(df_vend, left_on='CÓDIGO CLIENTE', right_on='Cliente', how='left')
+                        df_map['VENDEDOR'] = df_map['VENDEDOR'].astype(str).replace(["nan", "None"], "").fillna("")
+                    else:
+                        df_map['VENDEDOR'] = ""
+
+                    # status padrão: não agendado (amarelo) / agendado (vermelho)
+                    df_map['STATUS'] = df_map['CÓDIGO CLIENTE'].apply(lambda c: "NAO_AGENDADO" if c not in codigos_agendados else "AGENDADO")
+
+                    # se conseguir puxar o último status (realizado vs outros), aplica por código
+                    if not df_ag_tmp.empty and 'CÓDIGO CLIENTE' in df_ag_tmp.columns:
+                        df_last = df_ag_tmp.copy()
+                        if 'REGISTRO' in df_last.columns:
+                            df_last['REGISTRO_DT'] = pd.to_datetime(df_last['REGISTRO'], dayfirst=True, errors='coerce')
+                            df_last = df_last.sort_values('REGISTRO_DT')
+                        df_last = df_last.drop_duplicates(subset='CÓDIGO CLIENTE', keep='last')[['CÓDIGO CLIENTE', 'STATUS']]
+                        df_map = df_map.merge(df_last, on='CÓDIGO CLIENTE', how='left', suffixes=("", "_AG"))
+                        df_map['STATUS'] = df_map['STATUS_AG'].fillna(df_map['STATUS'])
+                        df_map.drop(columns=['STATUS_AG'], inplace=True, errors='ignore')
+
+                    # --- EXTRAI LAT / LON DA BASE ---
+                    def _parse_coord(x):
+                        try:
+                            if isinstance(x, str) and ',' in x:
+                                lat, lon = x.split(',', 1)
+                                return float(lat.strip()), float(lon.strip())
+                        except:
+                            pass
+                        return None, None
+
+                    df_map['LAT'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
+                    df_map['LON'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
+
+                    # Remove sem coordenadas válidas
+                    df_map = df_map.dropna(subset=['LAT', 'LON']).copy()
+
+                    if df_map.empty:
+                        st.info("Nenhuma coordenada válida encontrada na BASE para exibir no mapa.")
+                    else:
+                        # --- CORES ---
+                        def _cor_por_status(s):
+                            s = str(s).strip().upper()
+                            if s == "REALIZADO":
+                                return [0, 160, 0, 255]       # verde
+                            if s == "NAO_AGENDADO":
+                                return [230, 180, 0, 255]     # amarelo
+                            return [200, 0, 0, 255]          # vermelho (Planejado/Pendente/Agendado)
+
+                        df_map['COR_PINO'] = df_map['STATUS'].apply(_cor_por_status)
+
+                        # Círculo 1km (cinza)
+                        df_map['COR_RAIO'] = [[160, 160, 160, 70]] * len(df_map)
+
+                        # --- TOOLTIP ---
+                        df_map['TOOLTIP'] = df_map.apply(
+                            lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE_NOME','')} | Código: {r.get('CÓDIGO CLIENTE','')} | Status: {r.get('STATUS','')}",
+                            axis=1
+                        )
+
+                        # --- ÍCONES ---
+                        icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                        icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+                        icone_amarelo  = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png"
+
+                        def _icon_por_status(s):
+                            s = str(s).strip().upper()
+                            if s == "REALIZADO":
+                                url = icone_verde
+                            elif s == "NAO_AGENDADO":
+                                url = icone_amarelo
+                            else:
+                                url = icone_vermelho
+                            return {"url": url, "width": 25, "height": 41, "anchorY": 41}
+
+                        df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
+
+                        # --- DADOS PARA O MAPA ---
+                        dados_mapa = df_map[['LON', 'LAT', 'COR_PINO', 'COR_RAIO', 'ICON', 'TOOLTIP']].to_dict(orient="records")
+
+                        # --- CENTRO ---
+                        lat_center = float(df_map['LAT'].mean())
+                        lon_center = float(df_map['LON'].mean())
+
+                        import pydeck as pdk
+
+                        # --- CÍRCULO 1 KM ---
+                        layer_raio = pdk.Layer(
+                            "CircleLayer",
+                            data=dados_mapa,
+                            get_position='[LON, LAT]',
+                            get_radius=1000,
+                            radius_units='meters',
+                            get_fill_color="COR_RAIO",
+                            get_line_color=[120, 120, 120, 180],
+                            line_width_min_pixels=2,
+                            filled=True,
+                            stroked=True,
+                            pickable=False,
+                        )
+
+                        # --- PINOS ---
+                        layer_pinos = pdk.Layer(
+                            "IconLayer",
+                            data=dados_mapa,
+                            get_position='[LON, LAT]',
+                            get_icon="ICON",
+                            get_size=4,
+                            size_scale=10,
+                            pickable=True,
+                        )
+
+                        view_state = pdk.ViewState(
+                            latitude=lat_center,
+                            longitude=lon_center,
+                            zoom=11,
+                            pitch=0
+                        )
+
+                        tooltip = {"text": "{TOOLTIP}"}
+
+                        st.pydeck_chart(
+                            pdk.Deck(
+                                layers=[layer_raio, layer_pinos],
+                                initial_view_state=view_state,
+                                tooltip=tooltip,
+                                # ✅ estilo público (não precisa token) -> não fica cinza/branco
+                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                            ),
+                            use_container_width=True
+                        )
+
+            else:
+                st.info("Coluna COORDENADAS não encontrada na BASE.")
+
+        except Exception as e:
+            st.warning(f"Não foi possível renderizar o mapa: {e}")
+
+
 
 # --- PÁGINA: VER/EDITAR ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
