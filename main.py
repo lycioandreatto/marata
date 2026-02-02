@@ -2894,59 +2894,51 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         df_final.to_excel(writer, index=False, sheet_name="Dashboard")
-    st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
+        st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
 
-if menu_interna == "📊 ACOMP. DIÁRIO":
-    if st.button("📧 Enviar Excel por Vendedor", key="btn_email_excel_vendedor"):
-        # ... envio aqui ...
+    if st.button("📧 Enviar Excel por Vendedor"):
 
+        import smtplib
+        email_origem = st.secrets["email"]["sender_email"]
+        senha_origem = st.secrets["email"]["sender_password"]
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
 
-    import smtplib
-    email_origem = st.secrets["email"]["sender_email"]
-    senha_origem = st.secrets["email"]["sender_password"]
-    smtp_server = st.secrets["email"]["smtp_server"]
-    smtp_port = st.secrets["email"]["smtp_port"]
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(email_origem, senha_origem)
 
-    server = smtplib.SMTP(smtp_server, smtp_port)
-    server.starttls()
-    server.login(email_origem, senha_origem)
+        vendedores = df_f['VENDEDOR_NOME'].dropna().unique()
 
-    vendedores = df_f['VENDEDOR_NOME'].dropna().unique()
+        for vendedor in vendedores:
+            vendedor_up = str(vendedor).strip().upper()
 
-    for vendedor in vendedores:
-        vendedor_up = str(vendedor).strip().upper()
+            email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
 
-        email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
+            # Se não achou e-mail cadastrado, você decide:
+            if not email_destino:
+                st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
+                continue
 
-        # Se não achou e-mail cadastrado, você decide:
-        if not email_destino:
-            st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
-            continue
+            # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
+            if isinstance(email_destino, list):
+                email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
+            else:
+                email_destino_str = str(email_destino).strip()
 
-        # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
-        if isinstance(email_destino, list):
-            email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
-        else:
-            email_destino_str = str(email_destino).strip()
+            df_vendedor = df_final.copy()
 
-        df_vendedor = df_final.copy()
+            enviar_excel_vendedor(
+                server=server,
+                email_origem=email_origem,
+                email_destino=email_destino_str,
+                nome_vendedor=vendedor,
+                df_excel=df_vendedor
+            )
 
-        enviar_excel_vendedor(
-            server=server,
-            email_origem=email_origem,
-            email_destino=email_destino_str,
-            nome_vendedor=vendedor,
-            df_excel=df_vendedor
-        )
-
-    server.quit()
-    st.success("📨 E-mails enviados com sucesso!")
-
-
-
-
-
+        server.quit()
+        st.success("📨 E-mails enviados com sucesso!")
 
 
 
