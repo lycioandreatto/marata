@@ -13,9 +13,9 @@ import os
 import math
 from streamlit_cookies_manager import EncryptedCookieManager
 
+from email.message import EmailMessage
 import io
 import pandas as pd
-from email.message import EmailMessage
 
 def enviar_excel_vendedor(
     server,
@@ -27,8 +27,18 @@ def enviar_excel_vendedor(
     # 🔹 Gera Excel em memória
     output = io.BytesIO()
 
+    # ✅ Trabalha numa cópia pra não mexer no df original do app
+    df_export = df_excel.copy()
+
+    # ✅ AJUSTE SÓ PARA O EXCEL:
+    # Essas duas colunas no app estão em 0–100 (ex: 21.86),
+    # mas no Excel com formato % precisa estar 0–1 (ex: 0.2186)
+    for col in ['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)']:
+        if col in df_export.columns:
+            df_export[col] = pd.to_numeric(df_export[col], errors='coerce').fillna(0) / 100
+
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df_excel.to_excel(writer, index=False, sheet_name="Relatório")
+        df_export.to_excel(writer, index=False, sheet_name="Relatório")
 
         workbook  = writer.book
         worksheet = writer.sheets["Relatório"]
@@ -36,18 +46,20 @@ def enviar_excel_vendedor(
         # ✅ Formato de porcentagem
         formato_pct = workbook.add_format({'num_format': '0.00%'})
 
+        # Colunas que devem aparecer como %
         colunas_pct = [
             "META COBERTURA",
             "ATINGIMENTO % (VOL 2025)",
             "ATINGIMENTO % (VOL 2026)"
         ]
 
+        # Aplica o formato % nessas colunas
         for col in colunas_pct:
-            if col in df_excel.columns:
-                col_idx = df_excel.columns.get_loc(col)
+            if col in df_export.columns:
+                col_idx = df_export.columns.get_loc(col)
                 worksheet.set_column(col_idx, col_idx, 20, formato_pct)
 
-        # (opcional, mas recomendado)
+        # (opcional)
         worksheet.freeze_panes(1, 0)  # congela cabeçalho
 
     output.seek(0)
