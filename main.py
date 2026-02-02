@@ -1177,8 +1177,6 @@ if menu == "📅 Agendamentos do Dia":
                         time.sleep(1)
                         st.rerun()
 
-
-
             # ============================
             # 🗺️ MAPA (AO FINAL)
             # ============================
@@ -1353,10 +1351,56 @@ if menu == "📅 Agendamentos do Dia":
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
 
+            # --- BOTÃO ROTA FINALIZADA (SÓ PARA VENDEDOR) ---
+            st.markdown("---")
+            if is_vendedor:
+                if st.button("🚩 FINALIZAR ROTA E ENVIAR RESUMO", use_container_width=True, type="primary"):
+                    try:
+                        analista_encontrado = (
+                            df_base[df_base["VENDEDOR"].str.upper() == user_atual.upper()]["ANALISTA"]
+                            .iloc[0]
+                            .upper()
+                            .strip()
+                        )
+                    except:
+                        analista_encontrado = "NÃO LOCALIZADO"
+
+                    lista_final = EMAILS_GESTAO.copy()
+                    if analista_encontrado in MAPA_EMAILS:
+                        lista_final.extend(MAPA_EMAILS[analista_encontrado])
+                    string_destinatarios = ", ".join(lista_final)
+
+                    resumo_dados = {
+                        "total": len(df_dia),
+                        "realizados": len(df_dia[df_dia["STATUS"] == "Realizado"]),
+                        "pedidos": len(df_dia[df_dia["JUSTIFICATIVA"] == "Visita produtiva com pedido"]),
+                        "pendentes": len(df_dia[df_dia["STATUS"] != "Realizado"]),
+                    }
+                    taxa_conversao = (resumo_dados["pedidos"] / resumo_dados["realizados"] * 100) if resumo_dados["realizados"] > 0 else 0
+                    hora_finalizacao = datetime.now(fuso_br).strftime("%H:%M:%S")
+                    link_mapas = f"https://www.google.com/maps?q={st.session_state.get('lat', 0)},{st.session_state.get('lon', 0)}"
+
+                    with st.spinner("Enviando resumo..."):
+                        sucesso = enviar_resumo_rota(
+                            destinatarios_lista=string_destinatarios,
+                            vendedor=user_atual,
+                            dados_resumo=resumo_dados,
+                            nome_analista=analista_encontrado,
+                            taxa=taxa_conversao,
+                            hora=hora_finalizacao,
+                            link=link_mapas,
+                        )
+                    if sucesso:
+                        st.success("✅ Rota finalizada e resumo enviado!")
+                        # st.balloons()
+                    else:
+                        st.error("Falha ao enviar e-mail.")
+
         else:
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
 
 
