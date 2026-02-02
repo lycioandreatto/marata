@@ -1958,19 +1958,27 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         except:
             return str(v)
 
-    # ✅ (NOVO - MÍNIMO) normaliza a coluna Cliente (coluna K) para não bugar o nunique da positivação
+    # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) SEM PERDER 1 CLIENTE:
+    # - NÃO transforma NaN em "nan"
+    # - NÃO zera/descarta valores como "0" (porque pode existir cliente "0"/outra exceção)
+    # - só faz strip e remove ".0" quando for valor válido (não nulo)
     def _norm_cliente(df, col):
         if df is None or df.empty or col not in df.columns:
             return df
-        # garante string, tira espaços e remove ".0"
-        df[col] = (
-            df[col]
+
+        s = df[col]
+
+        mask = s.notna()
+        s2 = s.copy()
+
+        s2.loc[mask] = (
+            s.loc[mask]
             .astype(str)
             .str.strip()
             .str.replace(r"\.0$", "", regex=True)
         )
-        # trata vazios e "0" como nulos (não contam como cliente)
-        df[col] = df[col].replace({"": np.nan, "0": np.nan, "nan": np.nan, "None": np.nan})
+
+        df[col] = s2
         return df
 
     try:
@@ -2015,7 +2023,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
             df_faturado["VENDEDOR_COD"] = df_faturado["VENDEDOR_COD"].astype(str).str.replace(r"\.0$", "", regex=True)
 
-            # ✅ (NOVO - MÍNIMO) normaliza Cliente (coluna K) para contar positivação corretamente
+            # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) sem perder 1 cliente
             df_faturado = _norm_cliente(df_faturado, col_cod_cliente)
 
             df_relacao = df_base[["VENDEDOR","SUPERVISOR","ANALISTA"]].drop_duplicates("VENDEDOR")
@@ -2069,7 +2077,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ============================
     df_f = df_faturado.copy()
 
-    # ✅ (NOVO - MÍNIMO) garante novamente Cliente normalizado após merge/cópia (evita bug de nunique)
+    # ✅ (AJUSTE MÍNIMO) garante novamente Cliente normalizado após merge/cópia
     df_f = _norm_cliente(df_f, col_cod_cliente)
 
     # ============================
@@ -2667,6 +2675,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 
