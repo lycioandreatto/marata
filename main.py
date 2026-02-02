@@ -23,46 +23,8 @@ def enviar_excel_vendedor(
     email_origem,
     email_destino,
     nome_vendedor,
-    df_excel=None,
-    # ✅ NOVO (opcional): se você já tiver o arquivo pronto (bytes) com Dashboard+Resumo
-    df_excel_bytes=None,
-    # ✅ NOVO (opcional): DataFrames para montar a aba "Resumo" aqui dentro, sem precisar mudar o resto do app
-    df_resumo=None,
-    df_top_pend=None,
-    df_top_neg_25=None,
-    df_top_neg_26=None
+    df_excel
 ):
-    """
-    Compatível com o seu padrão atual:
-    - Se você chamar como antes (df_excel=...), funciona igual.
-    - Se você passar df_excel_bytes=..., envia o arquivo pronto (ignora df_excel).
-    - Se você passar df_resumo/top_... junto com df_excel, cria a aba "Resumo" adicional.
-    """
-
-    # ✅ 1) Se já veio o Excel pronto em bytes, só envia (não mexe em nada)
-    if df_excel_bytes is not None:
-        msg = EmailMessage()
-        msg["From"] = email_origem
-        msg["To"] = email_destino
-        msg["Subject"] = f"Relatório de Vendas – {nome_vendedor}"
-        msg.set_content(
-            f"Olá,\n\nSegue em anexo o relatório de vendas do vendedor {nome_vendedor}.\n\nAtenciosamente."
-        )
-
-        msg.add_attachment(
-            df_excel_bytes,
-            maintype="application",
-            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=f"Relatorio_{nome_vendedor}.xlsx"
-        )
-
-        server.send_message(msg)
-        return
-
-    # ✅ 2) Caso não venha bytes, segue seu fluxo normal gerando o Excel
-    if df_excel is None:
-        raise ValueError("Você precisa passar df_excel (DataFrame) ou df_excel_bytes (bytes do arquivo).")
-
     # 🔹 Gera Excel em memória
     output = io.BytesIO()
 
@@ -77,7 +39,6 @@ def enviar_excel_vendedor(
             df_export[col] = pd.to_numeric(df_export[col], errors='coerce').fillna(0) / 100
 
     # ✅ ORDEM FINAL + COLUNAS EM BRANCO (ESPAÇOS)
-    # Obs: colunas "EM BRANCO" serão criadas só no Excel
     ordem_colunas = [
         "HIERARQUIA DE PRODUTOS",
         "META COBERTURA",
@@ -105,8 +66,9 @@ def enviar_excel_vendedor(
     df_export = df_export[cols_existentes].copy()
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        # ✅ Começa a escrever a tabela a partir da linha 2 (row=2)
-        # porque vamos criar 2 linhas de cabeçalho (mescladas) acima
+        # =========================
+        # ABA 1: RELATÓRIO (tabela)
+        # =========================
         df_export.to_excel(writer, index=False, sheet_name="Relatório", startrow=2)
 
         workbook  = writer.book
@@ -115,9 +77,6 @@ def enviar_excel_vendedor(
         # =========================
         # FORMATOS
         # =========================
-        formato_pct = workbook.add_format({'num_format': '0.00%'})
-
-        # Cabeçalhos
         fmt_header_grp = workbook.add_format({
             'bold': True, 'align': 'center', 'valign': 'vcenter',
             'bg_color': '#F2F2F2', 'border': 1
@@ -126,23 +85,10 @@ def enviar_excel_vendedor(
             'bold': True, 'align': 'center', 'valign': 'vcenter',
             'bg_color': '#F7F7F7', 'border': 1
         })
-
-        # Células padrão com borda (linhas “divididas”)
-        fmt_cell = workbook.add_format({
-            'border': 1, 'valign': 'vcenter'
-        })
-
-        # Células padrão com borda + porcentagem
-        fmt_cell_pct = workbook.add_format({
-            'border': 1, 'valign': 'vcenter', 'num_format': '0.00%'
-        })
-
-        # Coluna em branco (sem borda) – para “espaço”
+        fmt_cell = workbook.add_format({'border': 1, 'valign': 'vcenter'})
+        fmt_cell_pct = workbook.add_format({'border': 1, 'valign': 'vcenter', 'num_format': '0.00%'})
         fmt_blank = workbook.add_format({})
 
-        # =========================
-        # MAPA DE ÍNDICES DAS COLUNAS NO EXCEL
-        # =========================
         col_names = list(df_export.columns)
         col_idx = {name: i for i, name in enumerate(col_names)}
 
@@ -179,38 +125,31 @@ def enviar_excel_vendedor(
             else:
                 worksheet.write(1, c, name, fmt_header_col)
 
-        # =========================
-        # “APAGA” A LINHA DE HEADER GERADA PELO PANDAS (LINHA 2)
-        # =========================
+        # “apaga” header do pandas (linha 2)
         for name in col_names:
             c = col_idx[name]
             worksheet.write(2, c, "", fmt_blank)
 
-        # =========================
-        # FORMATAÇÃO DAS COLUNAS (%)
-        # =========================
+        # colunas % no Excel
         colunas_pct = [
             "META COBERTURA",
             "ATINGIMENTO % (VOL 2025)",
             "ATINGIMENTO % (VOL 2026)",
         ]
 
-        # Ajuste de larguras (leve)
+        # largura
         for name in col_names:
             c = col_idx[name]
             if name == "HIERARQUIA DE PRODUTOS":
                 worksheet.set_column(c, c, 28)
             elif name in [" ", "  "]:
-                worksheet.set_column(c, c, 3)   # “espaço”
+                worksheet.set_column(c, c, 3)
             else:
                 worksheet.set_column(c, c, 18)
 
-        # =========================
-        # APLICA BORDAS EM TODAS AS CÉLULAS (EXCETO COLUNAS EM BRANCO)
-        # =========================
-        start_data_row = 3  # dados começam na linha 3 (por causa da linha 0 e 1, e linha 2 “apagada”)
+        # escreve dados com borda
+        start_data_row = 3
         n_rows = len(df_export)
-
         for r in range(n_rows):
             excel_r = start_data_row + r
             for name in col_names:
@@ -218,91 +157,138 @@ def enviar_excel_vendedor(
                 if name in [" ", "  "]:
                     worksheet.write(excel_r, c, "", fmt_blank)
                     continue
-
                 val = df_export.iloc[r, c]
-
                 if name in colunas_pct:
                     worksheet.write(excel_r, c, val, fmt_cell_pct)
                 else:
                     worksheet.write(excel_r, c, val, fmt_cell)
 
-        # =========================
-        # CONGELAR PAINEL
-        # =========================
         worksheet.freeze_panes(2, 0)
 
-        # ==========================================================
-        # ✅ NOVO: ABA "Resumo" (opcional)
-        # - só cria se df_resumo vier preenchido
-        # - mantém simples e robusto
-        # ==========================================================
-        if df_resumo is not None and isinstance(df_resumo, pd.DataFrame) and not df_resumo.empty:
-            ws_resumo = workbook.add_worksheet("Resumo")
-            writer.sheets["Resumo"] = ws_resumo
+        # =========================
+        # ✅ ABA 2: RESUMO (NOVA)
+        # =========================
+        ws = workbook.add_worksheet("Resumo")
+        writer.sheets["Resumo"] = ws
 
-            fmt_title = workbook.add_format({'bold': True, 'font_size': 12})
-            fmt_hdr = workbook.add_format({'bold': True, 'bg_color': '#F2F2F2', 'border': 1, 'align': 'center'})
-            fmt_cell_r = workbook.add_format({'border': 1})
-            fmt_cell_num = workbook.add_format({'border': 1, 'num_format': '#,##0'})
-            fmt_cell_pct2 = workbook.add_format({'border': 1, 'num_format': '0.00%'})
+        # Formatos Resumo
+        fmt_title = workbook.add_format({'bold': True, 'font_size': 14})
+        fmt_sub = workbook.add_format({'bold': True, 'font_size': 11})
+        fmt_hdr = workbook.add_format({'bold': True, 'bg_color': '#F2F2F2', 'border': 1, 'align': 'center'})
+        fmt_txt = workbook.add_format({'border': 1})
+        fmt_num = workbook.add_format({'border': 1, 'num_format': '#,##0'})
+        fmt_pct2 = workbook.add_format({'border': 1, 'num_format': '0.00%'})
+        fmt_neg = workbook.add_format({'border': 1, 'num_format': '#,##0', 'font_color': '#7A0000', 'bold': True})
 
-            # Helper para escrever DF com bordas
-            def _write_df(ws, df, start_row, start_col, pct_cols=None):
-                pct_cols = set(pct_cols or [])
-                # headers
-                for j, coln in enumerate(df.columns):
-                    ws.write(start_row, start_col + j, coln, fmt_hdr)
-                # rows
-                for i in range(len(df)):
-                    for j, coln in enumerate(df.columns):
-                        v = df.iloc[i, j]
-                        if coln in pct_cols:
-                            try:
-                                ws.write_number(start_row + 1 + i, start_col + j, float(v), fmt_cell_pct2)
-                            except:
-                                ws.write(start_row + 1 + i, start_col + j, v, fmt_cell_r)
+        ws.write(0, 0, f"Resumo — {nome_vendedor}", fmt_title)
+
+        # Helper: escreve tabelinha
+        def _write_table(start_row, start_col, title, df_tab, pct_cols=None, neg_cols=None):
+            pct_cols = set(pct_cols or [])
+            neg_cols = set(neg_cols or [])
+
+            ws.write(start_row, start_col, title, fmt_sub)
+            start_row += 1
+
+            if df_tab is None or df_tab.empty:
+                ws.write(start_row, start_col, "Sem dados.", fmt_txt)
+                return start_row + 2
+
+            # headers
+            for j, coln in enumerate(df_tab.columns):
+                ws.write(start_row, start_col + j, coln, fmt_hdr)
+
+            # rows
+            for i in range(len(df_tab)):
+                for j, coln in enumerate(df_tab.columns):
+                    v = df_tab.iloc[i, j]
+
+                    # % columns
+                    if coln in pct_cols:
+                        try:
+                            ws.write_number(start_row + 1 + i, start_col + j, float(v), fmt_pct2)
+                        except:
+                            ws.write(start_row + 1 + i, start_col + j, v, fmt_txt)
+                        continue
+
+                    # numeric columns
+                    try:
+                        fv = float(v)
+                        if coln in neg_cols and fv < 0:
+                            ws.write_number(start_row + 1 + i, start_col + j, fv, fmt_neg)
                         else:
-                            # número vs texto
-                            try:
-                                if isinstance(v, (int, float)) and not pd.isna(v):
-                                    ws.write_number(start_row + 1 + i, start_col + j, float(v), fmt_cell_num)
-                                else:
-                                    ws.write(start_row + 1 + i, start_col + j, v, fmt_cell_r)
-                            except:
-                                ws.write(start_row + 1 + i, start_col + j, v, fmt_cell_r)
+                            ws.write_number(start_row + 1 + i, start_col + j, fv, fmt_num)
+                    except:
+                        ws.write(start_row + 1 + i, start_col + j, v, fmt_txt)
 
-                # autosize leve
-                for j, coln in enumerate(df.columns):
-                    ws.set_column(start_col + j, start_col + j, max(14, min(35, len(str(coln)) + 6)))
+            # col widths (simples)
+            for j, coln in enumerate(df_tab.columns):
+                ws.set_column(start_col + j, start_col + j, max(14, min(34, len(str(coln)) + 8)))
 
-                return start_row + 1 + len(df)  # próxima linha após o df
+            return start_row + 1 + len(df_tab) + 2
 
-            # Título
-            ws_resumo.write(0, 0, f"Resumo — {nome_vendedor}", fmt_title)
+        # Monta DFs do resumo a partir do df_export (por hierarquia)
+        df_base_res = df_excel.copy()
 
-            # Resumo principal
-            next_row = 2
-            # Se tiver coluna Valor com percentuais, formatamos onde der
-            pct_cols = []
-            if "Métrica" in df_resumo.columns and "Valor" in df_resumo.columns:
-                # tenta converter a linha de "Atingimento Positivação (%)" e "Meta Positivação (%) (média)" se vierem em 0-1
-                # (se vierem como 0-100, quem monta o resumo deve passar já em 0-1)
-                pass
+        # garante numéricos
+        for c in ["PENDÊNCIA CLIENTES", "CRESCIMENTO 2025", "CRESCIMENTO 2026", "VOLUME", "META CLIENTES (ABS)"]:
+            if c in df_base_res.columns:
+                df_base_res[c] = pd.to_numeric(df_base_res[c], errors="coerce").fillna(0)
 
-            next_row = _write_df(ws_resumo, df_resumo, next_row, 0, pct_cols=set())
+        # KPIs simples
+        pend_total = float(df_base_res["PENDÊNCIA CLIENTES"].sum()) if "PENDÊNCIA CLIENTES" in df_base_res.columns else 0
+        qtd_neg_25 = int((df_base_res["CRESCIMENTO 2025"] < 0).sum()) if "CRESCIMENTO 2025" in df_base_res.columns else 0
+        qtd_neg_26 = int((df_base_res["CRESCIMENTO 2026"] < 0).sum()) if "CRESCIMENTO 2026" in df_base_res.columns else 0
 
-            # Bloco: Top pendências
-            def _safe_block(title, df_block, start_row):
-                if df_block is None or not isinstance(df_block, pd.DataFrame) or df_block.empty:
-                    return start_row
-                ws_resumo.write(start_row + 1, 0, title, fmt_title)
-                return _write_df(ws_resumo, df_block, start_row + 2, 0, pct_cols=set())
+        ws.write(2, 0, "Indicadores (por hierarquia)", fmt_sub)
+        ws.write(3, 0, "Pendência total (soma por item)", fmt_txt)
+        ws.write_number(3, 1, pend_total, fmt_num)
+        ws.write(4, 0, "Qtd de itens negativados (2025)", fmt_txt)
+        ws.write_number(4, 1, qtd_neg_25, fmt_num)
+        ws.write(5, 0, "Qtd de itens negativados (2026)", fmt_txt)
+        ws.write_number(5, 1, qtd_neg_26, fmt_num)
 
-            next_row = _safe_block("Top 10 — Maior Pendência de Clientes", df_top_pend, next_row + 1)
-            next_row = _safe_block("Top 10 — Mais Negativados (Crescimento 2025)", df_top_neg_25, next_row + 1)
-            next_row = _safe_block("Top 10 — Mais Negativados (Crescimento 2026)", df_top_neg_26, next_row + 1)
+        row = 7
 
-            ws_resumo.freeze_panes(1, 0)
+        # Top Pendência
+        if ("HIERARQUIA DE PRODUTOS" in df_base_res.columns) and ("PENDÊNCIA CLIENTES" in df_base_res.columns):
+            top_pend = (
+                df_base_res[["HIERARQUIA DE PRODUTOS", "PENDÊNCIA CLIENTES", "META CLIENTES (ABS)", "POSITIVAÇÃO"]]
+                .sort_values("PENDÊNCIA CLIENTES", ascending=False)
+                .head(10)
+                .copy()
+            )
+        else:
+            top_pend = pd.DataFrame()
+
+        row = _write_table(row, 0, "Top 10 — Maior Pendência de Clientes", top_pend)
+
+        # Top negativados 2025
+        if ("HIERARQUIA DE PRODUTOS" in df_base_res.columns) and ("CRESCIMENTO 2025" in df_base_res.columns):
+            neg_25 = (
+                df_base_res[["HIERARQUIA DE PRODUTOS", "CRESCIMENTO 2025", "VOLUME", "META 2025", "ATINGIMENTO % (VOL 2025)"]]
+                .copy()
+            )
+            # ATINGIMENTO pode estar 0-100 no df_excel, então não forço % aqui (só mostro como número)
+            neg_25 = neg_25.sort_values("CRESCIMENTO 2025", ascending=True).head(10)
+        else:
+            neg_25 = pd.DataFrame()
+
+        row = _write_table(row, 0, "Top 10 — Itens mais negativados (Crescimento 2025)", neg_25, neg_cols=["CRESCIMENTO 2025"])
+
+        # Top negativados 2026
+        if ("HIERARQUIA DE PRODUTOS" in df_base_res.columns) and ("CRESCIMENTO 2026" in df_base_res.columns):
+            neg_26 = (
+                df_base_res[["HIERARQUIA DE PRODUTOS", "CRESCIMENTO 2026", "VOLUME", "META 2026", "ATINGIMENTO % (VOL 2026)"]]
+                .copy()
+            )
+            neg_26 = neg_26.sort_values("CRESCIMENTO 2026", ascending=True).head(10)
+        else:
+            neg_26 = pd.DataFrame()
+
+        row = _write_table(row, 0, "Top 10 — Itens mais negativados (Crescimento 2026)", neg_26, neg_cols=["CRESCIMENTO 2026"])
+
+        ws.freeze_panes(2, 0)
 
     output.seek(0)
 
@@ -323,6 +309,7 @@ def enviar_excel_vendedor(
     )
 
     server.send_message(msg)
+
 
 
 
