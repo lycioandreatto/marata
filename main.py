@@ -2218,16 +2218,19 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ============================
     # ✅ CONTROLE DE ESTADO (Streamlit rerun)
     # ============================
-    # Guarda o df_final e a base de vendedores para o botão funcionar sempre
     if "df_final_acomp_diario" not in st.session_state:
         st.session_state["df_final_acomp_diario"] = None
 
     if "df_envio_acomp_diario" not in st.session_state:
         st.session_state["df_envio_acomp_diario"] = None
 
-    # ✅ (NOVO) Flag de envio: garante que o clique no botão não “perca” o df_final no rerun
     if "pedir_envio_excel_acomp_diario" not in st.session_state:
         st.session_state["pedir_envio_excel_acomp_diario"] = False
+
+    # ✅ BOTÃO: agora só dispara a FLAG e força rerun
+    if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
+        st.session_state["pedir_envio_excel_acomp_diario"] = True
+        st.rerun()
 
     # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
     def fmt_pt_int(v):
@@ -2236,7 +2239,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         except:
             return str(v)
 
-    # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) SEM PERDER 1 CLIENTE:
+    # ✅ Normaliza Cliente SEM PERDER cliente:
     def _norm_cliente(df, col):
         if df is None or df.empty or col not in df.columns:
             return df
@@ -2256,17 +2259,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         return df
 
     # ============================
-    # ✅ (NOVO) BOTÃO DE ENVIO (somente seta flag e força rerun)
-    # ============================
-    # Isso resolve: “Relatório (df_final) não foi gerado nesta execução...”
-    # porque o envio REAL só acontece lá embaixo, depois que df_final é criado e salvo no session_state.
-    if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
-        st.session_state["pedir_envio_excel_acomp_diario"] = True
-        st.rerun()
-
-    # ============================
-    # >>> SEU CÓDIGO EXISTENTE DA PÁGINA (tudo que você já tem)
-    #     (leitura FATURADO, merges, filtros, df_final, tabela, rankings, etc.)
+    # >>> PROCESSAMENTO / LEITURA
     # ============================
     try:
         # 1. Leitura das abas
@@ -2317,215 +2310,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 df_relacao, left_on="VENDEDOR_NOME", right_on="VENDEDOR", how="left"
             )
 
-        # ============================
-        # ✅ A PARTIR DAQUI É O RESTO DO SEU PROCESSAMENTO NORMAL
-        # (df_f, permissões, filtros, df_agrup, df_final, tabela, rankings...)
-        # ============================
-
-        # --- BASE PRINCIPAL (igual ao seu)
-        df_f = df_faturado.copy()
-        df_f = _norm_cliente(df_f, col_cod_cliente)
-
-        # >>>>>> AQUI fica TODO o resto do seu código atual, sem mudar nada <<<<<<
-        # (eu não repliquei tudo aqui porque é gigante, mas é exatamente o que você já tem)
-
-        # ============================
-        # ✅ GARANTA QUE df_final SEJA CRIADO (do jeito que você já faz)
-        # ============================
-        # Exemplo: (você já tem isso no seu código)
-        # df_final = ...
-        #
-        # >>>>>>> IMPORTANTE <<<<<<<
-        # Quando terminar de montar df_final, NÃO ESQUEÇA de renomear:
-        # df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
-        #
-        # e aí sim salvar no session_state (eu faço logo abaixo)
-
-    except Exception as e:
-        st.error(f"Erro no processamento: {e}")
-        st.stop()
-
-    # ============================
-    # ✅ SALVA BASES NO SESSION_STATE (isso é o que resolve o erro do botão)
-    # ============================
-    # df_final e df_f/df_faturado PRECISAM existir aqui.
-    # Se por algum motivo seu código criar df_final depois desse ponto, mova este bloco pra baixo.
-    try:
-        if "df_final" in locals() and df_final is not None and not df_final.empty:
-            st.session_state["df_final_acomp_diario"] = df_final.copy()
-        else:
-            st.session_state["df_final_acomp_diario"] = None
-
-        # Base para lista de vendedores
-        if "df_f" in locals() and df_f is not None and not df_f.empty:
-            st.session_state["df_envio_acomp_diario"] = df_f.copy()
-        elif "df_faturado" in locals() and df_faturado is not None and not df_faturado.empty:
-            st.session_state["df_envio_acomp_diario"] = df_faturado.copy()
-        else:
-            st.session_state["df_envio_acomp_diario"] = None
-    except:
-        st.session_state["df_final_acomp_diario"] = None
-        st.session_state["df_envio_acomp_diario"] = None
-
-    # ============================
-    # ✅ (NOVO) EXECUTOR DO ENVIO — AGORA RODA DEPOIS QUE df_final EXISTE
-    # ============================
-    if st.session_state.get("pedir_envio_excel_acomp_diario", False):
-        import smtplib
-
-        # ✅ trava a flag já no começo (evita enviar 2x em caso de erro)
-        st.session_state["pedir_envio_excel_acomp_diario"] = False
-
-        # ✅ pega SEMPRE do session_state (nunca de locals)
-        df_relatorio = st.session_state.get("df_final_acomp_diario")
-        df_envio = st.session_state.get("df_envio_acomp_diario")
-
-        if df_relatorio is None or df_relatorio.empty:
-            st.error("Relatório (df_final) não foi gerado nesta execução. Atualize a página e tente novamente.")
-            st.stop()
-
-        if df_envio is None or df_envio.empty:
-            st.error("Base de vendedores não carregada. Verifique a leitura/processamento do FATURADO.")
-            st.stop()
-
-        # ✅ garante coluna VENDEDOR_NOME
-        if "VENDEDOR_NOME" not in df_envio.columns:
-            if "Região de vendas" in df_envio.columns:
-                df_envio = df_envio.copy()
-                df_envio["VENDEDOR_NOME"] = df_envio["Região de vendas"]
-            else:
-                st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
-                st.stop()
-
-        vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
-        if len(vendedores) == 0:
-            st.warning("Não há vendedores disponíveis para envio (base filtrada ficou vazia).")
-            st.stop()
-
-        # ✅ Conecta no SMTP
-        email_origem = st.secrets["email"]["sender_email"]
-        senha_origem = st.secrets["email"]["sender_password"]
-        smtp_server = st.secrets["email"]["smtp_server"]
-        smtp_port = st.secrets["email"]["smtp_port"]
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(email_origem, senha_origem)
-
-        enviados = 0
-        pulados = 0
-
-        for vendedor in vendedores:
-            vendedor_up = str(vendedor).strip().upper()
-            email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
-
-            if not email_destino:
-                st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
-                pulados += 1
-                continue
-
-            if isinstance(email_destino, list):
-                email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
-            else:
-                email_destino_str = str(email_destino).strip()
-
-            # ✅ sua função já faz: ajuste % / formatação / anexo / envio
-            enviar_excel_vendedor(
-                server=server,
-                email_origem=email_origem,
-                email_destino=email_destino_str,
-                nome_vendedor=vendedor,
-                df_excel=df_relatorio
-            )
-            enviados += 1
-
-        server.quit()
-        st.success(f"📨 E-mails enviados com sucesso! Enviados: {enviados} | Pulados (sem e-mail): {pulados}")
-
-
-
-
-    # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
-    def fmt_pt_int(v):
-        try:
-            return f"{float(v):,.0f}".replace(",", ".")
-        except:
-            return str(v)
-
-    # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) SEM PERDER 1 CLIENTE:
-    # - NÃO transforma NaN em "nan"
-    # - NÃO zera/descarta valores como "0" (porque pode existir cliente "0"/outra exceção)
-    # - só faz strip e remove ".0" quando for valor válido (não nulo)
-    def _norm_cliente(df, col):
-        if df is None or df.empty or col not in df.columns:
-            return df
-
-        s = df[col]
-
-        mask = s.notna()
-        s2 = s.copy()
-
-        s2.loc[mask] = (
-            s.loc[mask]
-            .astype(str)
-            .str.strip()
-            .str.replace(r"\.0$", "", regex=True)
-        )
-
-        df[col] = s2
-        return df
-
-    try:
-        # 1. Leitura das abas
-        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
-        df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
-        df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
-        df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
-
-        lista_hierarquia_fixa = [
-            "ACHOCOLATADO","ACUCAR","ADOCANTE SACARINA","ADOCANTE SUCRALOSE","AZEITONA",
-            "BALSAMICO","BEBIDA MISTA","CALDOS TABLETE","CATCHUP","CEBOLINHA","COGUMELO",
-            "DESCARTAVEIS","ESPECIARIAS","FARINHA DE TRIGO FD","FARINHA DE TRIGO SC",
-            "FARINHA LACTEA","MACARRAO INSTANTANEO","MARATINHO","MILHO",
-            "MILHO FARINHA GOTA","MILHO FARINHA MARATA","MILHO FLOCAO GOTA",
-            "MILHO FLOCAO MARATA","MILHO PIPOCA","MINGAU","MISTURA BOLO",
-            "MOLHO PRONTO","MOLHOS ALHO","MOLHOS INGLES","MOLHOS LIMAO",
-            "MOLHOS PIMENTA","MOLHOS PIMENTA 75ML","MOLHOS SALSA","MOLHOS SHOYO",
-            "MOLHOS TEMPEROS CASEIROS","OLEAGINOSAS","PIMENTA CONSERVA",
-            "PIPOCA PRONTA","REFRESCO","SALGADINHOS FARDO","SALGADINHOS NACHOS",
-            "SALGADINHOS PASTEIS","SUCO D+ 1000ML","SUCO D+ 200ML",
-            "SUCO MARATA 1000ML","SUCO MARATA 200ML","TEMPERO COLORIFICO GOTA",
-            "TEMPERO COLORIFICO MARATA","TEMPERO CONDIMENTO GOTA",
-            "TEMPERO CONDIMENTO MARATA","TEMPERO EM PO","VINAGRE","VINAGRE ESPECIAL"
-        ]
-
-        if df_faturado is not None and not df_faturado.empty:
-            df_faturado = df_faturado.dropna(how="all")
-            df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
-
-            df_faturado.rename(columns={
-                "Região de vendas": "VENDEDOR_NOME",
-                "RG": "VENDEDOR_COD",
-                "Qtd Vendas (S/Dec)": "QTD_VENDAS",
-                "Hierarquia de produtos": "HIERARQUIA"
-            }, inplace=True)
-
-            # ✅ Cliente é a coluna K (índice 10) da aba FATURADO
-            col_cod_cliente = df_faturado.columns[11]
-
-            df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
-            df_faturado["VENDEDOR_COD"] = df_faturado["VENDEDOR_COD"].astype(str).str.replace(r"\.0$", "", regex=True)
-
-            # ✅ (AJUSTE MÍNIMO) normaliza Cliente (coluna K) sem perder 1 cliente
-            df_faturado = _norm_cliente(df_faturado, col_cod_cliente)
-
-            df_relacao = df_base[["VENDEDOR","SUPERVISOR","ANALISTA"]].drop_duplicates("VENDEDOR")
-            df_faturado = df_faturado.merge(
-                df_relacao, left_on="VENDEDOR_NOME", right_on="VENDEDOR", how="left"
-            )
-
-        # ✅ (NECESSÁRIO) Garantir base_total e META CLIENTES/PENDÊNCIA (usadas na tabela/cards)
+        # ✅ (NECESSÁRIO) PARAM_METAS
         if df_param_metas is not None:
             df_param_metas.columns = [str(c).strip() for c in df_param_metas.columns]
             if "BASE" in df_param_metas.columns:
@@ -2533,6 +2318,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             if "EscrV" in df_param_metas.columns:
                 df_param_metas["EscrV"] = df_param_metas["EscrV"].astype(str).str.strip()
 
+        # ✅ META COBXPOSIT
         if df_metas_cob is not None:
             df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
             if "RG" in df_metas_cob.columns:
@@ -2548,6 +2334,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             if "META" in df_metas_cob.columns:
                 df_metas_cob["META"] = pd.to_numeric(df_metas_cob["META"], errors="coerce").fillna(0)
 
+        # ✅ META SISTEMA
         if df_meta_sistema is not None:
             df_meta_sistema.columns = [str(c).strip() for c in df_meta_sistema.columns]
             if "RG" in df_meta_sistema.columns:
@@ -2555,6 +2342,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             if "QTD" in df_meta_sistema.columns:
                 df_meta_sistema["QTD"] = pd.to_numeric(df_meta_sistema["QTD"], errors="coerce").fillna(0)
 
+        # ✅ META 2025
         if df_2025 is not None:
             df_2025.columns = [str(c).strip() for c in df_2025.columns]
             if "RG" in df_2025.columns:
@@ -2571,7 +2359,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ============================
     df_f = df_faturado.copy()
 
-    # ✅ (AJUSTE MÍNIMO) garante novamente Cliente normalizado após merge/cópia
+    # ✅ garante Cliente normalizado após merge/cópia
     df_f = _norm_cliente(df_f, col_cod_cliente)
 
     # ============================
@@ -2579,22 +2367,17 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # ============================
     df_base_perm = df_base.copy()
 
-    # ✅ normaliza nomes na BASE (permissões)
     for c in ["VENDEDOR","SUPERVISOR","ANALISTA"]:
         if c in df_base_perm.columns:
             df_base_perm[c] = df_base_perm[c].astype(str).str.strip().str.upper()
 
-    # ✅ normaliza estado e analista na BASE (permissões) - prioridade EscrV, mas mantém Estado também
     if "EscrV" in df_base_perm.columns:
         df_base_perm["EscrV"] = df_base_perm["EscrV"].astype(str).str.strip().str.upper()
     if "Estado" in df_base_perm.columns:
         df_base_perm["Estado"] = df_base_perm["Estado"].astype(str).str.strip().str.upper()
-    if "ANALISTA" in df_base_perm.columns and "ANALISTA" not in ["ANALISTA","Analista"]:
-        pass
     if "ANALISTA" in df_base_perm.columns:
         df_base_perm["ANALISTA"] = df_base_perm["ANALISTA"].astype(str).str.strip().str.upper()
 
-    # ✅ normaliza também no FATURADO (df_f), pra não bugar filtro
     for c in ["VENDEDOR","SUPERVISOR","ANALISTA"]:
         if c in df_f.columns:
             df_f[c] = df_f[c].astype(str).str.strip().str.upper()
@@ -2608,49 +2391,39 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     user_atual = user_atual.strip().upper()
     vendedores_permitidos = None
 
-    # ✅ (AJUSTE) coluna de estado na BASE de permissão: agora prioriza EscrV; senão usa Estado
     col_estado_perm = "EscrV" if "EscrV" in df_base_perm.columns else ("Estado" if "Estado" in df_base_perm.columns else None)
 
-    # ✅ (AJUSTE) estados do usuário (AGORA vale para vendedor, supervisor E analista)
     estados_usuario = None
     if col_estado_perm and (is_vendedor or is_supervisor or is_analista):
         if is_vendedor and "VENDEDOR" in df_base_perm.columns:
             estados_usuario = df_base_perm.loc[df_base_perm["VENDEDOR"] == user_atual, col_estado_perm].dropna().unique().tolist()
         elif is_supervisor and "SUPERVISOR" in df_base_perm.columns:
             estados_usuario = df_base_perm.loc[df_base_perm["SUPERVISOR"] == user_atual, col_estado_perm].dropna().unique().tolist()
-        elif is_analista:
-            # ✅ pega estado(s) do analista na BASE (se tiver)
-            if "ANALISTA" in df_base_perm.columns:
-                estados_usuario = df_base_perm.loc[df_base_perm["ANALISTA"] == user_atual, col_estado_perm].dropna().unique().tolist()
+        elif is_analista and "ANALISTA" in df_base_perm.columns:
+            estados_usuario = df_base_perm.loc[df_base_perm["ANALISTA"] == user_atual, col_estado_perm].dropna().unique().tolist()
 
         if estados_usuario:
             estados_usuario = [str(x).strip().upper() for x in estados_usuario if str(x).strip()]
         else:
             estados_usuario = None
 
-    # ✅ (NOVO - MÍNIMO) pega o ANALISTA do vendedor pela BASE usando NOME (VENDEDOR)
     analista_usuario = None
     if is_vendedor and ("VENDEDOR" in df_base_perm.columns) and ("ANALISTA" in df_base_perm.columns):
         tmp_analista = df_base_perm.loc[df_base_perm["VENDEDOR"] == user_atual, "ANALISTA"].dropna().unique().tolist()
         if tmp_analista:
             analista_usuario = str(tmp_analista[0]).strip().upper()
-    # ✅ (NOVO - MÍNIMO) fallback: se não achou o analista na BASE, tenta achar no FATURADO (já mergeado)
+
     if is_vendedor and not analista_usuario:
         if ("VENDEDOR" in df_f.columns) and ("ANALISTA" in df_f.columns):
             tmp_a = df_f.loc[df_f["VENDEDOR"] == user_atual, "ANALISTA"].dropna().unique().tolist()
             if tmp_a:
                 analista_usuario = str(tmp_a[0]).strip().upper()
 
-    # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo;
-    # ✅ (AJUSTE) Analista agora filtra pelo ANALISTA + estado(s) dele(s) (evita ver outros estados)
-    # ✅ (AJUSTE) Supervisor continua no estado dele (e pode ver equipe do estado)
-    # ✅ (AJUSTE) Vendedor enxerga SOMENTE o que for do seu ANALISTA + estados dele (na BASE)
     if is_analista:
         if "ANALISTA" in df_f.columns:
             df_f = df_f[df_f["ANALISTA"] == user_atual]
 
         if col_estado_perm and estados_usuario:
-            # mantém só vendedores do(s) estado(s) do analista na BASE
             vendedores_permitidos = df_base_perm.loc[
                 (df_base_perm["ANALISTA"] == user_atual) & (df_base_perm[col_estado_perm].isin(estados_usuario)),
                 "VENDEDOR"
@@ -2671,13 +2444,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             ].dropna().unique().tolist()
 
     elif is_vendedor:
-        # ✅ (AJUSTE MÍNIMO) regra do vendedor = analista dele + estados dele (na BASE)
         if analista_usuario:
-            # 1) filtra df_f pelo analista do vendedor (garantia total)
             if "ANALISTA" in df_f.columns:
                 df_f = df_f[df_f["ANALISTA"] == analista_usuario]
 
-            # 2) estados do vendedor (se existirem na BASE) limitam o que ele enxerga
             if col_estado_perm and estados_usuario:
                 vendedores_permitidos = df_base_perm.loc[
                     (df_base_perm["ANALISTA"] == analista_usuario) &
@@ -2685,14 +2455,11 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                     "VENDEDOR"
                 ].dropna().unique().tolist()
 
-                # garante o df_f também só nesses estados (pelo EscrV do faturado)
                 if "EscrV" in df_f.columns:
                     df_f = df_f[df_f["EscrV"].isin(estados_usuario)]
             else:
-                # se não tiver estado definido pro vendedor na BASE, mais restrito possível: ele mesmo
                 vendedores_permitidos = [user_atual]
         else:
-            # fallback: mais restrito possível
             if col_estado_perm and estados_usuario:
                 vendedores_permitidos = df_base_perm.loc[
                     df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
@@ -2710,17 +2477,14 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.markdown("### 🔍 Filtros")
     c1, c2, c3 = st.columns(3)
 
-    # ✅ (AJUSTE) Estado no FATURADO é EscrV. Se não existir, cai para None.
     col_estado = "EscrV" if "EscrV" in df_f.columns else None
 
-    # ✅ garante que df_f fique somente no(s) estado(s) do usuário
     if col_estado and (is_vendedor or is_supervisor or is_analista) and estados_usuario:
         df_f[col_estado] = df_f[col_estado].astype(str).str.strip().str.upper()
         df_f = df_f[df_f[col_estado].isin(estados_usuario)]
 
     with c1:
         if col_estado:
-            # ✅ BLOQUEIO: vendedor/supervisor NÃO podem trocar estado (fica travado no(s) estado(s) permitido(s))
             if (is_vendedor or is_supervisor) and estados_usuario:
                 sel_estado = st.multiselect(
                     "Estado",
@@ -2728,7 +2492,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                     default=sorted(estados_usuario),
                     disabled=True
                 )
-            # ✅ analista continua podendo ver só o(s) dele(s), mas se quiser deixar editável pra analista, mantém como estava:
             elif is_analista and estados_usuario:
                 sel_estado = st.multiselect("Estado", sorted(estados_usuario), default=sorted(estados_usuario))
             else:
@@ -2752,7 +2515,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     vendedores_ids = df_f["VENDEDOR_COD"].unique()
 
     # ============================
-    # BASE TOTAL (NECESSÁRIA PARA CARDS/TABELA)
+    # BASE TOTAL
     # ============================
     base_total = 0
     if df_param_metas is not None and not df_param_metas.empty and col_estado:
@@ -2776,7 +2539,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         .reset_index()
     )
 
-    # Metas 2025/2026 por RG (se existirem)
     df_agrup_25 = (
         df_2025[df_2025["RG"].isin(vendedores_ids)]
         .groupby("HIERARQUIA DE PRODUTOS")["QUANTIDADE"]
@@ -2812,7 +2574,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final = df_final.merge(df_agrup_25, on="HIERARQUIA", how="left")
     df_final = df_final.merge(df_agrup_26, on="HIERARQUIA", how="left").fillna(0)
 
-    # ✅ colunas que seu layout usa
     df_final["META CLIENTES (ABS)"] = (df_final["META COBERTURA"] * base_total).apply(math.ceil) if base_total > 0 else 0
     df_final["PENDÊNCIA CLIENTES"] = (df_final["META CLIENTES (ABS)"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
     df_final["CRESCIMENTO 2025"] = df_final["VOLUME"] - df_final.get("META 2025", 0)
@@ -2823,23 +2584,91 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
     # ============================
-    # ✅ (NOVO) salva df_final/df_f no session_state *aqui também* (garantia total)
+    # ✅ AQUI É O PONTO CRÍTICO:
+    # salva SEMPRE o df_final/df_f no session_state (antes de qualquer envio)
     # ============================
-    # Isso garante que, quando você clicar no botão, o df_final já vai estar disponível no session_state.
     try:
         st.session_state["df_final_acomp_diario"] = df_final.copy() if (df_final is not None and not df_final.empty) else None
-        st.session_state["df_envio_acomp_diario"] = df_f.copy() if ("df_f" in locals() and df_f is not None and not df_f.empty) else (
-            df_faturado.copy() if ("df_faturado" in locals() and df_faturado is not None and not df_faturado.empty) else None
-        )
+        st.session_state["df_envio_acomp_diario"] = df_f.copy() if (df_f is not None and not df_f.empty) else None
     except:
         st.session_state["df_final_acomp_diario"] = None
         st.session_state["df_envio_acomp_diario"] = None
+
+    # ============================
+    # ✅ EXECUTOR DO ENVIO (RODA APÓS df_final EXISTIR)
+    # ============================
+    if st.session_state.get("pedir_envio_excel_acomp_diario", False):
+        import smtplib
+
+        # trava pra não repetir em rerun
+        st.session_state["pedir_envio_excel_acomp_diario"] = False
+
+        df_relatorio = st.session_state.get("df_final_acomp_diario")
+        df_envio = st.session_state.get("df_envio_acomp_diario")
+
+        if df_relatorio is None or df_relatorio.empty:
+            st.error("Relatório (df_final) não foi gerado nesta execução. Atualize a página (F5) e tente novamente.")
+            st.stop()
+
+        if df_envio is None or df_envio.empty:
+            st.error("Base de vendedores não carregada. Verifique a leitura/processamento do FATURADO.")
+            st.stop()
+
+        if "VENDEDOR_NOME" not in df_envio.columns:
+            if "Região de vendas" in df_envio.columns:
+                df_envio = df_envio.copy()
+                df_envio["VENDEDOR_NOME"] = df_envio["Região de vendas"]
+            else:
+                st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
+                st.stop()
+
+        vendedores = df_envio["VENDEDOR_NOME"].dropna().unique()
+        if len(vendedores) == 0:
+            st.warning("Não há vendedores disponíveis para envio (base filtrada ficou vazia).")
+            st.stop()
+
+        email_origem = st.secrets["email"]["sender_email"]
+        senha_origem = st.secrets["email"]["sender_password"]
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(email_origem, senha_origem)
+
+        enviados = 0
+        pulados = 0
+
+        for vendedor in vendedores:
+            vendedor_up = str(vendedor).strip().upper()
+            email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
+
+            if not email_destino:
+                st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
+                pulados += 1
+                continue
+
+            if isinstance(email_destino, list):
+                email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
+            else:
+                email_destino_str = str(email_destino).strip()
+
+            enviar_excel_vendedor(
+                server=server,
+                email_origem=email_origem,
+                email_destino=email_destino_str,
+                nome_vendedor=vendedor,
+                df_excel=df_relatorio
+            )
+            enviados += 1
+
+        server.quit()
+        st.success(f"📨 E-mails enviados com sucesso! Enviados: {enviados} | Pulados (sem e-mail): {pulados}")
 
     # --- UI: CARDS E TABELA ---
     st.markdown("---")
     col_res, col_cob, col_pos = st.columns([1.2, 1, 1])
 
-    # ✅ CARD 1 (MANTIDO): COBERTURA ATUAL (ajuste só visual do Base)
     with col_cob:
         real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
         st.markdown(
@@ -2853,10 +2682,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             unsafe_allow_html=True,
         )
 
-    # ✅ CARD 2 (NOVO): POSITIVAÇÃO (ajuste só visual do Positivados)
     with col_pos:
-        # ✅ regra: quando NÃO tem vendedor nem supervisor selecionado, exclui STR/SMX pela EqVs
-        # ✅ contagem SEMPRE é pela coluna Cliente (coluna K) da FATURADO (col_cod_cliente)
         if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
             positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
         else:
@@ -2933,14 +2759,11 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 "META CLIENTES (ABS)": lambda v: fmt_pt_int(v),
                 "POSITIVAÇÃO": lambda v: fmt_pt_int(v),
                 "PENDÊNCIA CLIENTES": lambda v: fmt_pt_int(v),
-
-                # ✅ AJUSTE VISUAL: essas estavam com vírgula
                 "META 2025": lambda v: fmt_pt_int(v),
                 "META 2026": lambda v: fmt_pt_int(v),
                 "VOLUME": lambda v: fmt_pt_int(v),
                 "CRESCIMENTO 2025": lambda v: fmt_pt_int(v),
                 "CRESCIMENTO 2026": lambda v: fmt_pt_int(v),
-
                 "ATINGIMENTO % (VOL 2025)": "{:.1f}%",
                 "ATINGIMENTO % (VOL 2026)": "{:.1f}%",
             }
@@ -2965,13 +2788,12 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     )
 
     # ============================
-    # ✅ ADIÇÕES (RANKINGS) — VOLUME (META 2025 e META 2026) + POSITIVAÇÃO
+    # ✅ ADIÇÕES (RANKINGS)
     # ============================
     try:
         st.markdown("---")
         st.markdown("## 📌 Quem está puxando pra cima e pra baixo")
 
-        # --- Base por vendedor (volume + positivação real)
         df_rank_real = (
             df_f.groupby(["VENDEDOR_COD", "VENDEDOR_NOME"])
             .agg(
@@ -2981,7 +2803,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             .reset_index()
         )
 
-        # --- Metas por vendedor (2025/2026) somadas por RG
         df_meta_v25 = (
             df_2025[df_2025["RG"].isin(vendedores_ids)]
             .groupby("RG")["QUANTIDADE"].sum()
@@ -3000,7 +2821,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             else pd.DataFrame(columns=["VENDEDOR_COD", "META_TOTAL_2026"])
         )
 
-        # --- Meta de positivação por vendedor (RG, BASE, META)
         df_pos_meta = (
             df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)]
             .drop_duplicates("RG")
@@ -3020,7 +2840,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         else:
             df_pos_meta = pd.DataFrame(columns=["VENDEDOR_COD", "META_ABS_POSIT"])
 
-        # --- Junta tudo
         df_rank = df_rank_real.merge(df_meta_v25, on="VENDEDOR_COD", how="left")
         df_rank = df_rank.merge(df_meta_v26, on="VENDEDOR_COD", how="left")
         df_rank = df_rank.merge(
@@ -3030,14 +2849,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         )
         df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]] = df_rank[["META_TOTAL_2025", "META_TOTAL_2026", "META_ABS_POSIT"]].fillna(0)
 
-        # --- Atingimentos
         df_rank["ATINGIMENTO_VOL_2025"] = (df_rank["VOLUME_REAL"] / df_rank["META_TOTAL_2025"]).replace([np.inf, -np.inf], 0).fillna(0)
         df_rank["ATINGIMENTO_VOL_2026"] = (df_rank["VOLUME_REAL"] / df_rank["META_TOTAL_2026"]).replace([np.inf, -np.inf], 0).fillna(0)
         df_rank["ATINGIMENTO_POSIT"] = (df_rank["POSITIVADOS"] / df_rank["META_ABS_POSIT"]).replace([np.inf, -np.inf], 0).fillna(0)
 
-        # ============================
-        # 1) VOLUME (META 2025)
-        # ============================
         st.markdown("### 📦 Ranking — Volume x Meta 2025")
         rank_2025 = df_rank.sort_values("ATINGIMENTO_VOL_2025", ascending=False)
 
@@ -3068,9 +2883,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 hide_index=True
             )
 
-        # ============================
-        # 2) VOLUME (META 2026)
-        # ============================
         st.markdown("### 📦 Ranking — Volume x Meta 2026")
         rank_2026 = df_rank.sort_values("ATINGIMENTO_VOL_2026", ascending=False)
 
@@ -3101,9 +2913,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 hide_index=True
             )
 
-        # ============================
-        # 3) POSITIVAÇÃO
-        # ============================
         st.markdown("### 🎯 Ranking — Positivação")
         rank_pos = df_rank.sort_values("ATINGIMENTO_POSIT", ascending=False)
 
@@ -3144,10 +2953,45 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
 
-# ❌ IMPORTANTE: REMOVA COMPLETAMENTE este bloco do seu código (ele estava fora do elif e dava ruim):
-# if menu_interna == "📊 Desempenho de Vendas":
-#     if st.button("📧 Enviar Excel por Vendedor"):
-#         ...
+    # ===========================================================
+    # ✅ BLOCO DUPLICADO DO SEU CÓDIGO (MANTIDO, MAS NÃO EXECUTA)
+    # Se isso rodar, você lê/reescreve tudo duas vezes e volta o bug.
+    # ===========================================================
+    """
+    # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
+    def fmt_pt_int(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", ".")
+        except:
+            return str(v)
+
+    def _norm_cliente(df, col):
+        if df is None or df.empty or col not in df.columns:
+            return df
+        s = df[col]
+        mask = s.notna()
+        s2 = s.copy()
+        s2.loc[mask] = (
+            s.loc[mask]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.0$", "", regex=True)
+        )
+        df[col] = s2
+        return df
+
+    try:
+        # (trecho repetido)
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+        df_metas_cob = conn.read(spreadsheet=url_planilha, worksheet="META COBXPOSIT")
+        df_param_metas = conn.read(spreadsheet=url_planilha, worksheet="PARAM_METAS")
+        df_meta_sistema = conn.read(spreadsheet=url_planilha, worksheet="META SISTEMA")
+        df_2025 = conn.read(spreadsheet=url_planilha, worksheet="META 2025")
+        ...
+    except Exception as e:
+        st.error(f"Erro no processamento: {e}")
+        st.stop()
+    """
 
 
 
