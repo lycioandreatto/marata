@@ -242,13 +242,14 @@ def enviar_excel_vendedor(
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
 MAPA_EMAIL_VENDEDORES = {
-    "ALIF NUNES": "alif.nunes@marata.com.br",
-    "JOAO SILVA": "joao.silva@marata.com.br",
-    "MARIA COSTA": "maria.costa@marata.com.br",
+    "ALIF NUNES": ["alif.nunes@marata.com.br"],
+    "JOAO SILVA": ["joao.silva@marata.com.br"],
+    "MARIA COSTA": ["maria.costa@marata.com.br"],
 
     # TESTE
-    "TESTE": "lycio.oliveira@marata.com.br"
+    "TESTE": ["lycio.oliveira@marata.com.br"]
 }
+
 
 # --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
 MAPA_EMAILS = {
@@ -2092,40 +2093,50 @@ elif menu_interna == "📊 Desempenho de Vendas":
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
 
-    if st.button("📧 Enviar Excel por Vendedor"):
+   if st.button("📧 Enviar Excel por Vendedor"):
 
-        import smtplib
-        email_origem = st.secrets["email"]["sender_email"]
-        senha_origem = st.secrets["email"]["sender_password"]
-        smtp_server = st.secrets["email"]["smtp_server"]
-        smtp_port = st.secrets["email"]["smtp_port"]
+    import smtplib
+    email_origem = st.secrets["email"]["sender_email"]
+    senha_origem = st.secrets["email"]["sender_password"]
+    smtp_server = st.secrets["email"]["smtp_server"]
+    smtp_port = st.secrets["email"]["smtp_port"]
 
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(email_origem, senha_origem)
+    server = smtplib.SMTP(smtp_server, smtp_port)
+    server.starttls()
+    server.login(email_origem, senha_origem)
 
-        vendedores = df_f['VENDEDOR_NOME'].unique()
+    vendedores = df_f['VENDEDOR_NOME'].dropna().unique()
 
-        for vendedor in vendedores:
-            vendedor_up = vendedor.upper()
+    for vendedor in vendedores:
+        vendedor_up = str(vendedor).strip().upper()
 
-            email_destino = MAPA_EMAIL_VENDEDORES.get(
-                vendedor_up,
-                "lycio.oliveira@marata.com.br"
-            )
+        email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
 
-            df_vendedor = df_final.copy()
+        # Se não achou e-mail cadastrado, você decide:
+        if not email_destino:
+            st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
+            continue
+            # ou fallback:
+            # email_destino = "lycio.oliveira@marata.com.br"
 
-            enviar_excel_vendedor(
-                server=server,
-                email_origem=email_origem,
-                email_destino=email_destino,
-                nome_vendedor=vendedor,
-                df_excel=df_vendedor
-            )
+        # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
+        if isinstance(email_destino, list):
+            email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
+        else:
+            email_destino_str = str(email_destino).strip()
 
-        server.quit()
-        st.success("📨 E-mails enviados com sucesso!")
+        df_vendedor = df_final.copy()
+
+        enviar_excel_vendedor(
+            server=server,
+            email_origem=email_origem,
+            email_destino=email_destino_str,
+            nome_vendedor=vendedor,
+            df_excel=df_vendedor
+        )
+
+    server.quit()
+    st.success("📨 E-mails enviados com sucesso!")
 
 
 # --- PÁGINA: APROVAÇÕES ---
