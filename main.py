@@ -692,7 +692,7 @@ with st.sidebar:
     ]
     
     
-    opcoes_menu.append("📊 Desempenho de Vendas")
+    opcoes_menu.append("📊 ACOMP. DIÁRIO")
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
@@ -1895,8 +1895,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
-elif menu_interna == "📊 Desempenho de Vendas":
-    st.header("📊 Desempenho de Vendas (Faturado)")
+elif menu_interna == "📊 ACOMP. DIÁRIO":
+    st.header("📊 ACOMPANHAMENTO DIÁRIO")
 
     try:
         # 1. Leitura das abas
