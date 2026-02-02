@@ -1861,8 +1861,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # Exportação
 buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            df_final.to_excel(writer, index=False, sheet_name="Dashboard")
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        df_final.to_excel(writer, index=False, sheet_name="Dashboard")
         st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
         st.markdown("---")
 
