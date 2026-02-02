@@ -2216,8 +2216,22 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
 
     # ✅ BOTÃO: APARECE SOMENTE AQUI (porque está DENTRO do elif)
+        # ✅ BOTÃO: APARECE SOMENTE AQUI
     if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
         import smtplib
+
+        # ✅ GARANTIAS (evita NameError)
+        if "df_f" not in locals() or df_f is None or df_f.empty:
+            st.error("Base df_f não foi carregada. Verifique a leitura da aba FATURADO.")
+            st.stop()
+
+        if "df_final" not in locals() or df_final is None or df_final.empty:
+            st.error("Tabela df_final não foi gerada. Verifique o processamento do dashboard.")
+            st.stop()
+
+        if "VENDEDOR_NOME" not in df_f.columns:
+            st.error("Coluna 'VENDEDOR_NOME' não existe em df_f. Verifique o rename do FATURADO.")
+            st.stop()
 
         email_origem = st.secrets["email"]["sender_email"]
         senha_origem = st.secrets["email"]["sender_password"]
@@ -2234,16 +2248,12 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             vendedor_up = str(vendedor).strip().upper()
             email_destino = MAPA_EMAIL_VENDEDORES.get(vendedor_up)
 
-            # Se não achou e-mail cadastrado, pula
             if not email_destino:
                 st.warning(f"⚠️ Sem e-mail cadastrado para: {vendedor_up} (pulando)")
                 continue
 
-            # Aceita: string "a@x.com" OU lista ["a@x.com","b@x.com"]
             if isinstance(email_destino, list):
-                email_destino_str = ",".join(
-                    [str(x).strip() for x in email_destino if str(x).strip()]
-                )
+                email_destino_str = ",".join([str(x).strip() for x in email_destino if str(x).strip()])
             else:
                 email_destino_str = str(email_destino).strip()
 
@@ -2259,6 +2269,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
         server.quit()
         st.success("📨 E-mails enviados com sucesso!")
+
 
     # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
     def fmt_pt_int(v):
