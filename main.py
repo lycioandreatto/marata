@@ -242,7 +242,7 @@ def enviar_excel_vendedor(
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
 
 MAPA_EMAIL_VENDEDORES = {
-    "ALIF NUNES": ["alif.nunes@marata.com", "thais.oliveira@marata.com.br", "lycio.oliveira@marata.com.br"],
+    "ALIF NUNES": ["alif.nunes@marata.com", "thais.oliveira@marata.com.br", "lycio.oliveira@marata.com.br","marciajanaina@marata.com.br"],
     "JOAO SILVA": ["joao.silva@marata.com"],
     "MARIA COSTA": ["maria.costa@marata.com"],
 
