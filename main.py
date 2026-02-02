@@ -1581,9 +1581,13 @@ elif menu_interna == "📊 Desempenho de Vendas":
             """, unsafe_allow_html=True)
 
         st.markdown("### 📈 Desempenho por Hierarquia")
+
+        # ✅ AJUSTE AQUI: incluiu META 2026 e ATINGIMENTO % (VOL 2026)
         cols_view = [
             'HIERARQUIA DE PRODUTOS', 'META COBERTURA', 'META CLIENTES (ABS)', 'POSITIVAÇÃO', 
-            'PENDÊNCIA CLIENTES', 'META 2025', 'VOLUME', 'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)'
+            'PENDÊNCIA CLIENTES', 'META 2025', 'META 2026', 'VOLUME',
+            'CRESCIMENTO 2025', 'ATINGIMENTO % (VOL 2025)',
+            'CRESCIMENTO 2026', 'ATINGIMENTO % (VOL 2026)'
         ]
         
         st.dataframe(
@@ -1594,9 +1598,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 'POSITIVAÇÃO': "{:,.0f}",
                 'PENDÊNCIA CLIENTES': "{:,.0f}",
                 'META 2025': "{:,.0f}",
+                'META 2026': "{:,.0f}",  # ✅
                 'VOLUME': "{:,.0f}",
                 'CRESCIMENTO 2025': "{:,.0f}",
-                'ATINGIMENTO % (VOL 2025)': "{:.1f}%"
+                'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
+                'CRESCIMENTO 2026': "{:,.0f}",  # ✅
+                'ATINGIMENTO % (VOL 2026)': "{:.1f}%"  # ✅
             })
             .apply(lambda x: ['background-color: #ffcccc' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
             use_container_width=True, hide_index=True
@@ -1608,6 +1615,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_final.to_excel(writer, index=False, sheet_name='Dashboard')
         st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
         st.markdown("---")
+
 if st.button("📧 Enviar Excel por Vendedor"):
 
     import smtplib
@@ -1642,6 +1650,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 # --- PÁGINA: APROVAÇÕES ---
