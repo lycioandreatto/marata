@@ -2225,6 +2225,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     if "df_envio_acomp_diario" not in st.session_state:
         st.session_state["df_envio_acomp_diario"] = None
 
+    # ✅ (NOVO) Flag de envio: garante que o clique no botão não “perca” o df_final no rerun
+    if "pedir_envio_excel_acomp_diario" not in st.session_state:
+        st.session_state["pedir_envio_excel_acomp_diario"] = False
+
     # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
     def fmt_pt_int(v):
         try:
@@ -2250,6 +2254,15 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
         df[col] = s2
         return df
+
+    # ============================
+    # ✅ (NOVO) BOTÃO DE ENVIO (somente seta flag e força rerun)
+    # ============================
+    # Isso resolve: “Relatório (df_final) não foi gerado nesta execução...”
+    # porque o envio REAL só acontece lá embaixo, depois que df_final é criado e salvo no session_state.
+    if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
+        st.session_state["pedir_envio_excel_acomp_diario"] = True
+        st.rerun()
 
     # ============================
     # >>> SEU CÓDIGO EXISTENTE DA PÁGINA (tudo que você já tem)
@@ -2355,10 +2368,13 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         st.session_state["df_envio_acomp_diario"] = None
 
     # ============================
-    # 📧 ENVIAR EXCEL POR VENDEDOR (SÓ NESTA PÁGINA)
+    # ✅ (NOVO) EXECUTOR DO ENVIO — AGORA RODA DEPOIS QUE df_final EXISTE
     # ============================
-    if st.button("📧 Enviar Excel por Vendedor", key="btn_enviar_excel_acomp_diario"):
+    if st.session_state.get("pedir_envio_excel_acomp_diario", False):
         import smtplib
+
+        # ✅ trava a flag já no começo (evita enviar 2x em caso de erro)
+        st.session_state["pedir_envio_excel_acomp_diario"] = False
 
         # ✅ pega SEMPRE do session_state (nunca de locals)
         df_relatorio = st.session_state.get("df_final_acomp_diario")
@@ -2806,6 +2822,19 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
+    # ============================
+    # ✅ (NOVO) salva df_final/df_f no session_state *aqui também* (garantia total)
+    # ============================
+    # Isso garante que, quando você clicar no botão, o df_final já vai estar disponível no session_state.
+    try:
+        st.session_state["df_final_acomp_diario"] = df_final.copy() if (df_final is not None and not df_final.empty) else None
+        st.session_state["df_envio_acomp_diario"] = df_f.copy() if ("df_f" in locals() and df_f is not None and not df_f.empty) else (
+            df_faturado.copy() if ("df_faturado" in locals() and df_faturado is not None and not df_faturado.empty) else None
+        )
+    except:
+        st.session_state["df_final_acomp_diario"] = None
+        st.session_state["df_envio_acomp_diario"] = None
+
     # --- UI: CARDS E TABELA ---
     st.markdown("---")
     col_res, col_cob, col_pos = st.columns([1.2, 1, 1])
@@ -3119,6 +3148,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 # if menu_interna == "📊 Desempenho de Vendas":
 #     if st.button("📧 Enviar Excel por Vendedor"):
 #         ...
+
 
 
 
