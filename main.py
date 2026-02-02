@@ -1730,9 +1730,22 @@ elif menu_interna == "📊 Desempenho de Vendas":
     elif is_vendedor:
         vendedores_permitidos = [user_atual]
 
-    if vendedores_permitidos:
+   if vendedores_permitidos:
+    # Normaliza ambas as colunas por segurança
+    if "VENDEDOR" in df_f.columns:
         df_f["VENDEDOR"] = df_f["VENDEDOR"].astype(str).str.strip().str.upper()
+
+    if "VENDEDOR_NOME" in df_f.columns:
+        df_f["VENDEDOR_NOME"] = df_f["VENDEDOR_NOME"].astype(str).str.strip().str.upper()
+
+    # 🔒 Filtro final (Supervisor e Analista)
+    if is_analista or is_supervisor:
         df_f = df_f[df_f["VENDEDOR"].isin(vendedores_permitidos)]
+
+    # 🔒 Filtro final (Vendedor – só ele mesmo)
+    elif is_vendedor:
+        df_f = df_f[df_f["VENDEDOR_NOME"] == user_atual]
+
 
     # ============================
     # 🔍 FILTROS
