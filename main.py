@@ -13,33 +13,62 @@ import os
 import math
 from streamlit_cookies_manager import EncryptedCookieManager
 
-def enviar_excel_vendedor(server, email_origem, email_destino, nome_vendedor, df_excel):
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.base import MIMEBase
-    from email import encoders
+import io
+import pandas as pd
+from email.message import EmailMessage
 
-    msg = MIMEMultipart()
-    msg["From"] = f"MARATÁ-GVP <{email_origem}>"
+def enviar_excel_vendedor(
+    server,
+    email_origem,
+    email_destino,
+    nome_vendedor,
+    df_excel
+):
+    # 🔹 Gera Excel em memória
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_excel.to_excel(writer, index=False, sheet_name="Relatório")
+
+        workbook  = writer.book
+        worksheet = writer.sheets["Relatório"]
+
+        # ✅ Formato de porcentagem
+        formato_pct = workbook.add_format({'num_format': '0.00%'})
+
+        colunas_pct = [
+            "META COBERTURA",
+            "ATINGIMENTO % (VOL 2025)",
+            "ATINGIMENTO % (VOL 2026)"
+        ]
+
+        for col in colunas_pct:
+            if col in df_excel.columns:
+                col_idx = df_excel.columns.get_loc(col)
+                worksheet.set_column(col_idx, col_idx, 20, formato_pct)
+
+        # (opcional, mas recomendado)
+        worksheet.freeze_panes(1, 0)  # congela cabeçalho
+
+    output.seek(0)
+
+    # 🔹 Monta e-mail
+    msg = EmailMessage()
+    msg["From"] = email_origem
     msg["To"] = email_destino
-    msg["Subject"] = f"📊 Desempenho de Vendas - {nome_vendedor}"
-
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df_excel.to_excel(writer, index=False, sheet_name="Desempenho")
-
-    part = MIMEBase(
-        "application",
-        "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    msg["Subject"] = f"Relatório de Vendas – {nome_vendedor}"
+    msg.set_content(
+        f"Olá,\n\nSegue em anexo o relatório de vendas do vendedor {nome_vendedor}.\n\nAtenciosamente."
     )
-    part.set_payload(buffer.getvalue())
-    encoders.encode_base64(part)
-    part.add_header(
-        "Content-Disposition",
-        f'attachment; filename="desempenho_{nome_vendedor}.xlsx"'
-    )
-    msg.attach(part)
 
-    server.sendmail(email_origem, email_destino, msg.as_string())
+    msg.add_attachment(
+        output.read(),
+        maintype="application",
+        subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"Relatorio_{nome_vendedor}.xlsx"
+    )
+
+    server.send_message(msg)
 
 
 
