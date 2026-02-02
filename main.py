@@ -1590,24 +1590,55 @@ elif menu_interna == "📊 Desempenho de Vendas":
             'CRESCIMENTO 2026', 'ATINGIMENTO % (VOL 2026)'
         ]
         
-        st.dataframe(
-            df_final[cols_view].sort_values(by='HIERARQUIA DE PRODUTOS').style
+               # --- TABELA "MODERNA" (leve) ---
+        def zebra_rows(row):
+            return ['background-color: #FAFAFA' if row.name % 2 else '' for _ in row]
+
+        def destacar_negativos(s):
+            # pinta de vermelho claro quando valor < 0
+            return ['background-color: #FFE5E5; color: #7A0000; font-weight: 600' if v < 0 else '' for v in s]
+
+        def destacar_pendencia(s):
+            # pendência > 0 em vermelho claro
+            return ['background-color: #FFD6D6; color: #7A0000; font-weight: 700' if v > 0 else '' for v in s]
+
+        sty = (
+            df_final[cols_view]
+            .sort_values(by='HIERARQUIA DE PRODUTOS')
+            .style
             .format({
                 'META COBERTURA': "{:.0%}",
                 'META CLIENTES (ABS)': "{:,.0f}",
                 'POSITIVAÇÃO': "{:,.0f}",
                 'PENDÊNCIA CLIENTES': "{:,.0f}",
                 'META 2025': "{:,.0f}",
-                'META 2026': "{:,.0f}",  # ✅
+                'META 2026': "{:,.0f}",
                 'VOLUME': "{:,.0f}",
                 'CRESCIMENTO 2025': "{:,.0f}",
                 'ATINGIMENTO % (VOL 2025)': "{:.1f}%",
-                'CRESCIMENTO 2026': "{:,.0f}",  # ✅
-                'ATINGIMENTO % (VOL 2026)': "{:.1f}%"  # ✅
+                'CRESCIMENTO 2026': "{:,.0f}",
+                'ATINGIMENTO % (VOL 2026)': "{:.1f}%"
             })
-            .apply(lambda x: ['background-color: #ffcccc' if (v > 0) else '' for v in x], subset=['PENDÊNCIA CLIENTES']),
-            use_container_width=True, hide_index=True
+            # zebra leve
+            .apply(zebra_rows, axis=1)
+            # destaque de pendência
+            .apply(destacar_pendencia, subset=['PENDÊNCIA CLIENTES'])
+            # destaque de negativos nas colunas de crescimento
+            .apply(destacar_negativos, subset=['CRESCIMENTO 2025', 'CRESCIMENTO 2026'])
+            # deixa mais com cara de tabela (leve)
+            .set_table_styles([
+                {'selector': 'th', 'props': [('background-color', '#F2F2F2'), ('color', '#111'), ('font-weight', '700')]},
+                {'selector': 'td', 'props': [('border-bottom', '1px solid #EEE')]}
+            ])
         )
+
+        st.dataframe(
+            sty,
+            use_container_width=True,
+            hide_index=True,
+            height=560  # ajuste livre (ex: 500, 650)
+        )
+
 
         # Exportação
         buffer = io.BytesIO()
