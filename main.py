@@ -1102,6 +1102,8 @@ if menu == "📅 Agendamentos do Dia":
                             worksheet="AGENDA",
                             data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
                         )
+                        st.cache_data.clear()
+
 
                         st.success("Dados atualizados! (GPS do vendedor preservado)")
                         time.sleep(1)
@@ -1173,6 +1175,8 @@ if menu == "📅 Agendamentos do Dia":
                             worksheet="AGENDA",
                             data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
                         )
+                        st.cache_data.clear()
+
 
                         st.success("Dados atualizados!")
                         time.sleep(1)
