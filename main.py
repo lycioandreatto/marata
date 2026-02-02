@@ -1047,7 +1047,7 @@ if menu == "📅 Agendamentos do Dia":
                             coord = base_cliente.iloc[0]['COORDENADAS']
                         if isinstance(coord, str) and ',' in coord:
                                     lat_c, lon_c = coord.split(',', 1)
-                                        distancia_m = calcular_distancia(
+                                    distancia_m = calcular_distancia(
                                             lat_c.strip(),
                                                 lon_c.strip(),
                                                     lat_v,
