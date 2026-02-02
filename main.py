@@ -693,7 +693,7 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-  # --- AJUSTE: SINO DE NOTIFICAÇÃO FILTRADO ---
+ # --- AJUSTE: SINO DE NOTIFICAÇÃO FILTRADO ---
 # Só mostra se for Gestão (Adm/Analista). Supervisor e Vendedor não entram aqui.
 if eh_gestao:
     if df_agenda is not None:
@@ -706,7 +706,7 @@ if eh_gestao:
                 & (df_agenda["ANALISTA"] == user_atual)
             ].copy()
 
-        # ✅ FILTRO DE VENDEDOR (só isso)
+        # ✅ FILTRO DE VENDEDOR
         if not df_filtrado_sino.empty and "VENDEDOR" in df_filtrado_sino.columns:
             op_vend = sorted(df_filtrado_sino["VENDEDOR"].dropna().unique())
             vend_sel_sino = st.multiselect(
@@ -746,6 +746,7 @@ if df_filtrado_sino is not None and not df_filtrado_sino.empty:
             st.success(f"✅ {len(ids_aprovar)} aprovações feitas!")
             st.rerun()
 
+# ✅ BOTÃO DO SINO (abre página Aprovações)
 if qtd_p > 0:
     if st.button(
         f"🔔 {qtd_p} Pendências de Aprovação",
@@ -757,95 +758,100 @@ if qtd_p > 0:
 else:
     st.caption("✅ Nenhuma aprovação pendente")
 
+# ============================
+# MENU PRINCIPAL (FORA DO ELSE)
+# ============================
 
-    # Texto dinâmico do menu
-    if eh_gestao:
-        texto_ver_agenda = "🔍 Agenda Geral"
-    elif is_supervisor:
-        texto_ver_agenda = "🔍 Agenda da Minha Equipe"
-    else:
-        texto_ver_agenda = "🔍 Minha Agenda de Visitas"
+# Texto dinâmico do menu
+if eh_gestao:
+    texto_ver_agenda = "🔍 Agenda Geral"
+elif is_supervisor:
+    texto_ver_agenda = "🔍 Agenda da Minha Equipe"
+else:
+    texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
-    opcoes_menu = [
-        "📅 Agendamentos do Dia",
-        "📋 Novo Agendamento",
-        texto_ver_agenda
-    ]
-    
-    
-    opcoes_menu.append("📊 ACOMP. DIÁRIO")
-    
-    if eh_gestao:
-        opcoes_menu.append("📊 Dashboard de Controle")
-        opcoes_menu.append("📊 KPI Aprovação Analistas")  # ✅ NOVA OPÇÃO
-    
-    menu = st.selectbox("Menu Principal", opcoes_menu)
-    
-    if "pagina_direta" not in st.session_state:
+opcoes_menu = [
+    "📅 Agendamentos do Dia",
+    "📋 Novo Agendamento",
+    texto_ver_agenda
+]
+
+opcoes_menu.append("📊 ACOMP. DIÁRIO")
+
+if eh_gestao:
+    opcoes_menu.append("📊 Dashboard de Controle")
+    opcoes_menu.append("📊 KPI Aprovação Analistas")  # ✅ NOVA OPÇÃO
+
+menu = st.selectbox("Menu Principal", opcoes_menu)
+
+if "pagina_direta" not in st.session_state:
+    st.session_state.pagina_direta = None
+
+# ✅ garante menu_interna SEMPRE definido (evita NameError)
+menu_interna = menu
+
+if menu:
+    if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia":
         st.session_state.pagina_direta = None
 
-    if menu:
-        if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia":
-            st.session_state.pagina_direta = None
+if st.session_state.pagina_direta:
+    menu_interna = st.session_state.pagina_direta
+elif menu == texto_ver_agenda:
+    menu_interna = "🔍 Ver/Editar Minha Agenda"
+else:
+    menu_interna = menu
 
-    if st.session_state.pagina_direta:
-        menu_interna = st.session_state.pagina_direta
-    elif menu == texto_ver_agenda:
-        menu_interna = "🔍 Ver/Editar Minha Agenda"
-    else:
-        menu_interna = menu
+# Botão Sair
+if st.button("Sair", key="btn_logout_sidebar"):
+    if "user_marata" in cookies:
+        del cookies["user_marata"]
+        cookies.save()
+    st.session_state.logado = False
+    st.session_state.usuario = ""
+    st.session_state.pagina_direta = None
+    st.cache_data.clear()
+    st.rerun()
 
-    # Botão Sair
-    if st.button("Sair", key="btn_logout_sidebar"):
-        if "user_marata" in cookies:
-            del cookies["user_marata"]
-            cookies.save()
-        st.session_state.logado = False
-        st.session_state.usuario = ""
-        st.session_state.pagina_direta = None
-        st.cache_data.clear()
-        st.rerun()
-        
-    for _ in range(5):
-        st.sidebar.write("")
+for _ in range(5):
+    st.sidebar.write("")
 
-    if is_admin:
-        st.markdown("---")
-        st.subheader("🗑️ Limpeza em Massa")
-        if df_agenda is not None and not df_agenda.empty:
-            df_limpeza = df_agenda.drop_duplicates(
-                subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS']
-            )
-            lista_sups_limpar = sorted(
-                [str(x) for x in df_limpeza['SUPERVISOR'].unique() if x]
-            )
-            sup_limpar = st.selectbox(
-                "Limpar agenda de:",
-                ["Selecione..."] + lista_sups_limpar,
-                key="sel_limpeza_admin"
-            )
+if is_admin:
+    st.markdown("---")
+    st.subheader("🗑️ Limpeza em Massa")
+    if df_agenda is not None and not df_agenda.empty:
+        df_limpeza = df_agenda.drop_duplicates(
+            subset=["DATA", "VENDEDOR", "CÓDIGO CLIENTE", "STATUS"]
+        )
+        lista_sups_limpar = sorted(
+            [str(x) for x in df_limpeza["SUPERVISOR"].unique() if x]
+        )
+        sup_limpar = st.selectbox(
+            "Limpar agenda de:",
+            ["Selecione..."] + lista_sups_limpar,
+            key="sel_limpeza_admin"
+        )
 
-            if sup_limpar != "Selecione...":
-                confirma = st.popover(f"⚠️ APAGAR: {sup_limpar}")
-                if confirma.button(
-                    f"Confirmar Exclusão de {sup_limpar}",
-                    key="btn_conf_limpeza"
-                ):
-                    df_rest = df_agenda[
-                        df_agenda['SUPERVISOR'] != sup_limpar
-                    ].copy()
-                    conn.update(
-                        spreadsheet=url_planilha, 
-                        worksheet="AGENDA", 
-                        data=df_rest.drop(
-                            columns=['LINHA', 'DT_COMPLETA', 'DIA_SEMANA', 'dist_val_calc'],
-                            errors='ignore'
-                        )
+        if sup_limpar != "Selecione...":
+            confirma = st.popover(f"⚠️ APAGAR: {sup_limpar}")
+            if confirma.button(
+                f"Confirmar Exclusão de {sup_limpar}",
+                key="btn_conf_limpeza"
+            ):
+                df_rest = df_agenda[
+                    df_agenda["SUPERVISOR"] != sup_limpar
+                ].copy()
+                conn.update(
+                    spreadsheet=url_planilha,
+                    worksheet="AGENDA",
+                    data=df_rest.drop(
+                        columns=["LINHA", "DT_COMPLETA", "DIA_SEMANA", "dist_val_calc"],
+                        errors="ignore"
                     )
-                    st.cache_data.clear()
-                    st.success("Agenda limpa!")
-                    time.sleep(1)
-                    st.rerun()
+                )
+                st.cache_data.clear()
+                st.success("Agenda limpa!")
+                time.sleep(1)
+                st.rerun()
 
 # --- TÍTULO CENTRAL NO TOPO ---
 st.markdown(
@@ -857,6 +863,7 @@ st.markdown("---")
 
 # Mapeia menu_interna de volta para menu para o restante do código
 menu = menu_interna
+
 
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
