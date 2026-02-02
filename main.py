@@ -338,14 +338,16 @@ if not cookies.ready():
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Maratá - GVP", page_icon="📅", layout="wide")
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Maratá - GVP", page_icon="📅", layout="wide")
-
 st.markdown(
     """
-    <link rel="manifest" href="/static/manifest.json">
-    <link rel="apple-touch-icon" sizes="192x192" href="/static/icon-192.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+    <style>
+    /* Força modo claro mesmo se o sistema estiver em dark */
+    :root { color-scheme: light !important; }
+    html, body, [data-testid="stAppViewContainer"] {
+        background: #ffffff !important;
+        color: #000000 !important;
+    }
+    </style>
     """,
     unsafe_allow_html=True
 )
