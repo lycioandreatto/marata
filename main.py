@@ -2196,8 +2196,16 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     with c1:
         if col_estado:
-            # ✅ Para vendedor/supervisor/analista: slicer mostra APENAS o(s) estado(s) dele(s) e já seleciona
-            if (is_vendedor or is_supervisor or is_analista) and estados_usuario:
+            # ✅ BLOQUEIO: vendedor/supervisor NÃO podem trocar estado (fica travado no(s) estado(s) permitido(s))
+            if (is_vendedor or is_supervisor) and estados_usuario:
+                sel_estado = st.multiselect(
+                    "Estado",
+                    sorted(estados_usuario),
+                    default=sorted(estados_usuario),
+                    disabled=True
+                )
+            # ✅ analista continua podendo ver só o(s) dele(s), mas se quiser deixar editável pra analista, mantém como estava:
+            elif is_analista and estados_usuario:
                 sel_estado = st.multiselect("Estado", sorted(estados_usuario), default=sorted(estados_usuario))
             else:
                 sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique()))
@@ -2635,6 +2643,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 
