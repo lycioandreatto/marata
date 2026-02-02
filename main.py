@@ -1881,7 +1881,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
-            # ✅ (NOVO) SLICER DE DATA (bonito / moderno) com slider de range
+            # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ERRO DE TIPO
             st.markdown("### 🗓️ Período")
             c_dt1, c_dt2 = st.columns([0.55, 0.45])
 
@@ -1896,9 +1896,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # Escolhe a coluna de data base do filtro
             col_dt_filtro = 'DT_COMPLETA' if modo_data == "Data da visita (DATA)" else 'DT_REGISTRO'
 
-            # Prepara min/max só com datas válidas
-            serie_dt = pd.to_datetime(df_user[col_dt_filtro], errors='coerce')
-            serie_dt = serie_dt.dropna()
+            # Prepara min/max só com datas válidas (date puro pro slider)
+            serie_dt = pd.to_datetime(df_user[col_dt_filtro], errors='coerce').dropna()
 
             if not serie_dt.empty:
                 dt_min = serie_dt.min().date()
@@ -1910,14 +1909,11 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         min_value=dt_min,
                         max_value=dt_max,
                         value=(dt_min, dt_max),
-                        format="DD/MM/YYYY",
                         key="slider_periodo_agenda"
                     )
 
-                # aplica filtro
-                mask_dt = (
-                    pd.to_datetime(df_user[col_dt_filtro], errors='coerce').dt.date.between(dt_ini, dt_fim)
-                )
+                # aplica filtro (inclusive)
+                mask_dt = pd.to_datetime(df_user[col_dt_filtro], errors='coerce').dt.date.between(dt_ini, dt_fim)
                 df_user = df_user[mask_dt].reset_index(drop=True)
             else:
                 with c_dt1:
@@ -2163,6 +2159,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
+
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
 elif menu_interna == "📊 ACOMP. DIÁRIO":
