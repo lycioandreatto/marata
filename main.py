@@ -2096,14 +2096,14 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             df_f = df_f[df_f[col_estado].isin(estados_permitidos)]
 
     with c1:
-        if col_estado:
-            # ✅ (NOVO) Para vendedor/supervisor, o slicer só mostra o(s) estado(s) permitido(s)
-            if (is_vendedor or is_supervisor) and estados_permitidos:
-                sel_estado = st.multiselect("Estado", sorted(estados_permitidos), default=sorted(estados_permitidos))
-            else:
-                sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique()))
-        else:
+        # ✅ (AJUSTE) VENDEDOR/SUPERVISOR NÃO veem slicer de Estado (pra evitar qualquer brecha)
+        if (is_vendedor or is_supervisor):
             sel_estado = []
+        else:
+            if col_estado:
+                sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique()))
+            else:
+                sel_estado = []
 
     if sel_estado and col_estado:
         df_f = df_f[df_f[col_estado].isin(sel_estado)]
@@ -2538,7 +2538,6 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
-
 
 
 # --- PÁGINA: APROVAÇÕES ---
