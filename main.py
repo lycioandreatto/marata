@@ -691,7 +691,7 @@ with st.sidebar:
     ]
     
     
-        opcoes_menu.append("📊 Desempenho de Vendas")
+    opcoes_menu.append("📊 Desempenho de Vendas")
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
