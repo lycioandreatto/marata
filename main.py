@@ -1934,6 +1934,13 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
 
+    # ✅ AJUSTE VISUAL: milhar com ponto (sem mexer em cálculo)
+    def fmt_pt_int(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", ".")
+        except:
+            return str(v)
+
     try:
         # 1. Leitura das abas
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
@@ -2157,21 +2164,21 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.markdown("---")
     col_res, col_cob, col_pos = st.columns([1.2, 1, 1])
 
-    # ✅ CARD 1 (MANTIDO): COBERTURA ATUAL (NÃO MEXIDO)
+    # ✅ CARD 1 (MANTIDO): COBERTURA ATUAL (ajuste só visual do Base)
     with col_cob:
         real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
         st.markdown(
             f"""
             <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
                 <small>COBERTURA ATUAL</small><br>
-                <span style="font-size: 1.1em;">Base: <b>{base_total:,.0f}</b></span><br>
+                <span style="font-size: 1.1em;">Base: <b>{fmt_pt_int(base_total)}</b></span><br>
                 Atingido: <span style="color:#28a745; font-size: 1.8em; font-weight: bold;">{real_perc:.1f}%</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # ✅ CARD 2 (NOVO): POSITIVAÇÃO (META COBXPOSIT -> colunas RG, BASE, META)
+    # ✅ CARD 2 (NOVO): POSITIVAÇÃO (ajuste só visual do Positivados)
     with col_pos:
         if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
             positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
@@ -2193,7 +2200,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
                 <small>POSITIVAÇÃO</small><br>
                 <span style="font-size: 1.1em;">Meta: <b>{meta_pos:.0%}</b></span><br>
-                <span style="font-size: 1.1em;">Positivados: <b>{positivos_total:,.0f}</b></span><br>
+                <span style="font-size: 1.1em;">Positivados: <b>{fmt_pt_int(positivos_total)}</b></span><br>
                 Atingido: <span style="color:#1f77b4; font-size: 1.8em; font-weight: bold;">{perc_pos:.1f}%</span>
             </div>
             """,
@@ -2246,15 +2253,18 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         .format(
             {
                 "META COBERTURA": "{:.0%}",
-                "META CLIENTES (ABS)": "{:,.0f}",
-                "POSITIVAÇÃO": "{:,.0f}",
-                "PENDÊNCIA CLIENTES": "{:,.0f}",
-                "META 2025": "{:,.0f}",
-                "META 2026": "{:,.0f}",
-                "VOLUME": "{:,.0f}",
-                "CRESCIMENTO 2025": "{:,.0f}",
+                "META CLIENTES (ABS)": lambda v: fmt_pt_int(v),
+                "POSITIVAÇÃO": lambda v: fmt_pt_int(v),
+                "PENDÊNCIA CLIENTES": lambda v: fmt_pt_int(v),
+
+                # ✅ AJUSTE VISUAL: essas estavam com vírgula
+                "META 2025": lambda v: fmt_pt_int(v),
+                "META 2026": lambda v: fmt_pt_int(v),
+                "VOLUME": lambda v: fmt_pt_int(v),
+                "CRESCIMENTO 2025": lambda v: fmt_pt_int(v),
+                "CRESCIMENTO 2026": lambda v: fmt_pt_int(v),
+
                 "ATINGIMENTO % (VOL 2025)": "{:.1f}%",
-                "CRESCIMENTO 2026": "{:,.0f}",
                 "ATINGIMENTO % (VOL 2026)": "{:.1f}%",
             }
         )
@@ -2358,8 +2368,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             st.markdown("**🟢 Puxando pra cima (2025)**")
             st.dataframe(
                 top_2025.style.format({
-                    "VOLUME_REAL": "{:,.0f}",
-                    "META_TOTAL_2025": "{:,.0f}",
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2025": lambda v: fmt_pt_int(v),
                     "ATINGIMENTO_VOL_2025": "{:.1%}",
                 }),
                 use_container_width=True,
@@ -2369,8 +2379,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             st.markdown("**🔴 Puxando pra baixo (2025)**")
             st.dataframe(
                 bot_2025.style.format({
-                    "VOLUME_REAL": "{:,.0f}",
-                    "META_TOTAL_2025": "{:,.0f}",
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2025": lambda v: fmt_pt_int(v),
                     "ATINGIMENTO_VOL_2025": "{:.1%}",
                 }),
                 use_container_width=True,
@@ -2391,8 +2401,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             st.markdown("**🟢 Puxando pra cima (2026)**")
             st.dataframe(
                 top_2026.style.format({
-                    "VOLUME_REAL": "{:,.0f}",
-                    "META_TOTAL_2026": "{:,.0f}",
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2026": lambda v: fmt_pt_int(v),
                     "ATINGIMENTO_VOL_2026": "{:.1%}",
                 }),
                 use_container_width=True,
@@ -2402,8 +2412,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             st.markdown("**🔴 Puxando pra baixo (2026)**")
             st.dataframe(
                 bot_2026.style.format({
-                    "VOLUME_REAL": "{:,.0f}",
-                    "META_TOTAL_2026": "{:,.0f}",
+                    "VOLUME_REAL": lambda v: fmt_pt_int(v),
+                    "META_TOTAL_2026": lambda v: fmt_pt_int(v),
                     "ATINGIMENTO_VOL_2026": "{:.1%}",
                 }),
                 use_container_width=True,
@@ -2424,8 +2434,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             st.markdown("**🟢 Puxando pra cima (Positivação)**")
             st.dataframe(
                 top_pos.style.format({
-                    "POSITIVADOS": "{:,.0f}",
-                    "META_ABS_POSIT": "{:,.0f}",
+                    "POSITIVADOS": lambda v: fmt_pt_int(v),
+                    "META_ABS_POSIT": lambda v: fmt_pt_int(v),
                     "ATINGIMENTO_POSIT": "{:.1%}",
                 }),
                 use_container_width=True,
@@ -2435,8 +2445,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             st.markdown("**🔴 Puxando pra baixo (Positivação)**")
             st.dataframe(
                 bot_pos.style.format({
-                    "POSITIVADOS": "{:,.0f}",
-                    "META_ABS_POSIT": "{:,.0f}",
+                    "POSITIVADOS": lambda v: fmt_pt_int(v),
+                    "META_ABS_POSIT": lambda v: fmt_pt_int(v),
                     "ATINGIMENTO_POSIT": "{:.1%}",
                 }),
                 use_container_width=True,
