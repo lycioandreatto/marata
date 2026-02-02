@@ -2130,24 +2130,36 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             ].dropna().unique().tolist()
 
     elif is_vendedor:
-        # ✅ (NOVO - MÍNIMO) regra principal do vendedor vira o ANALISTA dele
-        if analista_usuario:
-            # 1) filtra df_f pelo analista do vendedor (garantia total)
-            if "ANALISTA" in df_f.columns:
-                df_f = df_f[df_f["ANALISTA"] == analista_usuario]
+    # ✅ (NOVO - MÍNIMO) regra principal do vendedor vira o ANALISTA dele + estados dele
+    if analista_usuario:
+        # 1) filtra df_f pelo analista do vendedor (garantia total)
+        if "ANALISTA" in df_f.columns:
+            df_f = df_f[df_f["ANALISTA"] == analista_usuario]
 
-            # 2) libera somente vendedores que pertencem ao mesmo analista
+        # 2) estados do vendedor (se existirem na BASE) limitam o que ele enxerga
+        if col_estado_perm and estados_usuario:
+            # libera somente vendedores do MESMO analista, mas APENAS nos estados do vendedor
             vendedores_permitidos = df_base_perm.loc[
-                df_base_perm["ANALISTA"] == analista_usuario, "VENDEDOR"
+                (df_base_perm["ANALISTA"] == analista_usuario) &
+                (df_base_perm[col_estado_perm].isin(estados_usuario)),
+                "VENDEDOR"
+            ].dropna().unique().tolist()
+
+            # e garante o df_f também só nesses estados (pelo EscrV do faturado)
+            if "EscrV" in df_f.columns:
+                df_f = df_f[df_f["EscrV"].isin(estados_usuario)]
+        else:
+            # se não tiver estado definido pro vendedor na BASE, cai no mais restrito possível: ele mesmo
+            vendedores_permitidos = [user_atual]
+    else:
+        # fallback: mantém seu comportamento atual (mais restrito possível)
+        if col_estado_perm and estados_usuario:
+            vendedores_permitidos = df_base_perm.loc[
+                df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
             ].dropna().unique().tolist()
         else:
-            # fallback: mantém seu comportamento atual
-            if col_estado_perm and estados_usuario:
-                vendedores_permitidos = df_base_perm.loc[
-                    df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
-                ].dropna().unique().tolist()
-            else:
-                vendedores_permitidos = [user_atual]
+            vendedores_permitidos = [user_atual]
+
 
     if vendedores_permitidos:
         if "VENDEDOR" in df_f.columns:
