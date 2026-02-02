@@ -1748,7 +1748,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         # --- FILTROS ---
     st.markdown("### 🔍 Filtros")
-        c1, c2, c3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
         with c1:
             sel_estado = st.multiselect("Estado", sorted(df_f["EscrV"].dropna().unique()))
         if sel_estado:
