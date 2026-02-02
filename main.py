@@ -1815,11 +1815,30 @@ elif menu_interna == "📊 Desempenho de Vendas":
 
         st.markdown("### 📈 Desempenho por Hierarquia")
 
+        # ✅ (AJUSTE MÍNIMO) adiciona colunas "espaço" só para exibição
+        df_view = df_final.copy()
+        df_view[" "] = ""
+        df_view["  "] = ""
+        df_view["   "] = ""
+        df_view["    "] = ""
+
         cols_view = [
-            "HIERARQUIA DE PRODUTOS", "META COBERTURA", "META CLIENTES (ABS)", "POSITIVAÇÃO",
-            "PENDÊNCIA CLIENTES", "META 2025", "META 2026", "VOLUME",
-            "CRESCIMENTO 2025", "ATINGIMENTO % (VOL 2025)",
-            "CRESCIMENTO 2026", "ATINGIMENTO % (VOL 2026)",
+            "HIERARQUIA DE PRODUTOS",
+            "META COBERTURA",
+            "META CLIENTES (ABS)",
+            "POSITIVAÇÃO",
+            "PENDÊNCIA CLIENTES",
+            " ",  # pequeno espaço
+            "META 2025",
+            "META 2026",
+            "  ",  # pequeno espaço
+            "VOLUME",
+            "   ",  # pequeno espaço
+            "CRESCIMENTO 2025",
+            "ATINGIMENTO % (VOL 2025)",
+            "    ",  # pequeno espaço
+            "CRESCIMENTO 2026",
+            "ATINGIMENTO % (VOL 2026)",
         ]
 
         # --- TABELA "MODERNA" (leve) ---
@@ -1832,8 +1851,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
         def destacar_pendencia(s):
             return ["background-color: #FFD6D6; color: #7A0000; font-weight: 700" if v > 0 else "" for v in s]
 
+        def limpar_espacos(s):
+            # deixa colunas de "espaço" totalmente limpas
+            return ["background-color: transparent" for _ in s]
+
         sty = (
-            df_final[cols_view]
+            df_view[cols_view]
             .sort_values(by="HIERARQUIA DE PRODUTOS")
             .style
             .format(
@@ -1854,6 +1877,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             .apply(zebra_rows, axis=1)
             .apply(destacar_pendencia, subset=["PENDÊNCIA CLIENTES"])
             .apply(destacar_negativos, subset=["CRESCIMENTO 2025", "CRESCIMENTO 2026"])
+            .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
             .set_table_styles(
                 [
                     {"selector": "th", "props": [("background-color", "#F2F2F2"), ("color", "#111"), ("font-weight", "700")]},
@@ -1875,6 +1899,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
             df_final.to_excel(writer, index=False, sheet_name="Dashboard")
         st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
         st.markdown("---")
+
 
 
 if st.button("📧 Enviar Excel por Vendedor"):
