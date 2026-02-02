@@ -2093,7 +2093,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
 
-    if st.button("📧 Enviar Excel por Vendedor"):
+if st.button("📧 Enviar Excel por Vendedor"):
 
     import smtplib
     email_origem = st.secrets["email"]["sender_email"]
