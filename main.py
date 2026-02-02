@@ -13,16 +13,10 @@ import os
 import math
 from streamlit_cookies_manager import EncryptedCookieManager
 
-def enviar_excel_vendedor(email_destino, nome_vendedor, df_excel):
-    import smtplib
+def enviar_excel_vendedor(server, email_origem, email_destino, nome_vendedor, df_excel):
     from email.mime.multipart import MIMEMultipart
     from email.mime.base import MIMEBase
     from email import encoders
-
-    email_origem = st.secrets["email"]["sender_email"]
-    senha_origem = st.secrets["email"]["sender_password"]
-    smtp_server = st.secrets["email"]["smtp_server"]
-    smtp_port = st.secrets["email"]["smtp_port"]
 
     msg = MIMEMultipart()
     msg["From"] = f"MARATÁ-GVP <{email_origem}>"
@@ -33,7 +27,10 @@ def enviar_excel_vendedor(email_destino, nome_vendedor, df_excel):
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         df_excel.to_excel(writer, index=False, sheet_name="Desempenho")
 
-    part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    part = MIMEBase(
+        "application",
+        "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     part.set_payload(buffer.getvalue())
     encoders.encode_base64(part)
     part.add_header(
@@ -42,11 +39,8 @@ def enviar_excel_vendedor(email_destino, nome_vendedor, df_excel):
     )
     msg.attach(part)
 
-    server = smtplib.SMTP(smtp_server, smtp_port)
-    server.starttls()
-    server.login(email_origem, senha_origem)
     server.sendmail(email_origem, email_destino, msg.as_string())
-    server.quit()
+
 
 
 # --- COLE A FUNÇÃO AQUI (LINHA 16 APROX.) ---
@@ -1573,27 +1567,40 @@ elif menu_interna == "📊 Desempenho de Vendas":
         st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
         st.markdown("---")
 if st.button("📧 Enviar Excel por Vendedor"):
+
+    import smtplib
+    email_origem = st.secrets["email"]["sender_email"]
+    senha_origem = st.secrets["email"]["sender_password"]
+    smtp_server = st.secrets["email"]["smtp_server"]
+    smtp_port = st.secrets["email"]["smtp_port"]
+
+    server = smtplib.SMTP(smtp_server, smtp_port)
+    server.starttls()
+    server.login(email_origem, senha_origem)
+
     vendedores = df_f['VENDEDOR_NOME'].unique()
 
     for vendedor in vendedores:
         vendedor_up = vendedor.upper()
 
-        # 🔹 TESTE: força envio só pra você
         email_destino = MAPA_EMAIL_VENDEDORES.get(
             vendedor_up,
-            "lycio.oliveira@marata.com.br"  # fallback
+            "lycio.oliveira@marata.com.br"
         )
 
-        # Filtra dados só daquele vendedor
         df_vendedor = df_final.copy()
 
         enviar_excel_vendedor(
+            server=server,
+            email_origem=email_origem,
             email_destino=email_destino,
             nome_vendedor=vendedor,
             df_excel=df_vendedor
         )
 
+    server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 # --- PÁGINA: APROVAÇÕES ---
 elif menu_interna == "🔔 Aprovações":
