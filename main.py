@@ -1043,28 +1043,18 @@ if menu == "📅 Agendamentos do Dia":
                             axis=1
                         )
 
+                        # ✅ ÍCONE (DICT) - CORREÇÃO DO ERRO "Unexpected {"
+                        icone_url = "https://cdn-icons-png.flaticon.com/512/684/684908.png"
+                        df_map["ICON"] = df_map.apply(
+                            lambda _: {"url": icone_url, "width": 128, "height": 128, "anchorY": 128},
+                            axis=1
+                        )
+
                         # --- CENTRO DO MAPA ---
                         lat_center = float(df_map['LAT'].mean())
                         lon_center = float(df_map['LON'].mean())
 
                         import pydeck as pdk
-
-                        # --- PINOS ---
-                        layer_pinos = pdk.Layer(
-                            "IconLayer",
-                            data=df_map,
-                            get_position='[LON, LAT]',
-                            get_icon='''{
-                                "url": "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-                                "width": 128,
-                                "height": 128,
-                                "anchorY": 128
-                            }''',
-                            get_size=4,
-                            size_scale=10,
-                            get_color="COR",
-                            pickable=True,
-                        )
 
                         # --- RAIO 1KM ---
                         layer_raio = pdk.Layer(
@@ -1079,6 +1069,18 @@ if menu == "📅 Agendamentos do Dia":
                             stroked=True,
                             opacity=0.08,
                             pickable=False,
+                        )
+
+                        # --- PINOS ---
+                        layer_pinos = pdk.Layer(
+                            "IconLayer",
+                            data=df_map,
+                            get_position='[LON, LAT]',
+                            get_icon="ICON",     # ✅ agora é COLUNA com dict (python), não string JSON
+                            get_size=4,
+                            size_scale=10,
+                            get_color="COR",
+                            pickable=True,
                         )
 
                         view_state = pdk.ViewState(
