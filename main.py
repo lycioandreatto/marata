@@ -1607,7 +1607,11 @@ if st.button("📧 Enviar Excel por Vendedor"):
             continue
 
         # 🔹 Excel somente daquele vendedor
-        df_vendedor = df_final[df_final['VENDEDOR_NOME'] == vendedor].copy()
+        df_f_vendedor = df_f[df_f['VENDEDOR_NOME'] == vendedor].copy()
+
+# Recalcula o df_final somente com dados daquele vendedor
+        df_vendedor = gerar_df_final(df_f_vendedor)
+
 
         for email in emails_destino:
             enviar_excel_vendedor(
