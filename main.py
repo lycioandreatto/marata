@@ -1658,6 +1658,43 @@ elif menu_interna == "📊 Desempenho de Vendas":
                 df_relacao, left_on="VENDEDOR_NOME", right_on="VENDEDOR", how="left"
             )
 
+        # ✅ (NECESSÁRIO) Garantir base_total e META CLIENTES/PENDÊNCIA (usadas na tabela/cards)
+        if df_param_metas is not None:
+            df_param_metas.columns = [str(c).strip() for c in df_param_metas.columns]
+            if "BASE" in df_param_metas.columns:
+                df_param_metas["BASE"] = pd.to_numeric(df_param_metas["BASE"], errors="coerce").fillna(0)
+            if "EscrV" in df_param_metas.columns:
+                df_param_metas["EscrV"] = df_param_metas["EscrV"].astype(str).str.strip()
+
+        if df_metas_cob is not None:
+            df_metas_cob.columns = [str(c).strip() for c in df_metas_cob.columns]
+            if "RG" in df_metas_cob.columns:
+                df_metas_cob["RG"] = df_metas_cob["RG"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
+            if "BASE" in df_metas_cob.columns:
+                df_metas_cob["BASE"] = pd.to_numeric(df_metas_cob["BASE"], errors="coerce").fillna(0)
+            if "META COBERTURA" in df_metas_cob.columns:
+                df_metas_cob["META COBERTURA"] = (
+                    pd.to_numeric(df_metas_cob["META COBERTURA"], errors="coerce")
+                    .fillna(0)
+                    .apply(lambda x: x / 100 if x > 1 else x)
+                )
+            if "META" in df_metas_cob.columns:
+                df_metas_cob["META"] = pd.to_numeric(df_metas_cob["META"], errors="coerce").fillna(0)
+
+        if df_meta_sistema is not None:
+            df_meta_sistema.columns = [str(c).strip() for c in df_meta_sistema.columns]
+            if "RG" in df_meta_sistema.columns:
+                df_meta_sistema["RG"] = df_meta_sistema["RG"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
+            if "QTD" in df_meta_sistema.columns:
+                df_meta_sistema["QTD"] = pd.to_numeric(df_meta_sistema["QTD"], errors="coerce").fillna(0)
+
+        if df_2025 is not None:
+            df_2025.columns = [str(c).strip() for c in df_2025.columns]
+            if "RG" in df_2025.columns:
+                df_2025["RG"] = df_2025["RG"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
+            if "QUANTIDADE" in df_2025.columns:
+                df_2025["QUANTIDADE"] = pd.to_numeric(df_2025["QUANTIDADE"], errors="coerce").fillna(0)
+
     except Exception as e:
         st.error(f"Erro no processamento: {e}")
         st.stop()
@@ -1679,22 +1716,23 @@ elif menu_interna == "📊 Desempenho de Vendas":
     user_atual = user_atual.strip().upper()
     vendedores_permitidos = None
 
+    # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo; Analista vê seus supervisores/vendedores; Supervisor vê seus vendedores; Vendedor vê só ele
     if is_analista:
         vendedores_permitidos = df_base_perm.loc[
             df_base_perm["ANALISTA"] == user_atual, "VENDEDOR"
-        ].unique().tolist()
+        ].dropna().unique().tolist()
 
     elif is_supervisor:
         vendedores_permitidos = df_base_perm.loc[
             df_base_perm["SUPERVISOR"] == user_atual, "VENDEDOR"
-        ].unique().tolist()
+        ].dropna().unique().tolist()
 
     elif is_vendedor:
         vendedores_permitidos = [user_atual]
 
     if vendedores_permitidos:
-        df_f["VENDEDOR_NOME"] = df_f["VENDEDOR_NOME"].astype(str).str.upper()
-        df_f = df_f[df_f["VENDEDOR_NOME"].isin(vendedores_permitidos)]
+        df_f["VENDEDOR"] = df_f["VENDEDOR"].astype(str).str.strip().str.upper()
+        df_f = df_f[df_f["VENDEDOR"].isin(vendedores_permitidos)]
 
     # ============================
     # 🔍 FILTROS
@@ -1703,9 +1741,12 @@ elif menu_interna == "📊 Desempenho de Vendas":
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        sel_estado = st.multiselect("Estado", sorted(df_f["EscrV"].dropna().unique()))
-    if sel_estado:
-        df_f = df_f[df_f["EscrV"].isin(sel_estado)]
+        # ✅ Estado vem do df_base ("Estado"); como no seu código estava "EscrV", aqui mantemos sem quebrar:
+        # se existir "EscrV" usa; senão usa "Estado"
+        col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
+        sel_estado = st.multiselect("Estado", sorted(df_f[col_estado].dropna().unique())) if col_estado else []
+    if sel_estado and col_estado:
+        df_f = df_f[df_f[col_estado].isin(sel_estado)]
 
     with c2:
         sel_supervisor = st.multiselect("Supervisor", sorted(df_f["SUPERVISOR"].dropna().unique()))
@@ -1720,6 +1761,21 @@ elif menu_interna == "📊 Desempenho de Vendas":
     vendedores_ids = df_f["VENDEDOR_COD"].unique()
 
     # ============================
+    # BASE TOTAL (NECESSÁRIA PARA CARDS/TABELA)
+    # ============================
+    base_total = 0
+    if df_param_metas is not None and not df_param_metas.empty and col_estado:
+        if not (sel_supervisor or sel_vendedor):
+            dados_base = df_param_metas[df_param_metas["EscrV"].isin(df_f[col_estado].unique())] if "EscrV" in df_param_metas.columns else df_param_metas.copy()
+            if "BASE" in dados_base.columns:
+                base_total = float(dados_base["BASE"].sum())
+        else:
+            if df_metas_cob is not None and "RG" in df_metas_cob.columns:
+                dados_base = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)]
+                if "BASE" in dados_base.columns:
+                    base_total = float(dados_base.drop_duplicates("RG")["BASE"].sum())
+
+    # ============================
     # PROCESSAMENTO FINAL
     # ============================
     df_agrup_f = (
@@ -1729,8 +1785,49 @@ elif menu_interna == "📊 Desempenho de Vendas":
         .reset_index()
     )
 
+    # Metas 2025/2026 por RG (se existirem)
+    df_agrup_25 = (
+        df_2025[df_2025["RG"].isin(vendedores_ids)]
+        .groupby("HIERARQUIA DE PRODUTOS")["QUANTIDADE"]
+        .sum()
+        .reset_index()
+        .rename(columns={"HIERARQUIA DE PRODUTOS":"HIERARQUIA","QUANTIDADE":"META 2025"})
+        if df_2025 is not None and not df_2025.empty and "HIERARQUIA DE PRODUTOS" in df_2025.columns
+        else pd.DataFrame(columns=["HIERARQUIA","META 2025"])
+    )
+
+    df_agrup_26 = (
+        df_meta_sistema[df_meta_sistema["RG"].isin(vendedores_ids)]
+        .groupby("HIERARQUIA DE PRODUTOS")["QTD"]
+        .sum()
+        .reset_index()
+        .rename(columns={"HIERARQUIA DE PRODUTOS":"HIERARQUIA","QTD":"META 2026"})
+        if df_meta_sistema is not None and not df_meta_sistema.empty and "HIERARQUIA DE PRODUTOS" in df_meta_sistema.columns
+        else pd.DataFrame(columns=["HIERARQUIA","META 2026"])
+    )
+
+    df_meta_cob_h = (
+        df_metas_cob.groupby("HIERARQUIA DE PRODUTOS")["META COBERTURA"]
+        .mean()
+        .reset_index()
+        .rename(columns={"HIERARQUIA DE PRODUTOS":"HIERARQUIA"})
+        if df_metas_cob is not None and not df_metas_cob.empty and "HIERARQUIA DE PRODUTOS" in df_metas_cob.columns
+        else pd.DataFrame(columns=["HIERARQUIA","META COBERTURA"])
+    )
+
     df_final = pd.DataFrame(lista_hierarquia_fixa, columns=["HIERARQUIA"])
-    df_final = df_final.merge(df_agrup_f, on="HIERARQUIA", how="left").fillna(0)
+    df_final = df_final.merge(df_agrup_f, on="HIERARQUIA", how="left")
+    df_final = df_final.merge(df_meta_cob_h, on="HIERARQUIA", how="left")
+    df_final = df_final.merge(df_agrup_25, on="HIERARQUIA", how="left")
+    df_final = df_final.merge(df_agrup_26, on="HIERARQUIA", how="left").fillna(0)
+
+    # ✅ colunas que seu layout usa
+    df_final["META CLIENTES (ABS)"] = (df_final["META COBERTURA"] * base_total).apply(math.ceil) if base_total > 0 else 0
+    df_final["PENDÊNCIA CLIENTES"] = (df_final["META CLIENTES (ABS)"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
+    df_final["CRESCIMENTO 2025"] = df_final["VOLUME"] - df_final.get("META 2025", 0)
+    df_final["ATINGIMENTO % (VOL 2025)"] = (df_final["VOLUME"] / df_final.get("META 2025", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
+    df_final["CRESCIMENTO 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
+    df_final["ATINGIMENTO % (VOL 2026)"] = (df_final["VOLUME"] / df_final.get("META 2026", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
@@ -1759,7 +1856,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
         else:
             positivos_total = df_f[col_cod_cliente].nunique()
 
-        dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG")
+        dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG") if df_metas_cob is not None else pd.DataFrame()
 
         base_pos = pd.to_numeric(dados_pos["BASE"], errors="coerce").fillna(0).sum() if "BASE" in dados_pos.columns else 0
 
@@ -1858,50 +1955,47 @@ elif menu_interna == "📊 Desempenho de Vendas":
         height=560,
     )
 
-
-        # Exportação
-buffer = io.BytesIO()
+    # Exportação
+    buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         df_final.to_excel(writer, index=False, sheet_name="Dashboard")
-        st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
-        st.markdown("---")
+    st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
+    st.markdown("---")
 
+    if st.button("📧 Enviar Excel por Vendedor"):
 
+        import smtplib
+        email_origem = st.secrets["email"]["sender_email"]
+        senha_origem = st.secrets["email"]["sender_password"]
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
 
-if st.button("📧 Enviar Excel por Vendedor"):
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(email_origem, senha_origem)
 
-    import smtplib
-    email_origem = st.secrets["email"]["sender_email"]
-    senha_origem = st.secrets["email"]["sender_password"]
-    smtp_server = st.secrets["email"]["smtp_server"]
-    smtp_port = st.secrets["email"]["smtp_port"]
+        vendedores = df_f['VENDEDOR_NOME'].unique()
 
-    server = smtplib.SMTP(smtp_server, smtp_port)
-    server.starttls()
-    server.login(email_origem, senha_origem)
+        for vendedor in vendedores:
+            vendedor_up = vendedor.upper()
 
-    vendedores = df_f['VENDEDOR_NOME'].unique()
+            email_destino = MAPA_EMAIL_VENDEDORES.get(
+                vendedor_up,
+                "lycio.oliveira@marata.com.br"
+            )
 
-    for vendedor in vendedores:
-        vendedor_up = vendedor.upper()
+            df_vendedor = df_final.copy()
 
-        email_destino = MAPA_EMAIL_VENDEDORES.get(
-            vendedor_up,
-            "lycio.oliveira@marata.com.br"
-        )
+            enviar_excel_vendedor(
+                server=server,
+                email_origem=email_origem,
+                email_destino=email_destino,
+                nome_vendedor=vendedor,
+                df_excel=df_vendedor
+            )
 
-        df_vendedor = df_final.copy()
-
-        enviar_excel_vendedor(
-            server=server,
-            email_origem=email_origem,
-            email_destino=email_destino,
-            nome_vendedor=vendedor,
-            df_excel=df_vendedor
-        )
-
-    server.quit()
-    st.success("📨 E-mails enviados com sucesso!")
+        server.quit()
+        st.success("📨 E-mails enviados com sucesso!")
 
 
 
