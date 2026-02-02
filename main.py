@@ -1679,8 +1679,8 @@ elif menu_interna == "📊 Desempenho de Vendas":
     if df_faturado is not None:
         df_f = df_faturado.copy()
 
-        if df_faturado is not None:
-    df_f = df_faturado.copy()
+    if df_faturado is not None:
+        df_f = df_faturado.copy()
 
     # ⬇️⬇️⬇️ COLE O BLOCO AQUI ⬇️⬇️⬇️
 
