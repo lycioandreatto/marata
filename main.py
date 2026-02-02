@@ -37,30 +37,185 @@ def enviar_excel_vendedor(
         if col in df_export.columns:
             df_export[col] = pd.to_numeric(df_export[col], errors='coerce').fillna(0) / 100
 
+    # ✅ ORDEM FINAL + COLUNAS EM BRANCO (ESPAÇOS)
+    # Obs: colunas "EM BRANCO" serão criadas só no Excel
+    ordem_colunas = [
+        "HIERARQUIA DE PRODUTOS",
+        "META COBERTURA",
+        "META CLIENTES (ABS)",
+        "POSITIVAÇÃO",
+        "PENDÊNCIA CLIENTES",
+        "META 2025",
+        "META 2026",
+        "VOLUME",
+        " ",  # espaço 1 (depois do VOLUME)
+        "CRESCIMENTO 2025",
+        "ATINGIMENTO % (VOL 2025)",
+        "  ",  # espaço 2 (entre 2025 e 2026)
+        "CRESCIMENTO 2026",
+        "ATINGIMENTO % (VOL 2026)",
+    ]
+
+    # Garante que colunas em branco existam
+    for col in [" ", "  "]:
+        if col not in df_export.columns:
+            df_export[col] = ""
+
+    # Reordena mantendo só o que existir (sem quebrar o app)
+    cols_existentes = [c for c in ordem_colunas if c in df_export.columns]
+    df_export = df_export[cols_existentes].copy()
+
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df_export.to_excel(writer, index=False, sheet_name="Relatório")
+        # ✅ Começa a escrever a tabela a partir da linha 2 (row=2)
+        # porque vamos criar 2 linhas de cabeçalho (mescladas) acima
+        df_export.to_excel(writer, index=False, sheet_name="Relatório", startrow=2)
 
         workbook  = writer.book
         worksheet = writer.sheets["Relatório"]
 
-        # ✅ Formato de porcentagem
+        # =========================
+        # FORMATOS
+        # =========================
         formato_pct = workbook.add_format({'num_format': '0.00%'})
 
-        # Colunas que devem aparecer como %
+        # Cabeçalhos
+        fmt_header_grp = workbook.add_format({
+            'bold': True, 'align': 'center', 'valign': 'vcenter',
+            'bg_color': '#F2F2F2', 'border': 1
+        })
+        fmt_header_col = workbook.add_format({
+            'bold': True, 'align': 'center', 'valign': 'vcenter',
+            'bg_color': '#F7F7F7', 'border': 1
+        })
+
+        # Células padrão com borda (linhas “divididas”)
+        fmt_cell = workbook.add_format({
+            'border': 1, 'valign': 'vcenter'
+        })
+
+        # Células padrão com borda + porcentagem
+        fmt_cell_pct = workbook.add_format({
+            'border': 1, 'valign': 'vcenter', 'num_format': '0.00%'
+        })
+
+        # Coluna em branco (sem borda) – para “espaço”
+        fmt_blank = workbook.add_format({})
+
+        # =========================
+        # MAPA DE ÍNDICES DAS COLUNAS NO EXCEL
+        # =========================
+        # Como usamos startrow=2, os dados começam na linha 3 (índice 2),
+        # mas os índices de colunas são os do DataFrame exportado
+        col_names = list(df_export.columns)
+        col_idx = {name: i for i, name in enumerate(col_names)}
+
+        # =========================
+        # CABEÇALHOS MESCLADOS (LINHA 1)
+        # =========================
+        # Linha 0: grupos
+        # Linha 1: nomes das colunas (já estão no Excel pelo to_excel, na linha startrow=2,
+        # então vamos reescrever os headers manualmente na linha 1 e apagar os do pandas (linha 2))
+        #
+        # Estratégia:
+        # - Mescla grupos na linha 0
+        # - Escreve headers na linha 1
+        # - Reescreve dados com formatos (bordas)
+        # - Oculta/neutraliza a linha de header gerada pelo pandas (linha 2) escrevendo vazio
+
+        # Define ranges dos grupos (se existirem)
+        # Grupo 1: COBERTURA X POSITIVAÇÃO (4 colunas)
+        grp1_cols = ["META COBERTURA", "META CLIENTES (ABS)", "POSITIVAÇÃO", "PENDÊNCIA CLIENTES"]
+        if all(c in col_idx for c in grp1_cols):
+            c0 = col_idx[grp1_cols[0]]
+            c1 = col_idx[grp1_cols[-1]]
+            worksheet.merge_range(0, c0, 0, c1, "COBERTURA X POSITIVAÇÃO", fmt_header_grp)
+
+        # Grupo 2: META 2026 (2 colunas: META 2025 e META 2026)
+        grp2_cols = ["META 2025", "META 2026"]
+        if all(c in col_idx for c in grp2_cols):
+            c0 = col_idx[grp2_cols[0]]
+            c1 = col_idx[grp2_cols[-1]]
+            worksheet.merge_range(0, c0, 0, c1, "META 2026", fmt_header_grp)
+
+        # Para as demais colunas (inclui HIERARQUIA, VOLUME e as colunas pós-espaços),
+        # apenas cria “blocos” individuais na linha 0 para manter padrão visual
+        for name in col_names:
+            # pula as colunas que já fazem parte dos grupos mesclados
+            if name in grp1_cols or name in grp2_cols:
+                continue
+            # pula colunas em branco
+            if name in [" ", "  "]:
+                continue
+            c = col_idx[name]
+            worksheet.merge_range(0, c, 0, c, name, fmt_header_grp)
+
+        # =========================
+        # CABEÇALHO DAS COLUNAS (LINHA 1)
+        # =========================
+        for name in col_names:
+            c = col_idx[name]
+            if name in [" ", "  "]:
+                worksheet.write(1, c, "", fmt_blank)
+            else:
+                worksheet.write(1, c, name, fmt_header_col)
+
+        # =========================
+        # “APAGA” A LINHA DE HEADER GERADA PELO PANDAS (LINHA 2)
+        # =========================
+        for name in col_names:
+            c = col_idx[name]
+            worksheet.write(2, c, "", fmt_blank)
+
+        # =========================
+        # FORMATAÇÃO DAS COLUNAS (%)
+        # =========================
         colunas_pct = [
             "META COBERTURA",
             "ATINGIMENTO % (VOL 2025)",
-            "ATINGIMENTO % (VOL 2026)"
+            "ATINGIMENTO % (VOL 2026)",
         ]
 
-        # Aplica o formato % nessas colunas
-        for col in colunas_pct:
-            if col in df_export.columns:
-                col_idx = df_export.columns.get_loc(col)
-                worksheet.set_column(col_idx, col_idx, 20, formato_pct)
+        # Ajuste de larguras (leve)
+        for name in col_names:
+            c = col_idx[name]
+            if name == "HIERARQUIA DE PRODUTOS":
+                worksheet.set_column(c, c, 28)
+            elif name in [" ", "  "]:
+                worksheet.set_column(c, c, 3)   # “espaço”
+            else:
+                worksheet.set_column(c, c, 18)
 
-        # (opcional)
-        worksheet.freeze_panes(1, 0)  # congela cabeçalho
+        # =========================
+        # APLICA BORDAS EM TODAS AS CÉLULAS (EXCETO COLUNAS EM BRANCO)
+        # =========================
+        start_data_row = 3  # dados começam na linha 3 (por causa da linha 0 e 1, e linha 2 “apagada”)
+        n_rows = len(df_export)
+
+        for r in range(n_rows):
+            excel_r = start_data_row + r
+            for name in col_names:
+                c = col_idx[name]
+                if name in [" ", "  "]:
+                    worksheet.write(excel_r, c, "", fmt_blank)
+                    continue
+
+                val = df_export.iloc[r, c]
+
+                # Se for coluna %: usa formato pct com borda
+                if name in colunas_pct:
+                    worksheet.write(excel_r, c, val, fmt_cell_pct)
+                else:
+                    worksheet.write(excel_r, c, val, fmt_cell)
+
+        # =========================
+        # CONGELAR PAINEL (2 LINHAS DE CABEÇALHO)
+        # =========================
+        worksheet.freeze_panes(2, 0)  # congela as duas linhas do topo (grupo + colunas)
+
+        # ✅ (continua o resto da sua função exatamente como você já tem, envio de e-mail, etc.)
+        # aqui você provavelmente monta o attachment e envia pelo server
+        # (não mexi nisso porque você não colou essa parte)
+
 
     output.seek(0)
 
