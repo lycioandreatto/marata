@@ -2018,7 +2018,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             }, inplace=True)
 
             # ✅ Cliente é a coluna K (índice 10) da aba FATURADO
-            col_cod_cliente = df_faturado.columns[10]
+            col_cod_cliente = df_faturado.columns[11]
 
             df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
             df_faturado["VENDEDOR_COD"] = df_faturado["VENDEDOR_COD"].astype(str).str.replace(r"\.0$", "", regex=True)
