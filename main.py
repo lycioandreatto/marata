@@ -693,48 +693,69 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- AJUSTE: SINO DE NOTIFICAÇÃO FILTRADO ---
-    # Só mostra se for Gestão (Adm/Analista). Supervisor e Vendedor não entram aqui.
-    if eh_gestao:
-        if df_agenda is not None:
+  # --- AJUSTE: SINO DE NOTIFICAÇÃO FILTRADO ---
+# Só mostra se for Gestão (Adm/Analista). Supervisor e Vendedor não entram aqui.
+if eh_gestao:
+    if df_agenda is not None:
         # Se for Admin, vê tudo. Se for Analista, vê apenas o que é dele.
-            if is_admin:
-            df_filtrado_sino = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
+        if is_admin:
+            df_filtrado_sino = df_agenda[df_agenda["STATUS"] == "Pendente"].copy()
         else:
             df_filtrado_sino = df_agenda[
-                (df_agenda['STATUS'] == "Pendente") &
-                (df_agenda['ANALISTA'] == user_atual)
+                (df_agenda["STATUS"] == "Pendente")
+                & (df_agenda["ANALISTA"] == user_atual)
             ].copy()
 
         # ✅ FILTRO DE VENDEDOR (só isso)
         if not df_filtrado_sino.empty and "VENDEDOR" in df_filtrado_sino.columns:
             op_vend = sorted(df_filtrado_sino["VENDEDOR"].dropna().unique())
-            vend_sel_sino = st.multiselect("Filtrar Vendedor:", op_vend, key="filtro_vendedor_sino")
+            vend_sel_sino = st.multiselect(
+                "Filtrar Vendedor:",
+                op_vend,
+                key="filtro_vendedor_sino",
+            )
             if vend_sel_sino:
-                df_filtrado_sino = df_filtrado_sino[df_filtrado_sino["VENDEDOR"].isin(vend_sel_sino)].copy()
+                df_filtrado_sino = df_filtrado_sino[
+                    df_filtrado_sino["VENDEDOR"].isin(vend_sel_sino)
+                ].copy()
 
         qtd_p = len(df_filtrado_sino)
     else:
         qtd_p = 0
         df_filtrado_sino = None
+else:
+    qtd_p = 0
+    df_filtrado_sino = None
 
-    # ✅ BOTÃO APROVAR TUDO (apenas o que estiver visível após filtro)
-    if df_filtrado_sino is not None and not df_filtrado_sino.empty:
-        if st.button("✅ APROVAR TUDO (FILTRADO)", use_container_width=True, key="btn_aprovar_tudo_sino"):
-            ids_aprovar = df_filtrado_sino["ID"].tolist()
-            if ids_aprovar:
-                df_agenda.loc[df_agenda["ID"].isin(ids_aprovar), ["STATUS", "APROVACAO"]] = ["Planejado", "Aprovado"]
-                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
-                st.cache_data.clear()
-                st.success(f"✅ {len(ids_aprovar)} aprovações feitas!")
-                st.rerun()
+# ✅ BOTÃO APROVAR TUDO (apenas o que estiver visível após filtro)
+if df_filtrado_sino is not None and not df_filtrado_sino.empty:
+    if st.button(
+        "✅ APROVAR TUDO (FILTRADO)",
+        use_container_width=True,
+        key="btn_aprovar_tudo_sino",
+    ):
+        ids_aprovar = df_filtrado_sino["ID"].tolist()
+        if ids_aprovar:
+            df_agenda.loc[
+                df_agenda["ID"].isin(ids_aprovar),
+                ["STATUS", "APROVACAO"],
+            ] = ["Planejado", "Aprovado"]
 
-    if qtd_p > 0:
-        if st.button(f"🔔 {qtd_p} Pendências de Aprovação", use_container_width=True, type="primary"):
-            st.session_state.pagina_direta = "🔔 Aprovações"
+            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+            st.cache_data.clear()
+            st.success(f"✅ {len(ids_aprovar)} aprovações feitas!")
             st.rerun()
-    else:
-        st.caption("✅ Nenhuma aprovação pendente")
+
+if qtd_p > 0:
+    if st.button(
+        f"🔔 {qtd_p} Pendências de Aprovação",
+        use_container_width=True,
+        type="primary",
+    ):
+        st.session_state.pagina_direta = "🔔 Aprovações"
+        st.rerun()
+else:
+    st.caption("✅ Nenhuma aprovação pendente")
 
 
     # Texto dinâmico do menu
