@@ -1730,7 +1730,7 @@ elif menu_interna == "📊 Desempenho de Vendas":
     elif is_vendedor:
         vendedores_permitidos = [user_atual]
 
-    if vendedores_permitidos:
+if vendedores_permitidos:
     # Normaliza ambas as colunas por segurança
     if "VENDEDOR" in df_f.columns:
         df_f["VENDEDOR"] = df_f["VENDEDOR"].astype(str).str.strip().str.upper()
