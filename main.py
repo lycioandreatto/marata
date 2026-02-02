@@ -800,92 +800,100 @@ menu = menu_interna
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 if menu == "📅 Agendamentos do Dia":
     col_titulo, col_btn = st.columns([0.8, 0.2])
+
     with col_titulo:
         st.header("📅 Agendamentos do Dia")
-    
+
     with col_btn:
         if st.button("🔄 Atualizar Agenda", key="btn_refresh_dia"):
             st.cache_data.clear()
             st.rerun()
 
     hoje_str = datetime.now(fuso_br).strftime("%d/%m/%Y")
-    
+
     if df_agenda is not None and not df_agenda.empty:
 
-        # ✅ (NOVO) Permissão de validação: Gestão + Analista
+        # ✅ Permissão de validação: Gestão + Analista
         pode_validar = (is_admin or is_diretoria or is_analista)
 
         # --- LIMPEZA ---
-        df_agenda = df_agenda.drop_duplicates(
-            subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'], 
-            keep='first'
-        ).reset_index(drop=True)
+        df_agenda = (
+            df_agenda.drop_duplicates(
+                subset=["DATA", "VENDEDOR", "CÓDIGO CLIENTE", "STATUS"],
+                keep="first",
+            )
+            .reset_index(drop=True)
+        )
 
+        # --- COLUNAS PADRÃO ---
         col_aprov_plan = next(
-            (c for c in df_agenda.columns if ("APROVA" in c.upper() and "PLAN" in c.upper()) or c.upper() == "APROVACAO"),
-            "APROVACAO"
+            (
+                c
+                for c in df_agenda.columns
+                if (("APROVA" in c.upper() and "PLAN" in c.upper()) or c.upper() == "APROVACAO")
+            ),
+            "APROVACAO",
         )
         col_aprov_exec = "VALIDACAO_GESTAO"
         col_just = "JUSTIFICATIVA"
-        
+
         if col_aprov_exec not in df_agenda.columns:
             df_agenda[col_aprov_exec] = "PENDENTE"
         if col_just not in df_agenda.columns:
             df_agenda[col_just] = ""
 
+        if "DISTANCIA_LOG" not in df_agenda.columns:
+            df_agenda["DISTANCIA_LOG"] = 0.0
+        if "COORDENADAS" not in df_agenda.columns:
+            df_agenda["COORDENADAS"] = ""
+
         # --- FILTRO DO DIA ---
-        df_dia = df_agenda[df_agenda['DATA'] == hoje_str].copy()
+        df_dia = df_agenda[df_agenda["DATA"] == hoje_str].copy()
         df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
 
         # --- CONTROLE DE ACESSO ---
         if not (is_admin or is_diretoria):
             if is_analista:
-                df_dia = df_dia[df_dia['ANALISTA'].str.upper() == user_atual.upper()]
+                df_dia = df_dia[df_dia["ANALISTA"].astype(str).str.upper() == user_atual.upper()]
             elif is_supervisor:
-                df_dia = df_dia[df_dia['SUPERVISOR'].str.upper() == user_atual.upper()]
+                df_dia = df_dia[df_dia["SUPERVISOR"].astype(str).str.upper() == user_atual.upper()]
             else:
-                df_dia = df_dia[df_dia['VENDEDOR'].str.upper() == user_atual.upper()]
+                df_dia = df_dia[df_dia["VENDEDOR"].astype(str).str.upper() == user_atual.upper()]
 
         df_dia = df_dia.reset_index(drop=True)
 
         # --- SLICERS (GESTÃO / ANALISTA) ---
-        if pode_validar:
+        if pode_validar and not df_dia.empty:
             st.markdown("### 🔍 Filtros")
             f1, f2 = st.columns(2)
 
             with f1:
-                sup_sel = st.multiselect(
-                    "Supervisor",
-                    sorted(df_dia['SUPERVISOR'].dropna().unique())
-                )
+                sup_sel = st.multiselect("Supervisor", sorted(df_dia["SUPERVISOR"].dropna().unique()))
             if sup_sel:
-                df_dia = df_dia[df_dia['SUPERVISOR'].isin(sup_sel)]
+                df_dia = df_dia[df_dia["SUPERVISOR"].isin(sup_sel)]
 
             with f2:
-                vend_sel = st.multiselect(
-                    "Vendedor",
-                    sorted(df_dia['VENDEDOR'].dropna().unique())
-                )
+                vend_sel = st.multiselect("Vendedor", sorted(df_dia["VENDEDOR"].dropna().unique()))
             if vend_sel:
-                df_dia = df_dia[df_dia['VENDEDOR'].isin(vend_sel)]
+                df_dia = df_dia[df_dia["VENDEDOR"].isin(vend_sel)]
 
         # --- MÉTRICAS ---
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Aprovados p/ Hoje", len(df_dia))
-        m2.metric("Realizados", len(df_dia[df_dia['STATUS'] == "Realizado"]))
+        m2.metric("Realizados", len(df_dia[df_dia["STATUS"] == "Realizado"]))
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
             if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
-                ids = df_dia[df_dia['STATUS'] == "Realizado"]['ID'].tolist()
+                ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
                 if ids:
-                    df_agenda.loc[df_agenda['ID'].isin(ids), col_aprov_exec] = "OK"
+                    df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
                     conn.update(
                         spreadsheet=url_planilha,
                         worksheet="AGENDA",
-                        data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore')
+                        data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
                     )
                     st.success("Todas as visitas realizadas foram aprovadas!")
                     time.sleep(1)
@@ -893,24 +901,32 @@ if menu == "📅 Agendamentos do Dia":
 
         # --- TABELA ---
         if not df_dia.empty:
-            if df_base is not None:
-                df_cidades = df_base[['Cliente', 'Local']].drop_duplicates('Cliente')
-                df_dia = df_dia.merge(
-                    df_cidades,
-                    left_on='CÓDIGO CLIENTE',
-                    right_on='Cliente',
-                    how='left'
-                ).rename(columns={'Local': 'CIDADE'})
 
-            cols_v = ['EDITAR', 'VENDEDOR', 'CLIENTE', 'CIDADE', 'STATUS', 'JUSTIFICATIVA']
+            # ✅ Cidade
+            if df_base is not None and not df_base.empty and ("Cliente" in df_base.columns) and ("Local" in df_base.columns):
+                df_cidades = df_base[["Cliente", "Local"]].drop_duplicates("Cliente").copy()
+                df_cidades["Cliente"] = df_cidades["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
 
-            # ✅ (AJUSTE) Auditoria só aparece para quem pode validar
+                df_dia["CÓDIGO CLIENTE"] = df_dia["CÓDIGO CLIENTE"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                df_dia = (
+                    df_dia.merge(
+                        df_cidades,
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left",
+                    )
+                    .rename(columns={"Local": "CIDADE"})
+                )
+
+            cols_v = ["EDITAR", "VENDEDOR", "CLIENTE", "CIDADE", "STATUS", col_just]
+
+            # ✅ Auditoria só aparece para quem pode validar
             if pode_validar:
                 cols_v.append(col_aprov_exec)
-                cols_v.append('DISTANCIA_LOG')
+                cols_v.append("DISTANCIA_LOG")
 
             df_dia["EDITAR"] = False
-            df_display = df_dia[[c for c in cols_v if c in df_dia.columns or c == "EDITAR"]]
+            df_display = df_dia[[c for c in cols_v if c in df_dia.columns or c == "EDITAR"]].copy()
 
             edicao_dia = st.data_editor(
                 df_display,
@@ -918,13 +934,13 @@ if menu == "📅 Agendamentos do Dia":
                 use_container_width=True,
                 column_config={
                     "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    col_aprov_exec: st.column_config.SelectboxColumn(
-                        "AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]
-                    ),
+                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]),
                 },
-                # ✅ (AJUSTE) Todo mundo pode clicar em EDITAR.
-                # Quem NÃO pode validar não edita auditoria (e auditoria nem aparece).
-                disabled=[c for c in df_display.columns if c not in (["EDITAR", col_aprov_exec] if pode_validar else ["EDITAR"])]
+                disabled=[
+                    c
+                    for c in df_display.columns
+                    if c not in (["EDITAR", col_aprov_exec] if pode_validar else ["EDITAR"])
+                ],
             )
 
             # --- EDIÇÃO INDIVIDUAL ---
@@ -934,34 +950,25 @@ if menu == "📅 Agendamentos do Dia":
                 sel_row = df_dia.iloc[idx]
 
                 st.markdown("---")
-                st.subheader(f"⚙️ Detalhes: {sel_row['CLIENTE']}")
+                st.subheader(f"⚙️ Detalhes: {sel_row.get('CLIENTE','')}")
 
-                # ✅ Vendedor pode marcar realizado
+                # ✅ Status
                 status_list = ["Planejado", "Realizado", "Reagendado"]
-                status_atual = sel_row['STATUS'] if sel_row['STATUS'] in status_list else "Planejado"
-                novo_status = st.selectbox(
-                    "Status:",
-                    status_list,
-                    index=status_list.index(status_atual)
-                )
+                status_atual = sel_row["STATUS"] if sel_row.get("STATUS") in status_list else "Planejado"
+                novo_status = st.selectbox("Status:", status_list, index=status_list.index(status_atual))
 
-                # ✅ Só quem valida vê auditoria
+                # ✅ Auditoria
                 val_list = ["PENDENTE", "OK", "REPROVADO"]
                 valor_atual = str(sel_row.get(col_aprov_exec, "PENDENTE")).strip().upper()
                 if valor_atual not in val_list:
                     valor_atual = "PENDENTE"
 
                 if pode_validar:
-                    nova_val = st.selectbox(
-                        "Validar:",
-                        val_list,
-                        index=val_list.index(valor_atual)
-                    )
+                    nova_val = st.selectbox("Validar:", val_list, index=val_list.index(valor_atual))
                 else:
-                    nova_val = valor_atual  # mantém como está
+                    nova_val = valor_atual
 
-
-                # ✅✅✅ AJUSTE PEDIDO: VOLTAR MENU DE OBSERVAÇÕES (pré-selecionadas)
+                # ✅ Observações (pré-selecionadas)
                 opcoes_obs = [
                     "Selecione...",
                     "Pedido enviado",
@@ -969,70 +976,82 @@ if menu == "📅 Agendamentos do Dia":
                     "Cliente fechado",
                     "Cliente inativo",
                     "Cliente sem limite de crédito",
-                    "Outro (digitar)"
+                    "Outro (digitar)",
                 ]
 
                 just_atual = str(sel_row.get(col_just, "") or "").strip()
 
-                # tenta pré-selecionar se a justificativa atual for igual a alguma opção
                 idx_padrao = 0
                 for i, opt in enumerate(opcoes_obs):
                     if just_atual.upper() == opt.upper():
                         idx_padrao = i
                         break
 
-                obs_sel = st.selectbox(
-                    "Observações:",
-                    opcoes_obs,
-                    index=idx_padrao,
-                    key="obs_pre_def"
-                )
+                obs_sel = st.selectbox("Observações:", opcoes_obs, index=idx_padrao, key="obs_pre_def")
 
-                # se escolher "Outro", libera digitação; senão permite editar o texto mas já vem preenchido
                 if obs_sel == "Outro (digitar)":
                     nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
                 elif obs_sel != "Selecione...":
                     nova_just = st.text_input("Justificativa:", value=obs_sel, key="just_txt")
                 else:
                     nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
-                # ✅✅✅ FIM DO AJUSTE
 
-
+                # ✅ SALVAR (corrigido: evita cair em except por coord indefinida / mismatch / indent)
                 if st.button("💾 SALVAR ATUALIZAÇÃO"):
-                    lat_v = st.session_state.get('lat', 0)
-                    lon_v = st.session_state.get('lon', 0)
-                    distancia_m = 0
+                    lat_v = st.session_state.get("lat", 0)
+                    lon_v = st.session_state.get("lon", 0)
+                    distancia_m = 0.0
 
                     try:
-                        base_cliente = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
-                        if not base_cliente.empty and 'COORDENADAS' in base_cliente.columns:
-                            coord = base_cliente.iloc[0]['COORDENADAS']
-                            if isinstance(coord, str) and ',' in coord:
-                                lat_c, lon_c = coord.split(',')
+                        cod_sel = str(sel_row["CÓDIGO CLIENTE"]).strip().replace(".0", "")
+
+                        base_cliente = df_base.copy()
+                        if "Cliente" in base_cliente.columns:
+                            base_cliente["Cliente"] = (
+                                base_cliente["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                            )
+
+                        coord = None
+                        if (base_cliente is not None) and (not base_cliente.empty) and ("COORDENADAS" in base_cliente.columns):
+                            linha_cli = base_cliente[base_cliente["Cliente"] == cod_sel]
+                            if not linha_cli.empty:
+                                coord = linha_cli.iloc[0]["COORDENADAS"]
+
+                        if isinstance(coord, str) and ("," in coord):
+                            lat_c, lon_c = coord.split(",", 1)
+
+                            # só calcula se GPS válido
+                            if float(lat_v) != 0 and float(lon_v) != 0:
                                 distancia_m = calcular_distancia(
                                     lat_c.strip(),
                                     lon_c.strip(),
                                     lat_v,
-                                    lon_v
+                                    lon_v,
                                 )
-                    except:
-                        distancia_m = 0
+                            else:
+                                distancia_m = 0.0
+                        else:
+                            distancia_m = 0.0
+
+                    except Exception as e:
+                        distancia_m = 0.0
+                        st.warning(f"Falha ao calcular distância: {e}")
 
                     df_agenda.loc[
-                        df_agenda['ID'] == str(sel_row['ID']),
-                        ['STATUS', col_aprov_exec, col_just, 'COORDENADAS', 'DISTANCIA_LOG']
+                        df_agenda["ID"].astype(str) == str(sel_row["ID"]),
+                        ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
                     ] = [
                         novo_status,
                         nova_val,
                         nova_just,
                         f"{lat_v}, {lon_v}",
-                        round(distancia_m, 1)
+                        round(float(distancia_m), 1),
                     ]
 
                     conn.update(
                         spreadsheet=url_planilha,
                         worksheet="AGENDA",
-                        data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA'], errors='ignore')
+                        data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
                     )
 
                     st.success("Dados atualizados!")
@@ -1040,7 +1059,7 @@ if menu == "📅 Agendamentos do Dia":
                     st.rerun()
 
             # ============================
-            # 🗺️ MAPA (NOVO - AO FINAL)
+            # 🗺️ MAPA (AO FINAL)
             # ============================
             st.markdown("---")
             st.markdown("### 🗺️ Mapa das Visitas do Dia")
@@ -1048,63 +1067,61 @@ if menu == "📅 Agendamentos do Dia":
             try:
                 if df_base is not None and ("COORDENADAS" in df_base.columns):
 
-                    # 🔧 COORDENADAS DA BASE
-                    df_coords = df_base[['Cliente', 'COORDENADAS']].drop_duplicates(subset='Cliente').copy()
+                    # 🔧 COORDENADAS DA BASE (normaliza para o merge não falhar)
+                    df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
                     df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
-                    df_coords['Cliente'] = df_coords['Cliente'].astype(str).str.strip()
+                    df_coords["Cliente"] = df_coords["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
 
                     df_map = df_dia.copy()
-                    df_map['CÓDIGO CLIENTE'] = df_map['CÓDIGO CLIENTE'].astype(str).str.strip()
+                    if "CÓDIGO CLIENTE" in df_map.columns:
+                        df_map["CÓDIGO CLIENTE"] = df_map["CÓDIGO CLIENTE"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
 
                     df_map = df_map.merge(
                         df_coords,
-                        left_on='CÓDIGO CLIENTE',
-                        right_on='Cliente',
-                        how='left'
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left",
                     )
 
-                    # --- EXTRAI LAT / LON DA BASE ---
+                    # --- EXTRAI LAT/LON DA BASE ---
                     def _parse_coord(x):
                         try:
-                            if isinstance(x, str) and ',' in x:
-                                lat, lon = x.split(',', 1)
+                            if isinstance(x, str) and "," in x:
+                                lat, lon = x.split(",", 1)
                                 return float(lat.strip()), float(lon.strip())
-                        except:
+                        except Exception:
                             pass
                         return None, None
 
-                    df_map['LAT'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
-                    df_map['LON'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
+                    df_map["LAT"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[0])
+                    df_map["LON"] = df_map["COORDENADAS_BASE"].apply(lambda v: _parse_coord(v)[1])
 
                     # Remove sem coordenadas válidas
-                    df_map = df_map.dropna(subset=['LAT', 'LON']).copy()
+                    df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
 
                     if df_map.empty:
                         st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
                     else:
-                        # --- LIMPEZA EXTRA ---
-                        for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
+                        # Limpeza extra
+                        for c in ["VENDEDOR", "CLIENTE", "STATUS"]:
                             if c in df_map.columns:
                                 df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
 
-                        # --- CORES ---
-                        # Pino (verde / vermelho)
-                        df_map['COR_PINO'] = df_map['STATUS'].astype(str).str.upper().apply(
+                        # Cores
+                        df_map["COR_PINO"] = df_map["STATUS"].astype(str).str.upper().apply(
                             lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
                         )
+                        df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
 
-                        # Círculo 1km (cinza)
-                        df_map['COR_RAIO'] = [[160, 160, 160, 70]] * len(df_map)
-
-                        # --- TOOLTIP ---
-                        df_map['TOOLTIP'] = df_map.apply(
+                        # Tooltip
+                        df_map["TOOLTIP"] = df_map.apply(
                             lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
-                            axis=1
+                            axis=1,
                         )
 
-                        # --- ÍCONES ---
+                        # Ícones
                         icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-                        icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+                        icone_verde = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
 
                         def _icon_por_status(s):
                             s = str(s).strip().upper()
@@ -1113,22 +1130,21 @@ if menu == "📅 Agendamentos do Dia":
 
                         df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
-                        # --- DADOS PARA O MAPA ---
-                        dados_mapa = df_map[['LON', 'LAT', 'COR_PINO', 'COR_RAIO', 'ICON', 'TOOLTIP']].to_dict(orient="records")
+                        # Dados pro mapa
+                        dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
 
-                        # --- CENTRO ---
-                        lat_center = float(df_map['LAT'].mean())
-                        lon_center = float(df_map['LON'].mean())
+                        # Centro
+                        lat_center = float(df_map["LAT"].mean())
+                        lon_center = float(df_map["LON"].mean())
 
                         import pydeck as pdk
 
-                        # --- CÍRCULO 1 KM (GARANTIDO) ---
                         layer_raio = pdk.Layer(
                             "CircleLayer",
                             data=dados_mapa,
-                            get_position='[LON, LAT]',
+                            get_position="[LON, LAT]",
                             get_radius=1000,
-                            radius_units='meters',
+                            radius_units="meters",
                             get_fill_color="COR_RAIO",
                             get_line_color=[120, 120, 120, 180],
                             line_width_min_pixels=2,
@@ -1137,11 +1153,10 @@ if menu == "📅 Agendamentos do Dia":
                             pickable=False,
                         )
 
-                        # --- PINOS ---
                         layer_pinos = pdk.Layer(
                             "IconLayer",
                             data=dados_mapa,
-                            get_position='[LON, LAT]',
+                            get_position="[LON, LAT]",
                             get_icon="ICON",
                             get_size=4,
                             size_scale=10,
@@ -1152,22 +1167,20 @@ if menu == "📅 Agendamentos do Dia":
                             latitude=lat_center,
                             longitude=lon_center,
                             zoom=11,
-                            pitch=0
+                            pitch=0,
                         )
 
                         tooltip = {"text": "{TOOLTIP}"}
 
                         st.pydeck_chart(
-                           pdk.Deck(
-                              layers=[layer_raio, layer_pinos],
-                              initial_view_state=view_state,
-                              tooltip=tooltip,
-                              # ✅ estilo público (não precisa token) -> não fica branco
-                              map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                         ),
-                         use_container_width=True
-                         )
-
+                            pdk.Deck(
+                                layers=[layer_raio, layer_pinos],
+                                initial_view_state=view_state,
+                                tooltip=tooltip,
+                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                            ),
+                            use_container_width=True,
+                        )
 
                 else:
                     st.info("Coluna COORDENADAS não encontrada na BASE.")
@@ -1179,6 +1192,7 @@ if menu == "📅 Agendamentos do Dia":
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
 
 
