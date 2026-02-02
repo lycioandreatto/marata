@@ -1571,14 +1571,14 @@ elif menu_interna == "📊 Desempenho de Vendas":
         col_res, col_cob = st.columns([1.5, 1])
         
                    # --- CARD EXTRA: POSITIVAÇÃO (META COBXPOSIT) ---
-            positivos_total = df_f[col_cod_cliente].nunique()
+        positivos_total = df_f[col_cod_cliente].nunique()
 
-            dados_base_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)].drop_duplicates('RG')
+        dados_base_meta = df_metas_cob[df_metas_cob['RG'].isin(vendedores_ids)].drop_duplicates('RG')
 
-            base_pos = dados_base_meta['BASE'].sum()
-            meta_pos = pd.to_numeric(dados_base_meta['META'], errors='coerce').fillna(0).sum() if 'META' in dados_base_meta.columns else 0
+        base_pos = dados_base_meta['BASE'].sum()
+        meta_pos = pd.to_numeric(dados_base_meta['META'], errors='coerce').fillna(0).sum() if 'META' in dados_base_meta.columns else 0
 
-            perc_pos = (positivos_total / meta_pos * 100) if meta_pos > 0 else 0
+        perc_pos = (positivos_total / meta_pos * 100) if meta_pos > 0 else 0
 
             st.markdown(f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9; margin-top: 10px;">
