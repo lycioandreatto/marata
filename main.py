@@ -1063,7 +1063,7 @@ if menu == "📅 Agendamentos do Dia":
                     time.sleep(1)
                     st.rerun()
 
-            # ============================
+# ============================
 # 🗺️ MAPA (AO FINAL)
 # ============================
 st.markdown("---")
@@ -1080,11 +1080,10 @@ try:
                 s = str(x).strip()
                 if s.lower() in ["nan", "none", ""]:
                     return ""
-                # remove .0 no final
                 s = s.replace("\n", " ").replace("\t", " ").strip()
                 s = s.replace(".0", "") if s.endswith(".0") else s
-                # remove qualquer ".0" residual no fim (caso venha "123.0 ")
-                s = __import__("re").sub(r"\.0$", "", s)
+                import re
+                s = re.sub(r"\.0$", "", s)
                 return s.strip()
             except Exception:
                 return ""
@@ -1114,7 +1113,6 @@ try:
         if "CÓDIGO CLIENTE" in df_map.columns:
             df_map["CÓDIGO CLIENTE"] = df_map["CÓDIGO CLIENTE"].apply(_limpa_cod)
 
-        # merge principal (como você já tinha)
         df_map = df_map.merge(
             df_coords,
             left_on="CÓDIGO CLIENTE",
@@ -1260,6 +1258,7 @@ try:
 
 except Exception as e:
     st.warning(f"Não foi possível renderizar o mapa: {e}")
+
 
 
 
