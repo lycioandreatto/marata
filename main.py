@@ -1881,7 +1881,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
-            # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ERRO DE TIPO
+            # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR QUANDO TROCA O MODO / QUANDO MIN==MAX
             st.markdown("### 🗓️ Período")
             c_dt1, c_dt2 = st.columns([0.55, 0.45])
 
@@ -1903,14 +1903,39 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 dt_min = serie_dt.min().date()
                 dt_max = serie_dt.max().date()
 
-                with c_dt1:
-                    dt_ini, dt_fim = st.slider(
-                        "Arraste para selecionar o período:",
-                        min_value=dt_min,
-                        max_value=dt_max,
-                        value=(dt_min, dt_max),
-                        key="slider_periodo_agenda"
-                    )
+                # ✅ chave diferente por modo (evita erro quando troca o radio e o slider tenta reaproveitar valor antigo)
+                slider_key = f"slider_periodo_agenda_{col_dt_filtro}"
+
+                # ✅ quando só existe 1 dia (min==max), slider de range pode quebrar -> vira filtro fixo
+                if dt_min == dt_max:
+                    with c_dt1:
+                        st.caption(f"Período disponível: {dt_min.strftime('%d/%m/%Y')}")
+                    dt_ini, dt_fim = dt_min, dt_max
+                else:
+                    # ✅ se já existe valor antigo no session_state, faz clamp dentro do novo range
+                    valor_padrao = (dt_min, dt_max)
+                    valor_antigo = st.session_state.get(slider_key, valor_padrao)
+
+                    try:
+                        a, b = valor_antigo
+                        if a is None or b is None:
+                            a, b = dt_min, dt_max
+                    except Exception:
+                        a, b = dt_min, dt_max
+
+                    # clamp
+                    if a < dt_min: a = dt_min
+                    if b > dt_max: b = dt_max
+                    if a > b: a, b = dt_min, dt_max
+
+                    with c_dt1:
+                        dt_ini, dt_fim = st.slider(
+                            "Arraste para selecionar o período:",
+                            min_value=dt_min,
+                            max_value=dt_max,
+                            value=(a, b),
+                            key=slider_key
+                        )
 
                 # aplica filtro (inclusive)
                 mask_dt = pd.to_datetime(df_user[col_dt_filtro], errors='coerce').dt.date.between(dt_ini, dt_fim)
@@ -2159,6 +2184,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
+
 
 
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
