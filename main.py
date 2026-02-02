@@ -1958,6 +1958,21 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         except:
             return str(v)
 
+    # ✅ (NOVO - MÍNIMO) normaliza a coluna Cliente (coluna K) para não bugar o nunique da positivação
+    def _norm_cliente(df, col):
+        if df is None or df.empty or col not in df.columns:
+            return df
+        # garante string, tira espaços e remove ".0"
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.0$", "", regex=True)
+        )
+        # trata vazios e "0" como nulos (não contam como cliente)
+        df[col] = df[col].replace({"": np.nan, "0": np.nan, "nan": np.nan, "None": np.nan})
+        return df
+
     try:
         # 1. Leitura das abas
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
@@ -1994,10 +2009,14 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 "Hierarquia de produtos": "HIERARQUIA"
             }, inplace=True)
 
+            # ✅ Cliente é a coluna K (índice 10) da aba FATURADO
             col_cod_cliente = df_faturado.columns[10]
 
             df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
             df_faturado["VENDEDOR_COD"] = df_faturado["VENDEDOR_COD"].astype(str).str.replace(r"\.0$", "", regex=True)
+
+            # ✅ (NOVO - MÍNIMO) normaliza Cliente (coluna K) para contar positivação corretamente
+            df_faturado = _norm_cliente(df_faturado, col_cod_cliente)
 
             df_relacao = df_base[["VENDEDOR","SUPERVISOR","ANALISTA"]].drop_duplicates("VENDEDOR")
             df_faturado = df_faturado.merge(
@@ -2049,6 +2068,9 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # BASE PRINCIPAL
     # ============================
     df_f = df_faturado.copy()
+
+    # ✅ (NOVO - MÍNIMO) garante novamente Cliente normalizado após merge/cópia (evita bug de nunique)
+    df_f = _norm_cliente(df_f, col_cod_cliente)
 
     # ============================
     # 🔒 CONTROLE DE ACESSO
@@ -2318,6 +2340,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     # ✅ CARD 2 (NOVO): POSITIVAÇÃO (ajuste só visual do Positivados)
     with col_pos:
+        # ✅ regra: quando NÃO tem vendedor nem supervisor selecionado, exclui STR/SMX pela EqVs
+        # ✅ contagem SEMPRE é pela coluna Cliente (coluna K) da FATURADO (col_cod_cliente)
         if not (sel_supervisor or sel_vendedor) and ("EqVs" in df_f.columns):
             positivos_total = df_f.loc[~df_f["EqVs"].isin(["STR", "SMX"]), col_cod_cliente].nunique()
         else:
@@ -2643,6 +2667,7 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
+
 
 
 
