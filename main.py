@@ -1632,14 +1632,21 @@ elif menu_interna == "📊 Desempenho de Vendas":
         with col_pos:
             positivos_total = df_f[col_cod_cliente].nunique()
             dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG")
-            meta_pos = pd.to_numeric(dados_pos["META"], errors="coerce").fillna(0).sum() if "META" in dados_pos.columns else 0
-            perc_pos = (positivos_total / meta_pos * 100) if meta_pos > 0 else 0
+
+            base_pos = pd.to_numeric(dados_pos["BASE"], errors="coerce").fillna(0).sum() if "BASE" in dados_pos.columns else 0
+
+            meta_pos = pd.to_numeric(dados_pos["META"], errors="coerce").fillna(0).mean() if "META" in dados_pos.columns else 0
+            meta_pos = (meta_pos / 100) if meta_pos > 1 else meta_pos  # garante fração (1 = 100%)
+
+            meta_abs = math.ceil(base_pos * meta_pos) if base_pos > 0 else 0
+            perc_pos = (positivos_total / meta_abs * 100) if meta_abs > 0 else 0
 
             st.markdown(
                 f"""
                 <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
                     <small>POSITIVAÇÃO</small><br>
-                    <span style="font-size: 1.1em;">Meta: <b>{meta_pos:,.0f}</b></span><br>
+                    <span style="font-size: 1.1em;">Base: <b>{base_pos:,.0f}</b></span><br>
+                    <span style="font-size: 1.1em;">Meta: <b>{meta_pos:.0%}</b></span><br>
                     <span style="font-size: 1.1em;">Positivados: <b>{positivos_total:,.0f}</b></span><br>
                     Atingido: <span style="color:#1f77b4; font-size: 1.8em; font-weight: bold;">{perc_pos:.1f}%</span>
                 </div>
