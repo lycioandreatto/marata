@@ -2131,7 +2131,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     elif is_vendedor:
     # ✅ (NOVO - MÍNIMO) regra principal do vendedor vira o ANALISTA dele + estados dele
-    if analista_usuario:
+if analista_usuario:
         # 1) filtra df_f pelo analista do vendedor (garantia total)
         if "ANALISTA" in df_f.columns:
             df_f = df_f[df_f["ANALISTA"] == analista_usuario]
