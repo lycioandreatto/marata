@@ -1881,7 +1881,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
-            # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR QUANDO TROCA O MODO / QUANDO MIN==MAX
+            # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR EM VENDEDOR / TROCA DE MODO / STATE VELHO
             st.markdown("### 🗓️ Período")
             c_dt1, c_dt2 = st.columns([0.55, 0.45])
 
@@ -1893,6 +1893,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     key="modo_data_agenda"
                 )
 
+            # ✅ limpa a key antiga (muita gente já ficou com state salvo e isso causa StreamlitAPIException)
+            if "slider_periodo_agenda" in st.session_state:
+                del st.session_state["slider_periodo_agenda"]
+
             # Escolhe a coluna de data base do filtro
             col_dt_filtro = 'DT_COMPLETA' if modo_data == "Data da visita (DATA)" else 'DT_REGISTRO'
 
@@ -1903,8 +1907,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 dt_min = serie_dt.min().date()
                 dt_max = serie_dt.max().date()
 
-                # ✅ chave diferente por modo (evita erro quando troca o radio e o slider tenta reaproveitar valor antigo)
-                slider_key = f"slider_periodo_agenda_{col_dt_filtro}"
+                # ✅ key única por usuário + modo (evita conflito e reaproveitamento errado entre perfis)
+                slider_key = f"slider_periodo_agenda_{col_dt_filtro}_{str(user_atual).upper()}"
 
                 # ✅ quando só existe 1 dia (min==max), slider de range pode quebrar -> vira filtro fixo
                 if dt_min == dt_max:
