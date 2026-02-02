@@ -601,33 +601,15 @@ if not st.session_state.logado:
     st.stop()
 
 # --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
-# --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
-user_atual = st.session_state.usuario.strip().upper()
+user_atual = st.session_state.usuario.upper()
 
 is_admin = (user_atual == NOME_ADMIN.upper())
 is_diretoria = (user_atual == NOME_DIRETORIA.upper())
-
-# ✅ padroniza BASE para reconhecer usuário
-df_base_perm = df_base.copy()
-for c in ["VENDEDOR","SUPERVISOR","ANALISTA","EscrV","Estado"]:
-    if c in df_base_perm.columns:
-        df_base_perm[c] = df_base_perm[c].astype(str).str.strip().str.upper()
-
-# ✅ analista: pela sua lista (mantém)
 is_analista = (user_atual in [n.upper() for n in LISTA_ANALISTA])
+is_supervisor = (user_atual in [n.upper() for n in LISTA_SUPERVISORES])
+is_vendedor = (user_atual in [n.upper() for n in LISTA_VENDEDORES])
 
-# ✅ supervisor e vendedor: pela BASE (isso elimina o bug)
-is_supervisor = ("SUPERVISOR" in df_base_perm.columns) and (user_atual in df_base_perm["SUPERVISOR"].dropna().unique())
-is_vendedor   = ("VENDEDOR"   in df_base_perm.columns) and (user_atual in df_base_perm["VENDEDOR"].dropna().unique())
-
-# ✅ gestão = admin/diretoria/analista (você já usa isso)
 eh_gestao = is_admin or is_analista or is_diretoria
-
-# ✅ fallback seguro:
-# se não for gestão e também não achou na base como supervisor, assume vendedor (NUNCA "livre")
-if (not eh_gestao) and (not is_supervisor) and (not is_vendedor):
-    is_vendedor = True
-
 
 # --- VALIDAÇÃO DE GPS ---
 if "lat" not in st.session_state:
@@ -1947,6 +1929,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
 
+
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
 elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
@@ -2104,23 +2087,9 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         else:
             estados_usuario = None
 
-    # ✅ (NOVO - MÍNIMO) pega o ANALISTA do vendedor pela BASE usando NOME (VENDEDOR)
-    analista_usuario = None
-    if is_vendedor and ("VENDEDOR" in df_base_perm.columns) and ("ANALISTA" in df_base_perm.columns):
-        tmp_analista = df_base_perm.loc[df_base_perm["VENDEDOR"] == user_atual, "ANALISTA"].dropna().unique().tolist()
-        if tmp_analista:
-            analista_usuario = str(tmp_analista[0]).strip().upper()
-    # ✅ (NOVO - MÍNIMO) fallback: se não achou o analista na BASE, tenta achar no FATURADO (já mergeado)
-    if is_vendedor and not analista_usuario:
-        if ("VENDEDOR" in df_f.columns) and ("ANALISTA" in df_f.columns):
-            tmp_a = df_f.loc[df_f["VENDEDOR"] == user_atual, "ANALISTA"].dropna().unique().tolist()
-            if tmp_a:
-                analista_usuario = str(tmp_a[0]).strip().upper()
-
     # ✅ (CONDIÇÕES) Admin/Diretoria veem tudo;
     # ✅ (AJUSTE) Analista agora filtra pelo ANALISTA + estado(s) dele(s) (evita ver outros estados)
-    # ✅ (AJUSTE) Supervisor continua no estado dele (e pode ver equipe do estado)
-    # ✅ (AJUSTE) Vendedor enxerga SOMENTE o que for do seu ANALISTA + estados dele (na BASE)
+    # ✅ (AJUSTE) Supervisor e Vendedor continuam no estado deles (e podem ver equipe do estado)
     if is_analista:
         if "ANALISTA" in df_f.columns:
             df_f = df_f[df_f["ANALISTA"] == user_atual]
@@ -2147,34 +2116,12 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             ].dropna().unique().tolist()
 
     elif is_vendedor:
-        # ✅ (AJUSTE MÍNIMO) regra do vendedor = analista dele + estados dele (na BASE)
-        if analista_usuario:
-            # 1) filtra df_f pelo analista do vendedor (garantia total)
-            if "ANALISTA" in df_f.columns:
-                df_f = df_f[df_f["ANALISTA"] == analista_usuario]
-
-            # 2) estados do vendedor (se existirem na BASE) limitam o que ele enxerga
-            if col_estado_perm and estados_usuario:
-                vendedores_permitidos = df_base_perm.loc[
-                    (df_base_perm["ANALISTA"] == analista_usuario) &
-                    (df_base_perm[col_estado_perm].isin(estados_usuario)),
-                    "VENDEDOR"
-                ].dropna().unique().tolist()
-
-                # garante o df_f também só nesses estados (pelo EscrV do faturado)
-                if "EscrV" in df_f.columns:
-                    df_f = df_f[df_f["EscrV"].isin(estados_usuario)]
-            else:
-                # se não tiver estado definido pro vendedor na BASE, mais restrito possível: ele mesmo
-                vendedores_permitidos = [user_atual]
+        if col_estado_perm and estados_usuario:
+            vendedores_permitidos = df_base_perm.loc[
+                df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
+            ].dropna().unique().tolist()
         else:
-            # fallback: mais restrito possível
-            if col_estado_perm and estados_usuario:
-                vendedores_permitidos = df_base_perm.loc[
-                    df_base_perm[col_estado_perm].isin(estados_usuario), "VENDEDOR"
-                ].dropna().unique().tolist()
-            else:
-                vendedores_permitidos = [user_atual]
+            vendedores_permitidos = [user_atual]
 
     if vendedores_permitidos:
         if "VENDEDOR" in df_f.columns:
@@ -2186,17 +2133,17 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.markdown("### 🔍 Filtros")
     c1, c2, c3 = st.columns(3)
 
-    # ✅ (AJUSTE) Estado no FATURADO é EscrV. Se não existir, cai para None.
-    col_estado = "EscrV" if "EscrV" in df_f.columns else None
+    # ✅ (AJUSTE) Estado no FATURADO é EscrV. Se não existir, cai para Estado.
+    col_estado = "EscrV" if "EscrV" in df_f.columns else ("Estado" if "Estado" in df_f.columns else None)
 
-    # ✅ garante que df_f fique somente no(s) estado(s) do usuário
+    # ✅ (AJUSTE) garante que df_f fique somente no(s) estado(s) do usuário (AGORA incluindo analista)
     if col_estado and (is_vendedor or is_supervisor or is_analista) and estados_usuario:
         df_f[col_estado] = df_f[col_estado].astype(str).str.strip().str.upper()
         df_f = df_f[df_f[col_estado].isin(estados_usuario)]
 
     with c1:
         if col_estado:
-            # ✅ Para vendedor/supervisor/analista: slicer mostra APENAS o(s) estado(s) dele(s) e já seleciona
+            # ✅ (AJUSTE) Para vendedor/supervisor/analista: slicer mostra APENAS o(s) estado(s) dele(s) e já seleciona
             if (is_vendedor or is_supervisor or is_analista) and estados_usuario:
                 sel_estado = st.multiselect("Estado", sorted(estados_usuario), default=sorted(estados_usuario))
             else:
@@ -2635,8 +2582,6 @@ if st.button("📧 Enviar Excel por Vendedor"):
 
     server.quit()
     st.success("📨 E-mails enviados com sucesso!")
-
-
 
 
 
