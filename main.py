@@ -601,15 +601,33 @@ if not st.session_state.logado:
     st.stop()
 
 # --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
-user_atual = st.session_state.usuario.upper()
+# --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
+user_atual = st.session_state.usuario.strip().upper()
 
 is_admin = (user_atual == NOME_ADMIN.upper())
 is_diretoria = (user_atual == NOME_DIRETORIA.upper())
-is_analista = (user_atual in [n.upper() for n in LISTA_ANALISTA])
-is_supervisor = (user_atual in [n.upper() for n in LISTA_SUPERVISORES])
-is_vendedor = (user_atual in [n.upper() for n in LISTA_VENDEDORES])
 
+# ✅ padroniza BASE para reconhecer usuário
+df_base_perm = df_base.copy()
+for c in ["VENDEDOR","SUPERVISOR","ANALISTA","EscrV","Estado"]:
+    if c in df_base_perm.columns:
+        df_base_perm[c] = df_base_perm[c].astype(str).str.strip().str.upper()
+
+# ✅ analista: pela sua lista (mantém)
+is_analista = (user_atual in [n.upper() for n in LISTA_ANALISTA])
+
+# ✅ supervisor e vendedor: pela BASE (isso elimina o bug)
+is_supervisor = ("SUPERVISOR" in df_base_perm.columns) and (user_atual in df_base_perm["SUPERVISOR"].dropna().unique())
+is_vendedor   = ("VENDEDOR"   in df_base_perm.columns) and (user_atual in df_base_perm["VENDEDOR"].dropna().unique())
+
+# ✅ gestão = admin/diretoria/analista (você já usa isso)
 eh_gestao = is_admin or is_analista or is_diretoria
+
+# ✅ fallback seguro:
+# se não for gestão e também não achou na base como supervisor, assume vendedor (NUNCA "livre")
+if (not eh_gestao) and (not is_supervisor) and (not is_vendedor):
+    is_vendedor = True
+
 
 # --- VALIDAÇÃO DE GPS ---
 if "lat" not in st.session_state:
