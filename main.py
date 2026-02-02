@@ -317,17 +317,55 @@ def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analist
 
 
 def calcular_distancia(lat1, lon1, lat2, lon2):
+    import numpy as np
+
+    def _to_float(v):
+        try:
+            if v is None:
+                return None
+            s = str(v).strip()
+            if not s or s.lower() in ["nan", "none"]:
+                return None
+
+            # remove espaços
+            s = s.replace(" ", "")
+
+            # se vier no formato "lat,lon" por engano, separa
+            # (não é o seu caso padrão, mas evita bug)
+            if "," in s and s.count(",") == 1 and s.count(".") >= 1:
+                # aqui pode ser "lat,lon" OU "10,5" (decimal pt-br)
+                # decide: se tem ponto também, provavelmente é separador de coord.
+                # então NÃO troca vírgula por ponto.
+                pass
+            elif s.count(",") == 1 and s.count(".") == 0:
+                # decimal pt-br -> troca por ponto
+                s = s.replace(",", ".")
+
+            return float(s)
+        except:
+            return None
+
+    lat1 = _to_float(lat1)
+    lon1 = _to_float(lon1)
+    lat2 = _to_float(lat2)
+    lon2 = _to_float(lon2)
+
+    # Se algum valor não vier válido, retorna 0 (igual teu comportamento atual de “não calcular”)
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return 0.0
+
     # Raio da Terra em KM
     R = 6371.0
-    
-    dlat = np.radians(float(lat2) - float(lat1))
-    dlon = np.radians(float(lon2) - float(lon1))
-    
-    a = np.sin(dlat / 2)**2 + np.cos(np.radians(float(lat1))) * np.cos(np.radians(float(lat2))) * np.sin(dlon / 2)**2
+
+    dlat = np.radians(lat2 - lat1)
+    dlon = np.radians(lon2 - lon1)
+
+    a = np.sin(dlat / 2)**2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2)**2
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-    
-    distancia = R * c * 1000 # Retorna em Metros
-    return distancia
+
+    distancia = R * c * 1000  # Metros
+    return float(distancia)
+
 
 # --- CONFIGURAÇÃO DE COOKIES (Lembrar Login) ---
 # O password abaixo é apenas para criptografia local do cookie
@@ -1007,14 +1045,15 @@ if menu == "📅 Agendamentos do Dia":
                         base_cliente = df_base[df_base['Cliente'].astype(str) == str(sel_row['CÓDIGO CLIENTE'])]
                         if not base_cliente.empty and 'COORDENADAS' in base_cliente.columns:
                             coord = base_cliente.iloc[0]['COORDENADAS']
-                            if isinstance(coord, str) and ',' in coord:
-                                lat_c, lon_c = coord.split(',')
-                                distancia_m = calcular_distancia(
-                                    lat_c.strip(),
-                                    lon_c.strip(),
-                                    lat_v,
-                                    lon_v
-                                )
+                                if isinstance(coord, str) and ',' in coord:
+                                    lat_c, lon_c = coord.split(',', 1)
+                                        distancia_m = calcular_distancia(
+                                            lat_c.strip(),
+                                                lon_c.strip(),
+                                                    lat_v,
+                                                        lon_v
+                    )
+
                     except:
                         distancia_m = 0
 
