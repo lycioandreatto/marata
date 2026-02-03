@@ -385,7 +385,7 @@ section[data-testid="stSidebar"]{
   width: 320px !important;
   min-width: 320px !important;
   max-width: 320px !important;
-  background: linear-gradient(180deg, #f6f7fb 0%, #f3f4f8 100%);
+  background: linear-gradient(90deg, #0A58FF 0%, #003BFF 100%);
 }
 
 /* padding interno */
