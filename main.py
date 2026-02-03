@@ -1832,46 +1832,6 @@ elif menu == "📊 Dashboard de Controle":
         else:
             st.info("Aguardando dados de agendamento para gerar o ranking.")
 
-        # --- MAPA DE CALOR (ABAIXO DO RANKING) ---
-        st.markdown("---")
-        st.subheader("🔥 Mapa de Calor")
-        
-        # Adicionamos uma 'key' única para evitar o erro de ID duplicado
-        tipo_mapa = st.radio(
-            "Selecione a camada visual:", 
-            ["Visitas Realizadas", "Faturamento (Pedidos)"], 
-            horizontal=True,
-            key="radio_mapa_dashboard" 
-        )
-        
-        try:
-            import folium
-            from folium.plugins import HeatMap
-            from streamlit_folium import st_folium
-            
-            if tipo_mapa == "Visitas Realizadas":
-                df_mapa = df_agenda[(df_agenda['STATUS'] == "Realizado") & (df_agenda['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-            else:
-                # df_comp é gerado no bloco de SKUS acima
-                df_mapa = df_comp[(df_comp['Qtd_Pedidos'] > 0) & (df_comp['COORDENADAS'].astype(str).str.contains(',', na=False))].copy()
-            
-            if not df_mapa.empty:
-                # Separa latitude e longitude da coluna única COORDENADAS
-                df_mapa[['lat', 'lon']] = df_mapa['COORDENADAS'].str.split(',', expand=True).astype(float)
-                
-                # Centraliza o mapa
-                centro = [df_mapa['lat'].mean(), df_mapa['lon'].mean()]
-                m = folium.Map(location=centro, zoom_start=7, tiles="cartodbpositron")
-                
-                # Adiciona a camada de calor
-                HeatMap(df_mapa[['lat', 'lon']].dropna().values.tolist(), radius=15).add_to(m)
-                
-                st_folium(m, width="100%", height=500, returned_objects=[])
-            else:
-                st.warning("Sem dados de coordenadas para exibir no mapa com o filtro selecionado.")
-                
-        except Exception as e: 
-            st.info(f"Aguardando dados geográficos válidos para renderizar o mapa.")
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
