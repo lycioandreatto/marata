@@ -2155,7 +2155,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                 )
 
 
-        # ============================
+           # ============================
     # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
     # - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
     # - Respeita o mesmo período selecionado (periodo)
@@ -2186,6 +2186,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         if rec_total_abc <= 0:
             st.info("Faturamento total zerado no período.")
         else:
+            # ⚙️ cálculos (mantém numérico)
             df_abc_rec["% Receita"] = (df_abc_rec["Receita"] / rec_total_abc * 100)
             df_abc_rec["% Acum."] = df_abc_rec["% Receita"].cumsum()
 
@@ -2208,7 +2209,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                 .reset_index()
                 .sort_values("Classe")
             )
-            resumo_abc_rec["Perc_Rec"] = resumo_abc_rec["Perc_Rec"].round(1)
 
             # ✅ formatação BRL (R$) para exibição (sem alterar os cálculos)
             def fmt_brl(v):
@@ -2217,11 +2217,21 @@ elif menu_interna == "📚 Perfil do Cliente":
                 except Exception:
                     return "R$ 0,00"
 
+            # ✅ formatação % (somente exibição)
+            def fmt_pct(v, casas=1):
+                try:
+                    return f"{float(v):.{casas}f}%".replace(".", ",")
+                except Exception:
+                    return "-"
+
             resumo_show = resumo_abc_rec.copy()
             resumo_show["Receita"] = resumo_show["Receita"].apply(fmt_brl)
+            resumo_show["Perc_Rec"] = resumo_show["Perc_Rec"].apply(lambda x: fmt_pct(x, 1))
 
             detalhe_show = df_abc_rec.copy()
             detalhe_show["Receita"] = detalhe_show["Receita"].apply(fmt_brl)
+            detalhe_show["% Receita"] = detalhe_show["% Receita"].apply(lambda x: fmt_pct(x, 1))
+            detalhe_show["% Acum."] = detalhe_show["% Acum."].apply(lambda x: fmt_pct(x, 1))
 
             cA2, cB2 = st.columns([1, 2])
             with cA2:
@@ -2233,6 +2243,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                     use_container_width=True,
                     hide_index=True,
                 )
+
 
     
    
