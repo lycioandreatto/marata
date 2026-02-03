@@ -2507,7 +2507,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                     recs = recs.merge(sku_hier, on=col_sku, how="left")
 
                 min_clientes = st.number_input(
-                    "Recomendação: mínimo de clientes da carteira comprando o SKU (evita ruído):",
+                    "Recomendação: mínimo de clientes da carteira comprando o SKU:",
                     min_value=1,
                     value=2,
                     step=1,
