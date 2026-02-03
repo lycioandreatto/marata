@@ -4249,136 +4249,237 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             )
 
         # ----------------------------
-        # ✅ SUGESTÕES (beta) por histórico (desde novembro)
+        # ✅ SUGESTÕES (beta) - só aparece quando selecionar vendedor
         # ----------------------------
         st.markdown("## 🧠 Sugestões automáticas (beta)")
 
-        # base histórica (não mexe no df_f atual)
-        df_hist = df_faturado.copy()
-        df_hist = _norm_cliente(df_hist, col_cod_cliente)
-
-        # aplica o mesmo recorte de permissão/filtros do usuário (vendedores permitidos + estados)
-        for c in ["VENDEDOR","SUPERVISOR","ANALISTA"]:
-            if c in df_hist.columns:
-                df_hist[c] = df_hist[c].astype(str).str.strip().str.upper()
-        if "ANALISTA" in df_hist.columns:
-            df_hist["ANALISTA"] = df_hist["ANALISTA"].astype(str).str.strip().str.upper()
-        if "EscrV" in df_hist.columns:
-            df_hist["EscrV"] = df_hist["EscrV"].astype(str).str.strip().str.upper()
-        if "Estado" in df_hist.columns:
-            df_hist["Estado"] = df_hist["Estado"].astype(str).str.strip().str.upper()
-
-        if vendedores_permitidos and ("VENDEDOR" in df_hist.columns):
-            df_hist = df_hist[df_hist["VENDEDOR"].isin(vendedores_permitidos)]
-
-        if col_estado and estados_usuario and (col_estado in df_hist.columns):
-            df_hist = df_hist[df_hist[col_estado].isin(estados_usuario)]
-
-        if sel_supervisor and ("SUPERVISOR" in df_hist.columns):
-            df_hist = df_hist[df_hist["SUPERVISOR"].isin(sel_supervisor)]
-
-        if sel_vendedor and ("VENDEDOR_NOME" in df_hist.columns):
-            df_hist = df_hist[df_hist["VENDEDOR_NOME"].isin(sel_vendedor)]
-
-        # histórico desde novembro (do ano anterior ao atual quando estiver em jan-out)
-        if hoje.month >= 11:
-            inicio_hist = pd.Timestamp(year=hoje.year, month=11, day=1)
+        if not (sel_vendedor and len(sel_vendedor) > 0):
+            st.info("Selecione um vendedor no filtro para exibir as sugestões (evita poluir a tela).")
         else:
-            inicio_hist = pd.Timestamp(year=hoje.year - 1, month=11, day=1)
+            # 🔎 Coluna K = nome do cliente ("CLIENTE")
+            col_nome_cliente = "CLIENTE" if ("CLIENTE" in df_faturado.columns) else (df_faturado.columns[10] if len(df_faturado.columns) > 10 else None)
 
-        if col_data_fat in df_hist.columns:
-            df_hist = df_hist[(df_hist[col_data_fat].notna()) & (df_hist[col_data_fat] >= inicio_hist)]
+            # base histórica (não mexe no df_f atual)
+            df_hist = df_faturado.copy()
+            df_hist = _norm_cliente(df_hist, col_cod_cliente)
 
-        # itens críticos: abaixo da meta (referência)
-        itens_criticos = set(df_abaixo_meta["HIERARQUIA DE PRODUTOS"].dropna().astype(str).tolist())
+            # normaliza nome do cliente, se existir
+            if col_nome_cliente and (col_nome_cliente in df_hist.columns):
+                df_hist[col_nome_cliente] = df_hist[col_nome_cliente].astype(str).str.strip()
 
-        if df_hist.empty or len(itens_criticos) == 0:
-            st.info("Sem sugestões agora: ou não há histórico suficiente desde novembro, ou não há itens abaixo da meta no período.")
-        else:
-            # resumo histórico por vendedor/cliente/hierarquia
-            keys = ["VENDEDOR_NOME", col_cod_cliente, "HIERARQUIA"]
+            # aplica o mesmo recorte de permissão/filtros do usuário (vendedores permitidos + estados)
+            for c in ["VENDEDOR","SUPERVISOR","ANALISTA"]:
+                if c in df_hist.columns:
+                    df_hist[c] = df_hist[c].astype(str).str.strip().str.upper()
+            if "ANALISTA" in df_hist.columns:
+                df_hist["ANALISTA"] = df_hist["ANALISTA"].astype(str).str.strip().str.upper()
+            if "EscrV" in df_hist.columns:
+                df_hist["EscrV"] = df_hist["EscrV"].astype(str).str.strip().str.upper()
+            if "Estado" in df_hist.columns:
+                df_hist["Estado"] = df_hist["Estado"].astype(str).str.strip().str.upper()
 
-            df_hist_grp = (
-                df_hist.groupby(keys)
-                .agg(
-                    VOL_HIST=("QTD_VENDAS", "sum"),
-                    ULT_COMPRA=(col_data_fat, "max")
-                )
-                .reset_index()
-            )
+            if vendedores_permitidos and ("VENDEDOR" in df_hist.columns):
+                df_hist = df_hist[df_hist["VENDEDOR"].isin(vendedores_permitidos)]
 
-            df_atual_grp = (
-                df_f.groupby(keys)["QTD_VENDAS"]
-                .sum()
-                .reset_index()
-                .rename(columns={"QTD_VENDAS": "VOL_ATUAL"})
-            )
+            if col_estado and estados_usuario and (col_estado in df_hist.columns):
+                df_hist = df_hist[df_hist[col_estado].isin(estados_usuario)]
 
-            df_sug = df_hist_grp.merge(df_atual_grp, on=keys, how="left")
-            df_sug["VOL_ATUAL"] = pd.to_numeric(df_sug["VOL_ATUAL"], errors="coerce").fillna(0)
-            df_sug["VOL_HIST"] = pd.to_numeric(df_sug["VOL_HIST"], errors="coerce").fillna(0)
+            if sel_supervisor and ("SUPERVISOR" in df_hist.columns):
+                df_hist = df_hist[df_hist["SUPERVISOR"].isin(sel_supervisor)]
 
-            # só oportunidades: histórico > 0 e no período atual ainda não comprou
-            df_sug = df_sug[(df_sug["VOL_HIST"] > 0) & (df_sug["VOL_ATUAL"] <= 0)].copy()
+            if sel_vendedor and ("VENDEDOR_NOME" in df_hist.columns):
+                df_hist = df_hist[df_hist["VENDEDOR_NOME"].isin(sel_vendedor)]
 
-            # foca em itens críticos (abaixo da meta)
-            df_sug = df_sug[df_sug["HIERARQUIA"].astype(str).isin(itens_criticos)].copy()
-
-            if df_sug.empty:
-                st.info("Sem oportunidades claras: para os itens abaixo da meta, não encontrei clientes que compravam no histórico e que ainda não compraram no período atual.")
+            # histórico desde novembro (do ano anterior ao atual quando estiver em jan-out)
+            if hoje.month >= 11:
+                inicio_hist = pd.Timestamp(year=hoje.year, month=11, day=1)
             else:
-                # dias sem comprar (referência: último dia do filtro OU hoje, o menor)
-                ref_sug = min(pd.Timestamp(d2).normalize(), pd.Timestamp.now().normalize())
-                df_sug["ULT_COMPRA"] = pd.to_datetime(df_sug["ULT_COMPRA"], errors="coerce")
-                df_sug["DIAS_SEM_COMPRAR"] = df_sug["ULT_COMPRA"].apply(
-                    lambda x: int((ref_sug - pd.Timestamp(x).normalize()).days) if pd.notna(x) else None
+                inicio_hist = pd.Timestamp(year=hoje.year - 1, month=11, day=1)
+
+            if col_data_fat in df_hist.columns:
+                df_hist = df_hist[(df_hist[col_data_fat].notna()) & (df_hist[col_data_fat] >= inicio_hist)]
+
+            if df_hist.empty:
+                st.info("Sem sugestões agora: histórico vazio para o vendedor selecionado (desde novembro).")
+            else:
+                # ============================
+                # 1) Sugestão: RECOMPRA de itens críticos (abaixo da meta)
+                # ============================
+                itens_criticos = set(df_abaixo_meta["HIERARQUIA DE PRODUTOS"].dropna().astype(str).tolist())
+
+                if len(itens_criticos) == 0:
+                    st.info("Sem sugestão de recompra agora: não há itens abaixo da meta no período selecionado.")
+                else:
+                    if col_nome_cliente and (col_nome_cliente in df_hist.columns):
+                        keys = ["VENDEDOR_NOME", col_nome_cliente, col_cod_cliente, "HIERARQUIA"]
+                    else:
+                        keys = ["VENDEDOR_NOME", col_cod_cliente, "HIERARQUIA"]
+
+                    df_hist_grp = (
+                        df_hist.groupby(keys)
+                        .agg(
+                            VOL_HIST=("QTD_VENDAS", "sum"),
+                            ULT_COMPRA=(col_data_fat, "max")
+                        )
+                        .reset_index()
+                    )
+
+                    df_atual_grp = (
+                        df_f.groupby(keys)["QTD_VENDAS"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={"QTD_VENDAS": "VOL_ATUAL"})
+                    )
+
+                    df_sug = df_hist_grp.merge(df_atual_grp, on=keys, how="left")
+                    df_sug["VOL_ATUAL"] = pd.to_numeric(df_sug["VOL_ATUAL"], errors="coerce").fillna(0)
+                    df_sug["VOL_HIST"] = pd.to_numeric(df_sug["VOL_HIST"], errors="coerce").fillna(0)
+
+                    # só oportunidades: histórico > 0 e no período atual ainda não comprou
+                    df_sug = df_sug[(df_sug["VOL_HIST"] > 0) & (df_sug["VOL_ATUAL"] <= 0)].copy()
+
+                    # foca em itens críticos (abaixo da meta)
+                    df_sug = df_sug[df_sug["HIERARQUIA"].astype(str).isin(itens_criticos)].copy()
+
+                    if df_sug.empty:
+                        st.info("Sem recompra clara: nos itens abaixo da meta, não encontrei clientes que compravam no histórico e ainda não compraram no período atual.")
+                    else:
+                        # dias sem comprar (referência: último dia do filtro OU hoje, o menor)
+                        ref_sug = min(pd.Timestamp(d2).normalize(), pd.Timestamp.now().normalize())
+                        df_sug["ULT_COMPRA"] = pd.to_datetime(df_sug["ULT_COMPRA"], errors="coerce")
+                        df_sug["DIAS_SEM_COMPRAR"] = df_sug["ULT_COMPRA"].apply(
+                            lambda x: int((ref_sug - pd.Timestamp(x).normalize()).days) if pd.notna(x) else None
+                        )
+
+                        # score simples: mais volume histórico e mais dias sem comprar = mais prioridade
+                        df_sug["SCORE"] = df_sug["VOL_HIST"].fillna(0) * 0.7 + df_sug["DIAS_SEM_COMPRAR"].fillna(0) * 0.3
+
+                        df_sug = df_sug.sort_values(by=["SCORE", "VOL_HIST"], ascending=False)
+
+                        st.markdown("### 🎯 Recompra de itens críticos (abaixo da meta)")
+                        st.caption("Regra: cliente comprou no histórico (desde novembro) e ainda não comprou no período atual, filtrado só para hierarquias abaixo da meta.")
+
+                        vendedores_list = df_sug["VENDEDOR_NOME"].dropna().unique().tolist()
+                        vendedores_list = sorted([str(v) for v in vendedores_list])
+
+                        for vnd in vendedores_list:
+                            df_v = df_sug[df_sug["VENDEDOR_NOME"] == vnd].copy()
+                            df_v = df_v.head(12)
+
+                            with st.expander(f"📌 Sugestões para: {vnd}  (top {len(df_v)})", expanded=False):
+                                if col_nome_cliente and (col_nome_cliente in df_v.columns):
+                                    df_show = df_v[["HIERARQUIA", col_nome_cliente, col_cod_cliente, "VOL_HIST", "ULT_COMPRA", "DIAS_SEM_COMPRAR"]].copy()
+                                    df_show.rename(columns={
+                                        "HIERARQUIA": "HIERARQUIA (item)",
+                                        col_nome_cliente: "CLIENTE (nome)",
+                                        col_cod_cliente: "CLIENTE (cód.)",
+                                        "VOL_HIST": "VOLUME HIST.",
+                                        "ULT_COMPRA": "ÚLT. COMPRA",
+                                        "DIAS_SEM_COMPRAR": "DIAS S/ COMPRA"
+                                    }, inplace=True)
+                                else:
+                                    df_show = df_v[["HIERARQUIA", col_cod_cliente, "VOL_HIST", "ULT_COMPRA", "DIAS_SEM_COMPRAR"]].copy()
+                                    df_show.rename(columns={
+                                        "HIERARQUIA": "HIERARQUIA (item)",
+                                        col_cod_cliente: "CLIENTE (cód.)",
+                                        "VOL_HIST": "VOLUME HIST.",
+                                        "ULT_COMPRA": "ÚLT. COMPRA",
+                                        "DIAS_SEM_COMPRAR": "DIAS S/ COMPRA"
+                                    }, inplace=True)
+
+                                st.dataframe(
+                                    df_show.style.format({
+                                        "VOLUME HIST.": lambda x: fmt_pt_int(x),
+                                        "ÚLT. COMPRA": lambda x: x.strftime("%d/%m/%Y") if pd.notna(x) else "",
+                                    }),
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    height=320
+                                )
+
+                                st.markdown(
+                                    """
+                                    **Como usar isso na prática (rápido):**
+                                    - Priorize as linhas com **mais VOLUME HIST.** e **mais DIAS S/ COMPRA**.
+                                    - Aborde o cliente com foco no item da hierarquia (ex.: “reposição / ponto extra / promoção / mix completo”).
+                                    """
+                                )
+
+                # ============================
+                # 2) Insight extra: MIX / CROSS-SELL (cliente compra no histórico, não comprou no mês)
+                # ============================
+                st.markdown("### 🧩 Oportunidade de Mix (cross-sell) por cliente")
+                st.caption("Regra: o cliente já comprou a hierarquia no histórico (desde novembro), mas ainda não comprou no período atual. Serve para aumentar mix e volume.")
+
+                if col_nome_cliente and (col_nome_cliente in df_hist.columns):
+                    keys_mix = ["VENDEDOR_NOME", col_nome_cliente, col_cod_cliente, "HIERARQUIA"]
+                else:
+                    keys_mix = ["VENDEDOR_NOME", col_cod_cliente, "HIERARQUIA"]
+
+                df_hist_mix = (
+                    df_hist.groupby(keys_mix)
+                    .agg(VOL_HIST=("QTD_VENDAS", "sum"))
+                    .reset_index()
                 )
 
-                # score simples: mais volume histórico e mais dias sem comprar = mais prioridade
-                df_sug["SCORE"] = df_sug["VOL_HIST"].fillna(0) * 0.7 + df_sug["DIAS_SEM_COMPRAR"].fillna(0) * 0.3
+                df_atual_mix = (
+                    df_f.groupby(keys_mix)
+                    .agg(VOL_ATUAL=("QTD_VENDAS", "sum"))
+                    .reset_index()
+                )
 
-                df_sug = df_sug.sort_values(by=["SCORE", "VOL_HIST"], ascending=False)
+                df_mix = df_hist_mix.merge(df_atual_mix, on=keys_mix, how="left")
+                df_mix["VOL_ATUAL"] = pd.to_numeric(df_mix["VOL_ATUAL"], errors="coerce").fillna(0)
+                df_mix["VOL_HIST"] = pd.to_numeric(df_mix["VOL_HIST"], errors="coerce").fillna(0)
 
-                st.markdown("### 🎯 Top oportunidades (quem comprar de novo ajuda a bater as metas dos itens críticos)")
-                st.caption("Regra: cliente comprou no histórico (desde novembro) e ainda não comprou no período atual, filtrado só para hierarquias abaixo da meta.")
+                df_mix = df_mix[(df_mix["VOL_HIST"] > 0) & (df_mix["VOL_ATUAL"] <= 0)].copy()
 
-                # mostra por vendedor
-                vendedores_list = df_sug["VENDEDOR_NOME"].dropna().unique().tolist()
-                vendedores_list = sorted([str(v) for v in vendedores_list])
+                if df_mix.empty:
+                    st.info("Sem oportunidades de mix agora para o vendedor selecionado (no período atual, o histórico não apontou lacunas claras).")
+                else:
+                    df_mix["SCORE"] = df_mix["VOL_HIST"].fillna(0)
+                    df_mix = df_mix.sort_values(by=["SCORE"], ascending=False)
 
-                for vnd in vendedores_list:
-                    df_v = df_sug[df_sug["VENDEDOR_NOME"] == vnd].copy()
+                    vendedores_mix = df_mix["VENDEDOR_NOME"].dropna().unique().tolist()
+                    vendedores_mix = sorted([str(v) for v in vendedores_mix])
 
-                    # top 12 sugestões por vendedor
-                    df_v = df_v.head(12)
+                    for vnd in vendedores_mix:
+                        df_vmix = df_mix[df_mix["VENDEDOR_NOME"] == vnd].copy()
+                        df_vmix = df_vmix.head(15)
 
-                    with st.expander(f"📌 Sugestões para: {vnd}  (top {len(df_v)})", expanded=False):
-                        df_show = df_v[["HIERARQUIA", col_cod_cliente, "VOL_HIST", "ULT_COMPRA", "DIAS_SEM_COMPRAR"]].copy()
-                        df_show.rename(columns={
-                            "HIERARQUIA": "HIERARQUIA (item)",
-                            col_cod_cliente: "CLIENTE",
-                            "VOL_HIST": "VOLUME HIST.",
-                            "ULT_COMPRA": "ÚLT. COMPRA",
-                            "DIAS_SEM_COMPRAR": "DIAS S/ COMPRA"
-                        }, inplace=True)
+                        with st.expander(f"🧩 Mix sugerido para: {vnd}  (top {len(df_vmix)})", expanded=False):
+                            if col_nome_cliente and (col_nome_cliente in df_vmix.columns):
+                                df_show_mix = df_vmix[[col_nome_cliente, col_cod_cliente, "HIERARQUIA", "VOL_HIST"]].copy()
+                                df_show_mix.rename(columns={
+                                    col_nome_cliente: "CLIENTE (nome)",
+                                    col_cod_cliente: "CLIENTE (cód.)",
+                                    "HIERARQUIA": "HIERARQUIA sugerida",
+                                    "VOL_HIST": "FORÇA (hist.)"
+                                }, inplace=True)
+                            else:
+                                df_show_mix = df_vmix[[col_cod_cliente, "HIERARQUIA", "VOL_HIST"]].copy()
+                                df_show_mix.rename(columns={
+                                    col_cod_cliente: "CLIENTE (cód.)",
+                                    "HIERARQUIA": "HIERARQUIA sugerida",
+                                    "VOL_HIST": "FORÇA (hist.)"
+                                }, inplace=True)
 
-                        st.dataframe(
-                            df_show.style.format({
-                                "VOLUME HIST.": lambda x: fmt_pt_int(x),
-                                "ÚLT. COMPRA": lambda x: x.strftime("%d/%m/%Y") if pd.notna(x) else "",
-                            }),
-                            use_container_width=True,
-                            hide_index=True,
-                            height=320
-                        )
+                            st.dataframe(
+                                df_show_mix.style.format({
+                                    "FORÇA (hist.)": lambda x: fmt_pt_int(x),
+                                }),
+                                use_container_width=True,
+                                hide_index=True,
+                                height=360
+                            )
 
-                        st.markdown(
-                            """
-                            **Como usar isso na prática (rápido):**
-                            - Priorize as linhas com **mais VOLUME HIST.** e **mais DIAS S/ COMPRA**.
-                            - Aborde o cliente com foco no item da hierarquia (ex.: “reposição / ponto extra / promoção / mix completo”).
-                            """
-                        )
+                            st.markdown(
+                                """
+                                **Como usar isso na prática (rápido):**
+                                - Comece pelos clientes com maior **FORÇA (hist.)** (eles já têm hábito de compra).
+                                - Aborde como “complemento de pedido” / “mix ideal” / “giro garantido”.
+                                """
+                            )
 
     except Exception as e:
         st.warning(f"Não foi possível gerar o resumo/sugestões: {e}")
@@ -4781,6 +4882,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         df_final.to_excel(writer, index=False, sheet_name="Dashboard")
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
+
 
 
 
