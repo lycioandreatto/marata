@@ -2591,7 +2591,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     # - Mostra Volume total + (por mês) + Hierarquias + SKUs + quantidades
     # =========================================================
     st.markdown("---")
-    st.subheader("🆚 Comparativo por período (por datas do FATURADO)")
+    st.subheader("🆚 Comparativo por período")
 
     # Base de comparação respeita os filtros do topo (Estado/Analista/Supervisor/Vendedor)
     df_comp_base = df_fat_filtrado.copy()
