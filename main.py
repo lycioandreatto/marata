@@ -560,8 +560,8 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="
   content: "";
   position: absolute;
   top: 0;
-  right: -60px;      /* joga pra fora do sidebar */
-  width: 70px;       /* “ponte” até a tela */
+  right: -75px;      /* joga pra fora do sidebar */
+  width: 90px;       /* “ponte” até a tela */
   height: 100%;
   background: inherit;   /* usa a MESMA cor/gradiente do item selecionado */
   border-top-right-radius: 16px;
