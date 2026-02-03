@@ -2562,103 +2562,87 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.warning(f"Não consegui ler a aba BASE: {e}")
         df_base = None
 
-    # 2) Mapeia colunas na BASE (mínimo: cliente)
-    col_base_cliente = None
-    col_base_estado = None
-    col_base_analista = None
-    col_base_supervisor = None
-    col_base_vendedor = None
+           # 2) Mapeia colunas na BASE (mínimo: cliente)
+        # ✅ FORÇA o "Cliente (código)" correto nas duas abas:
+        # - BASE: coluna "Cliente" (código)
+        # - FATURADO: coluna "Cliente" (código)  (NÃO é "CLIENTE" nome)
+        col_base_cliente = pick_col(df_base, ["Cliente", "CLIENTE"], fallback=None)
+        if col_base_cliente is None:
+            st.warning("Não encontrei a coluna 'Cliente' (código) na BASE. Verifique o cabeçalho.")
+            df_base_filtrada = df_base.copy()
+        else:
+            # (opcionais) BASE com os NOMES REAIS que você passou
+            col_base_estado = pick_col(df_base, ["Estado", "ESTADO", "UF"], fallback=None)
+            col_base_analista = pick_col(df_base, ["ANALISTA", "Analista"], fallback=None)
+            col_base_supervisor = pick_col(df_base, ["SUPERVISOR", "Supervisor"], fallback=None)
+            col_base_vendedor = pick_col(df_base, ["VENDEDOR", "Vendedor"], fallback=None)
 
-    if df_base is not None and not df_base.empty:
-        # ✅ CLIENTE (código) na BASE = coluna "Cliente"
-        col_base_cliente = pick_col(
-            df_base,
-            ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE", "CODIGO CLIENTE", "CÓDIGO", "CODIGO"],
-            fallback=df_base.columns[0] if len(df_base.columns) > 0 else None,
-        )
+            # normaliza BASE
+            df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
 
-        # ✅ MAPEAMENTO conforme você explicou:
-        # BASE:
-        # - ANALISTA = ANALISTA (igual)
-        # - SUPERVISOR = SUPERVISOR (equivale ao EqVs no FATURADO)
-        # - VENDEDOR = VENDEDOR (equivale ao REGIÃO DE VENDAS no FATURADO)
-        # - Estado = Estado (equivale ao EscrV no FATURADO)
-        # - Local = Local (equivale ao LocInc no FATURADO)
-        # - Nome 1 = nome do cliente (equivale ao CLIENTE no FATURADO)
-        # - Cliente = código do cliente (igual)
-        col_base_estado = pick_col(df_base, ["Estado", "UF", "EscrV", "ESCRV"], fallback=None)
-        col_base_analista = pick_col(df_base, ["ANALISTA", "Analista"], fallback=None)
-        col_base_supervisor = pick_col(df_base, ["SUPERVISOR", "Supervisor", "EqvS", "EQVS", "COD SUPERVISOR"], fallback=None)
-        col_base_vendedor = pick_col(df_base, ["VENDEDOR", "Vendedor", "Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS"], fallback=None)
+            if col_base_estado and col_base_estado in df_base.columns:
+                df_base[col_base_estado] = df_base[col_base_estado].astype(str).str.strip().str.upper()
+            if col_base_analista and col_base_analista in df_base.columns:
+                df_base[col_base_analista] = df_base[col_base_analista].astype(str).str.strip().str.upper()
+            if col_base_supervisor and col_base_supervisor in df_base.columns:
+                df_base[col_base_supervisor] = df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
+            if col_base_vendedor and col_base_vendedor in df_base.columns:
+                df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
 
-        # normalizações (cliente sempre)
-        df_base[col_base_cliente] = df_base[col_base_cliente].apply(normalizar_cliente)
+            # aplica filtros do topo na BASE (se existirem)
+            df_base_filtrada = df_base.copy()
 
-        if col_base_estado and col_base_estado in df_base.columns:
-            df_base[col_base_estado] = df_base[col_base_estado].astype(str).str.strip().str.upper()
-        if col_base_analista and col_base_analista in df_base.columns:
-            df_base[col_base_analista] = df_base[col_base_analista].astype(str).str.strip().str.upper()
-        if col_base_supervisor and col_base_supervisor in df_base.columns:
-            df_base[col_base_supervisor] = df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
-        if col_base_vendedor and col_base_vendedor in df_base.columns:
-            df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
+            if col_base_estado and col_base_estado in df_base_filtrada.columns and estado_sel != "(Todos)":
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_estado] == str(estado_sel).strip().upper()].copy()
 
-        # aplica os mesmos filtros do topo na BASE (SE as colunas existirem)
-        df_base_filtrada = df_base.copy()
+            if col_base_analista and col_base_analista in df_base_filtrada.columns and analista_sel != "(Todos)":
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_analista] == str(analista_sel).strip().upper()].copy()
 
-        if col_base_estado and col_base_estado in df_base_filtrada.columns and estado_sel != "(Todos)":
-            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_estado] == estado_sel].copy()
+            if col_base_supervisor and col_base_supervisor in df_base_filtrada.columns and supervisor_sel != "(Todos)":
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_supervisor] == str(supervisor_sel).strip().upper()].copy()
 
-        if col_base_analista and col_base_analista in df_base_filtrada.columns and analista_sel != "(Todos)":
-            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_analista] == analista_sel].copy()
+            if col_base_vendedor and col_base_vendedor in df_base_filtrada.columns and vendedor_sel != "(Todos)":
+                df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_vendedor] == str(vendedor_sel).strip().upper()].copy()
 
-        if col_base_supervisor and col_base_supervisor in df_base_filtrada.columns and supervisor_sel != "(Todos)":
-            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_supervisor] == supervisor_sel].copy()
+        # ✅ GARANTE o "Cliente (código)" correto no FATURADO para o cruzamento
+        col_fat_cliente_codigo = pick_col(df_fat, ["Cliente", "CLIENTE"], fallback=None)
+        if col_fat_cliente_codigo is None:
+            # mantém o que você já tinha como fallback, mas avisa
+            col_fat_cliente_codigo = col_cliente
+            st.warning("Não encontrei a coluna 'Cliente' (código) no FATURADO pelo nome. Usando o mapeamento atual.")
+        else:
+            col_cliente = col_fat_cliente_codigo  # 🔥 aqui força o cruzamento usar a coluna certa
 
-        if col_base_vendedor and col_base_vendedor in df_base_filtrada.columns and vendedor_sel != "(Todos)":
-            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_vendedor] == vendedor_sel].copy()
-
-        # 3) Última compra por cliente (NO RECORTE ATUAL do FATURADO — respeita os filtros do topo)
-        df_fat_alerta_scope = df_fat_filtrado.copy()
-
-        df_last = (
-            df_fat_alerta_scope.groupby(col_cliente)[col_data]
-            .max()
-            .reset_index()
-            .rename(columns={col_cliente: "Cliente", col_data: "UltimaCompra"})
-        )
-        df_last["Cliente"] = df_last["Cliente"].apply(normalizar_cliente)
+        df_fat[col_cliente] = df_fat[col_cliente].apply(limpar_cod)
 
         # 4) Carteira (BASE) -> lista de clientes
-        carteira_clientes = sorted(
-            [x for x in df_base_filtrada[col_base_cliente].dropna().unique().tolist() if str(x).strip() != ""]
-        )
+        carteira_clientes = []
+        if col_base_cliente is not None:
+            carteira_clientes = sorted(
+                [x for x in df_base_filtrada[col_base_cliente].dropna().unique().tolist() if str(x).strip() != ""]
+            )
 
-        # Se a BASE filtrada ficou vazia, não quebra a tela
         if not carteira_clientes:
             st.info("Com os filtros atuais, não encontrei clientes na BASE para gerar alertas.")
             carteira_clientes = []
 
-                # 5) Cruzamento BASE x FATURADO
-        set_base = set([str(x) for x in carteira_clientes])
+        # 5) Cruzamento BASE x FATURADO (SEM depender de filtros do FATURADO)
+        set_base = set([str(limpar_cod(x)).strip() for x in carteira_clientes if str(limpar_cod(x)).strip() != ""])
 
-        # ✅ só considera "faturou" quem tem Receita>0 OU Qtd>0
-        df_fat_pos = df_fat.copy()
-        df_fat_pos[col_cliente] = df_fat_pos[col_cliente].apply(limpar_cod)
-
-        df_fat_pos = df_fat_pos[
-            (df_fat_pos[col_cliente].astype(str).str.strip() != "")
-            & (
-                (pd.to_numeric(df_fat_pos[col_rec], errors="coerce").fillna(0) > 0)
-                | (pd.to_numeric(df_fat_pos[col_qtd], errors="coerce").fillna(0) > 0)
-            )
-        ].copy()
-
+        # ✅ FATURADO: conjunto de clientes que EXISTEM de verdade (código preenchido)
         set_fat = set(
-            df_fat_pos[col_cliente].dropna().astype(str).str.strip().unique().tolist()
+            df_fat[col_cliente]
+            .dropna()
+            .astype(str)
+            .map(limpar_cod)
+            .str.strip()
+            .loc[lambda s: s != ""]
+            .unique()
+            .tolist()
         )
 
-        sem_faturamento = sorted(list(set_base - set_fat))  # nunca faturou de verdade
+        sem_faturamento = sorted(list(set_base - set_fat))  # clientes da BASE que não aparecem no FATURADO
+
 
 
         # 6) 30/60/90: somente quem tem histórico no FATURADO (apareceu ao menos uma vez NO RECORTE)
