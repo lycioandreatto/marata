@@ -2100,6 +2100,61 @@ elif menu_interna == "📚 Perfil do Cliente":
                     hide_index=True,
                 )
 
+        # ============================
+    # ✅ NOVO (2.1/3): ABC DO CLIENTE (FOCO FATURAMENTO / RECEITA)
+    # ============================
+    st.subheader("📌 Curva ABC do Cliente (por Faturamento)")
+
+    df_abc_rec = (
+        df_cli.groupby(col_sku)
+        .agg(Receita=(col_rec, "sum"), Pedidos=(col_pedido, "nunique"))
+        .sort_values("Receita", ascending=False)
+        .reset_index()
+    )
+
+    if df_abc_rec.empty:
+        st.info("Sem dados suficientes para calcular ABC por faturamento.")
+    else:
+        rec_total_abc = df_abc_rec["Receita"].sum()
+        if rec_total_abc <= 0:
+            st.info("Faturamento total zerado no período.")
+        else:
+            df_abc_rec["% Receita"] = (df_abc_rec["Receita"] / rec_total_abc * 100)
+            df_abc_rec["% Acum."] = df_abc_rec["% Receita"].cumsum()
+
+            def class_abc_rec(p):
+                if p <= 80:
+                    return "A"
+                elif p <= 95:
+                    return "B"
+                return "C"
+
+            df_abc_rec["Classe"] = df_abc_rec["% Acum."].apply(class_abc_rec)
+
+            resumo_abc_rec = (
+                df_abc_rec.groupby("Classe")
+                .agg(
+                    SKUs=(col_sku, "count"),
+                    Receita=("Receita", "sum"),
+                    Perc_Rec=("% Receita", "sum"),
+                )
+                .reset_index()
+                .sort_values("Classe")
+            )
+            resumo_abc_rec["Perc_Rec"] = resumo_abc_rec["Perc_Rec"].round(1)
+
+            cA2, cB2 = st.columns([1, 2])
+            with cA2:
+                st.dataframe(resumo_abc_rec, use_container_width=True, hide_index=True)
+            with cB2:
+                st.caption("A = até 80% do faturamento acumulado | B = 80–95% | C = 95–100%")
+                st.dataframe(
+                    df_abc_rec[[col_sku, "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+
     st.markdown("---")
 
     # ============================
