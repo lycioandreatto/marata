@@ -711,7 +711,7 @@ if not st.session_state.logado:
             logo_path = p
             break
 
-    # ✅ CSS SAFE (não quebra mobile)
+    # ✅ CSS SAFE (não quebra mobile) + ✅ FIX do "olhinho" da senha (não fica largo)
     st.markdown("""
     <style>
       /* Fundo suave */
@@ -764,13 +764,22 @@ if not st.session_state.logado:
         box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
       }
 
-      /* Botão do form (seguro) */
-      div[data-testid="stForm"] button{
+      /* ✅ Botão do form: aplica só no SUBMIT (evita o "olhinho" virar faixa gigante) */
+      div[data-testid="stForm"] button[type="submit"]{
         width: 100%;
         border-radius: 14px !important;
         padding: 12px 14px !important;
         font-weight: 900 !important;
         border: 1px solid rgba(17,17,17,0.08) !important;
+      }
+
+      /* ✅ Garante que qualquer outro botão dentro do form (ex: olhinho) NÃO herde width 100% */
+      div[data-testid="stForm"] button:not([type="submit"]){
+        width: auto !important;
+        min-width: unset !important;
+        padding: 0 !important;
+        border-radius: 999px !important;
+        box-shadow: none !important;
       }
 
       /* Alerts arredondados */
@@ -854,6 +863,7 @@ if not st.session_state.logado:
 
     st.markdown("</div></div>", unsafe_allow_html=True)  # fecha login-card e login-wrap
     st.stop()
+
 
 
 
