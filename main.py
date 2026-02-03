@@ -533,41 +533,44 @@ section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
   display:none;
 }
 
-/* ===== EFEITO "UNIR COM A TELA" (TAB CONNECT) ===== */
-/* cole este bloco NO FINAL do seu CSS atual */
-
-/* garante que o sidebar fique acima do main pra "invadir" sem bug */
-section[data-testid="stSidebar"]{
-  position: relative;
-  z-index: 50;
+/* ===== FIX: permitir o item "sair" do sidebar (necessário pro efeito unir) ===== */
+section[data-testid="stSidebar"],
+section[data-testid="stSidebar"] .stSidebarContent,
+section[data-testid="stSidebar"] div[role="radiogroup"]{
+  overflow: visible !important;
 }
 
-/* o item selecionado vira "aba": sem arredondar do lado direito */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
+/* ===== item selecionado: pega por :has(input:checked) (mais confiável) ===== */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="radio"]:checked){
   border-top-right-radius: 0px !important;
   border-bottom-right-radius: 0px !important;
-  margin-right: -14px !important;          /* puxa pra colar na tela */
-  padding-right: 28px !important;          /* compensa o espaço puxado */
+
+  /* puxa o card pra “encostar” na área principal */
+  margin-right: -18px !important;
+
+  /* dá espaço pra não cortar o conector */
+  padding-right: 30px !important;
+
+  position: relative !important;
+  z-index: 60 !important;
 }
 
-/* “puxadinho” que invade a área principal e dá a sensação de união */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::after{
+/* ===== conector: prolonga o mesmo fundo do item selecionado para a direita ===== */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="radio"]:checked)::after{
   content: "";
   position: absolute;
   top: 0;
-  right: -18px;                             /* invade um pouco o main */
-  width: 22px;
+  right: -22px;      /* joga pra fora do sidebar */
+  width: 26px;       /* “ponte” até a tela */
   height: 100%;
-  background: inherit;                      /* usa o mesmo fundo do botão selecionado */
+  background: inherit;   /* usa a MESMA cor/gradiente do item selecionado */
   border-top-right-radius: 16px;
   border-bottom-right-radius: 16px;
-  box-shadow: 10px 0 22px rgba(0,0,0,0.06); /* sombra leve pra “encaixar” */
-  pointer-events: none;
-}
 
-/* opcional: remove “corte” visual do overflow só no selecionado */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
-  overflow: visible !important;
+  /* sombra suave igual ao resto */
+  box-shadow: 10px 0 22px rgba(0,0,0,0.06);
+
+  pointer-events: none;
 }
 
 
