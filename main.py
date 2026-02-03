@@ -2490,7 +2490,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             else:
                 vol_cart_total = recs["Volume_Carteira"].sum()
                 if vol_cart_total > 0:
-                    recs["% Volume na carteira"] = (recs["Volume_Carteira"] / vol_cart_total * 100).round(1)
+                    recs["% Volume na carteira"] = (recs["Volume_Carteira"] / vol_cart_total)
                 else:
                     recs["% Volume na carteira"] = 0.0
 
@@ -2502,7 +2502,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                         .groupby(col_sku)[col_hier]
                         .agg(lambda x: x.value_counts().index[0] if len(x) else "")
                         .reset_index()
-                        .rename(columns={col_hier: "Hierarquia"})
+                        .rename(columns={col_hier: "Hierarquia (mais comum)"})
                     )
                     recs = recs.merge(sku_hier, on=col_sku, how="left")
 
@@ -2522,16 +2522,27 @@ elif menu_interna == "📚 Perfil do Cliente":
                 else:
                     # ✅ aqui foi o ajuste: "Hierarquia (mais comum)" antes do SKU (N° artigo)
                     cols_show = []
-                    if "Hierarquia" in recs.columns:
-                        cols_show.append("Hierarquia")
+                    if "Hierarquia (mais comum)" in recs.columns:
+                        cols_show.append("Hierarquia (mais comum)")
                     cols_show.append(col_sku)
                     cols_show += ["Volume_Carteira", "% Volume na carteira", "Clientes_Carteira", "Pedidos_Carteira"]
 
+                    recs_show = recs.copy()
+                    recs_show["% Volume na carteira"] = (
+                        pd.to_numeric(recs_show["% Volume na carteira"], errors="coerce")
+                        .fillna(0)
+                        .mul(100)
+                        .round(1)
+                        .astype(str)
+                        .add("%")
+                    )
+
                     st.dataframe(
-                        recs[cols_show],
+                        recs_show[cols_show],
                         use_container_width=True,
                         hide_index=True,
                     )
+
 
 
     # =========================================================
