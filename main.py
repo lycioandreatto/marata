@@ -2639,18 +2639,27 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.info("Com os filtros atuais, não encontrei clientes na BASE para gerar alertas.")
             carteira_clientes = []
 
-        # 5) Cruzamento BASE x FATURADO (NO MESMO RECORTE)
-        set_base = set([str(normalizar_cliente(x)) for x in carteira_clientes if str(x).strip() != ""])
+                # 5) Cruzamento BASE x FATURADO
+        set_base = set([str(x) for x in carteira_clientes])
+
+        # ✅ só considera "faturou" quem tem Receita>0 OU Qtd>0
+        df_fat_pos = df_fat.copy()
+        df_fat_pos[col_cliente] = df_fat_pos[col_cliente].apply(limpar_cod)
+
+        df_fat_pos = df_fat_pos[
+            (df_fat_pos[col_cliente].astype(str).str.strip() != "")
+            & (
+                (pd.to_numeric(df_fat_pos[col_rec], errors="coerce").fillna(0) > 0)
+                | (pd.to_numeric(df_fat_pos[col_qtd], errors="coerce").fillna(0) > 0)
+            )
+        ].copy()
 
         set_fat = set(
-            [
-                str(normalizar_cliente(x))
-                for x in df_fat_alerta_scope[col_cliente].dropna().unique().tolist()
-                if str(x).strip() != ""
-            ]
+            df_fat_pos[col_cliente].dropna().astype(str).str.strip().unique().tolist()
         )
 
-        sem_faturamento = sorted(list(set_base - set_fat))  # não apareceu NO RECORTE do FATURADO
+        sem_faturamento = sorted(list(set_base - set_fat))  # nunca faturou de verdade
+
 
         # 6) 30/60/90: somente quem tem histórico no FATURADO (apareceu ao menos uma vez NO RECORTE)
         hoje_ref_alerta = df_fat_alerta_scope[col_data].max()
