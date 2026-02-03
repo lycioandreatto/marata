@@ -2522,8 +2522,8 @@ elif menu_interna == "📚 Perfil do Cliente":
                 else:
                     # ✅ aqui foi o ajuste: "Hierarquia (mais comum)" antes do SKU (N° artigo)
                     cols_show = []
-                    if "Hierarquia (mais comum)" in recs.columns:
-                        cols_show.append("Hierarquia (mais comum)")
+                    if "Hierarquia" in recs.columns:
+                        cols_show.append("Hierarquia")
                     cols_show.append(col_sku)
                     cols_show += ["Volume_Carteira", "% Volume na carteira", "Clientes_Carteira", "Pedidos_Carteira"]
 
