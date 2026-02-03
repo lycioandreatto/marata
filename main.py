@@ -2038,9 +2038,9 @@ elif menu_interna == "📚 Perfil do Cliente":
         top_sku = (
             df_cli.groupby(col_sku)
             .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"), Receita=(col_rec, "sum"))
-                .sort_values("Volume", ascending=False)
-                .head(15)
-                .reset_index()
+            .sort_values("Volume", ascending=False)
+            .head(15)
+            .reset_index()
         )
         st.dataframe(top_sku, use_container_width=True, hide_index=True)
 
@@ -2421,235 +2421,239 @@ elif menu_interna == "📚 Perfil do Cliente":
                 hide_index=True,
             )
 
-# =========================================================
-# ✅ ADIÇÃO FINAL: COMPARATIVO (Cliente/Período X vs Cliente/Período Y) POR DATA
-# - Não altera nada acima: só acrescenta no final
-# - Compara por intervalo de datas (início/fim) do FATURADO
-# - Mostra Volume total + (por mês) + Hierarquias + SKUs + quantidades
-# =========================================================
-st.markdown("---")
-st.subheader("🆚 Comparativo por período (por datas do FATURADO)")
+    # =========================================================
+    # ✅ ADIÇÃO FINAL: COMPARATIVO (Cliente/Período X vs Cliente/Período Y) POR DATA
+    # - Não altera nada acima: só acrescenta no final
+    # - Compara por intervalo de datas (início/fim) do FATURADO
+    # - Mostra Volume total + (por mês) + Hierarquias + SKUs + quantidades
+    # =========================================================
+    st.markdown("---")
+    st.subheader("🆚 Comparativo por período (por datas do FATURADO)")
 
-# Base de comparação respeita os filtros do topo (Estado/Analista/Supervisor/Vendedor)
-df_comp_base = df_fat_filtrado.copy()
+    # Base de comparação respeita os filtros do topo (Estado/Analista/Supervisor/Vendedor)
+    df_comp_base = df_fat_filtrado.copy()
 
-lista_clientes_comp = sorted(
-    [x for x in df_comp_base[col_cliente].dropna().unique().tolist() if str(x).strip() != ""]
-)
+    lista_clientes_comp = sorted(
+        [x for x in df_comp_base[col_cliente].dropna().unique().tolist() if str(x).strip() != ""]
+    )
 
-if not lista_clientes_comp:
-    st.info("Sem clientes disponíveis para comparativo (no recorte atual).")
-else:
-    comp1, comp2 = st.columns(2)
-
-    # referência de datas disponíveis no recorte atual
-    dt_min_base = df_comp_base[col_data].min()
-    dt_max_base = df_comp_base[col_data].max()
-
-    if pd.isna(dt_min_base) or pd.isna(dt_max_base):
-        st.info("Sem datas válidas no FATURADO (no recorte atual) para montar o comparativo.")
+    if not lista_clientes_comp:
+        st.info("Sem clientes disponíveis para comparativo (no recorte atual).")
     else:
-        dt_min_base_d = dt_min_base.date()
-        dt_max_base_d = dt_max_base.date()
+        comp1, comp2 = st.columns(2)
 
-        with comp1:
-            st.markdown("#### 📌 Lado A")
-            cli_A = st.selectbox("Cliente A", lista_clientes_comp, index=0, key="comp_cli_A")
+        # referência de datas disponíveis no recorte atual
+        dt_min_base = df_comp_base[col_data].min()
+        dt_max_base = df_comp_base[col_data].max()
 
-            # por padrão: últimos 3 meses dentro do recorte atual
-            dtA_ini_default = max(dt_min_base_d, (dt_max_base - pd.DateOffset(months=3)).date())
-            dtA_fim_default = dt_max_base_d
+        if pd.isna(dt_min_base) or pd.isna(dt_max_base):
+            st.info("Sem datas válidas no FATURADO (no recorte atual) para montar o comparativo.")
+        else:
+            dt_min_base_d = dt_min_base.date()
+            dt_max_base_d = dt_max_base.date()
 
-            dtA_ini, dtA_fim = st.date_input(
-                "Período A (início / fim)",
-                value=(dtA_ini_default, dtA_fim_default),
-                min_value=dt_min_base_d,
-                max_value=dt_max_base_d,
-                key="comp_dt_A",
-            )
+            with comp1:
+                st.markdown("#### 📌 Lado A")
+                cli_A = st.selectbox("Cliente A", lista_clientes_comp, index=0, key="comp_cli_A")
 
-        with comp2:
-            st.markdown("#### 📌 Lado B")
-            # default: mesmo cliente selecionado na tela (se existir), senão o primeiro
-            idx_default = 0
-            try:
-                idx_default = lista_clientes_comp.index(str(cli_sel))
-            except Exception:
+                # por padrão: últimos 3 meses dentro do recorte atual
+                dtA_ini_default = max(dt_min_base_d, (dt_max_base - pd.DateOffset(months=3)).date())
+                dtA_fim_default = dt_max_base_d
+
+                dtA_ini, dtA_fim = st.date_input(
+                    "Período A (início / fim)",
+                    value=(dtA_ini_default, dtA_fim_default),
+                    min_value=dt_min_base_d,
+                    max_value=dt_max_base_d,
+                    key="comp_dt_A",
+                )
+
+            with comp2:
+                st.markdown("#### 📌 Lado B")
+                # default: mesmo cliente selecionado na tela (se existir), senão o primeiro
                 idx_default = 0
+                try:
+                    idx_default = lista_clientes_comp.index(str(cli_sel))
+                except Exception:
+                    idx_default = 0
 
-            cli_B = st.selectbox("Cliente B", lista_clientes_comp, index=idx_default, key="comp_cli_B")
+                cli_B = st.selectbox("Cliente B", lista_clientes_comp, index=idx_default, key="comp_cli_B")
 
-            # por padrão: últimos 6 meses dentro do recorte atual
-            dtB_ini_default = max(dt_min_base_d, (dt_max_base - pd.DateOffset(months=6)).date())
-            dtB_fim_default = dt_max_base_d
+                # por padrão: últimos 6 meses dentro do recorte atual
+                dtB_ini_default = max(dt_min_base_d, (dt_max_base - pd.DateOffset(months=6)).date())
+                dtB_fim_default = dt_max_base_d
 
-            dtB_ini, dtB_fim = st.date_input(
-                "Período B (início / fim)",
-                value=(dtB_ini_default, dtB_fim_default),
-                min_value=dt_min_base_d,
-                max_value=dt_max_base_d,
-                key="comp_dt_B",
-            )
+                dtB_ini, dtB_fim = st.date_input(
+                    "Período B (início / fim)",
+                    value=(dtB_ini_default, dtB_fim_default),
+                    min_value=dt_min_base_d,
+                    max_value=dt_max_base_d,
+                    key="comp_dt_B",
+                )
 
-        # garante ordem caso o usuário selecione invertido
-        if dtA_ini > dtA_fim:
-            dtA_ini, dtA_fim = dtA_fim, dtA_ini
-        if dtB_ini > dtB_fim:
-            dtB_ini, dtB_fim = dtB_fim, dtB_ini
+            # garante ordem caso o usuário selecione invertido
+            if dtA_ini > dtA_fim:
+                dtA_ini, dtA_fim = dtA_fim, dtA_ini
+            if dtB_ini > dtB_fim:
+                dtB_ini, dtB_fim = dtB_fim, dtB_ini
 
-        def filtrar_por_datas(df_in, dt_ini, dt_fim, col_dt):
-            if df_in is None or df_in.empty:
-                return df_in
-            # converte para Timestamp e inclui o dia final inteiro
-            ini_ts = pd.to_datetime(dt_ini)
-            fim_ts = pd.to_datetime(dt_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-            return df_in[(df_in[col_dt] >= ini_ts) & (df_in[col_dt] <= fim_ts)].copy()
+            def filtrar_por_datas(df_in, dt_ini, dt_fim, col_dt):
+                if df_in is None or df_in.empty:
+                    return df_in
+                # converte para Timestamp e inclui o dia final inteiro
+                ini_ts = pd.to_datetime(dt_ini)
+                fim_ts = pd.to_datetime(dt_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                return df_in[(df_in[col_dt] >= ini_ts) & (df_in[col_dt] <= fim_ts)].copy()
 
-        # df do cliente A/B (no recorte do topo) + filtro por datas
-        df_A_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_A)].copy()
-        df_B_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_B)].copy()
+            # df do cliente A/B (no recorte do topo) + filtro por datas
+            df_A_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_A)].copy()
+            df_B_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_B)].copy()
 
-        df_A = filtrar_por_datas(df_A_full, dtA_ini, dtA_fim, col_data)
-        df_B = filtrar_por_datas(df_B_full, dtB_ini, dtB_fim, col_data)
+            df_A = filtrar_por_datas(df_A_full, dtA_ini, dtA_fim, col_data)
+            df_B = filtrar_por_datas(df_B_full, dtB_ini, dtB_fim, col_data)
 
-        def resumo_comp(df_in):
-            # estrutura fixa (pra não quebrar UI)
-            out = {
-                "volume": 0.0,
-                "pedidos": 0,
-                "mes": pd.DataFrame(columns=["Mês", "Volume", "Pedidos"]),
-                "hier": pd.DataFrame(columns=["Hierarquia", "Volume", "Pedidos"]),
-                "sku": pd.DataFrame(columns=["SKU", "Volume", "Pedidos"]),
-            }
+            def resumo_comp(df_in):
+                # estrutura fixa (pra não quebrar UI)
+                out = {
+                    "volume": 0.0,
+                    "pedidos": 0,
+                    "mes": pd.DataFrame(columns=["Mês", "Volume", "Pedidos"]),
+                    "hier": pd.DataFrame(columns=["Hierarquia", "Volume", "Pedidos"]),
+                    "sku": pd.DataFrame(columns=["SKU", "Volume", "Pedidos"]),
+                }
 
-            if df_in is None or df_in.empty:
-                return out
+                if df_in is None or df_in.empty:
+                    return out
 
-            out["volume"] = float(df_in[col_qtd].sum())
-            out["pedidos"] = int(df_in[col_pedido].nunique())
+                out["volume"] = float(df_in[col_qtd].sum())
+                out["pedidos"] = int(df_in[col_pedido].nunique())
 
-            # compras por mês (YYYY-MM)
-            df_mes = (
-                df_in.groupby(pd.Grouper(key=col_data, freq="M"))
-                .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
-                .reset_index()
-            )
-            if not df_mes.empty:
-                df_mes["Mês"] = df_mes[col_data].dt.strftime("%Y-%m")
-                df_mes = df_mes[["Mês", "Volume", "Pedidos"]].sort_values("Mês")
-                out["mes"] = df_mes
-
-            # hierarquias (todas) com volume/pedidos
-            if col_hier and col_hier in df_in.columns:
-                hier_df = (
-                    df_in.groupby(col_hier)
+                # compras por mês (YYYY-MM)
+                df_mes = (
+                    df_in.groupby(pd.Grouper(key=col_data, freq="M"))
                     .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
                     .reset_index()
-                    .rename(columns={col_hier: "Hierarquia"})
+                )
+                if not df_mes.empty:
+                    df_mes["Mês"] = df_mes[col_data].dt.strftime("%Y-%m")
+                    df_mes = df_mes[["Mês", "Volume", "Pedidos"]].sort_values("Mês")
+                    out["mes"] = df_mes
+
+                # hierarquias (todas) com volume/pedidos
+                if col_hier and col_hier in df_in.columns:
+                    hier_df = (
+                        df_in.groupby(col_hier)
+                        .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+                        .reset_index()
+                        .rename(columns={col_hier: "Hierarquia"})
+                        .sort_values("Volume", ascending=False)
+                    )
+                    out["hier"] = hier_df
+
+                # skus (todos) com volume/pedidos
+                sku_df = (
+                    df_in.groupby(col_sku)
+                    .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+                    .reset_index()
+                    .rename(columns={col_sku: "SKU"})
                     .sort_values("Volume", ascending=False)
                 )
-                out["hier"] = hier_df
+                out["sku"] = sku_df
 
-            # skus (todos) com volume/pedidos
-            sku_df = (
-                df_in.groupby(col_sku)
-                .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
-                .reset_index()
-                .rename(columns={col_sku: "SKU"})
-                .sort_values("Volume", ascending=False)
+                return out
+
+            resA = resumo_comp(df_A)
+            resB = resumo_comp(df_B)
+
+            # cards: volume total + pedidos
+            ca1, ca2, cb1, cb2 = st.columns(4)
+            ca1.metric(
+                "Volume total A",
+                f"{resA['volume']:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
             )
-            out["sku"] = sku_df
+            ca2.metric("Pedidos A", resA["pedidos"])
+            cb1.metric(
+                "Volume total B",
+                f"{resB['volume']:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            )
+            cb2.metric("Pedidos B", resB["pedidos"])
 
-            return out
+            # blocos lado a lado
+            t1, t2 = st.columns(2)
 
-        resA = resumo_comp(df_A)
-        resB = resumo_comp(df_B)
+            with t1:
+                st.markdown(
+                    f"##### 📅 Compras por mês (A) — {dtA_ini.strftime('%d/%m/%Y')} a {dtA_fim.strftime('%d/%m/%Y')}"
+                )
+                if resA["mes"].empty:
+                    st.info("Sem dados por mês (A).")
+                else:
+                    st.dataframe(resA["mes"], use_container_width=True, hide_index=True)
 
-        # cards: volume total + pedidos
-        ca1, ca2, cb1, cb2 = st.columns(4)
-        ca1.metric(
-            "Volume total A",
-            f"{resA['volume']:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
-        )
-        ca2.metric("Pedidos A", resA["pedidos"])
-        cb1.metric(
-            "Volume total B",
-            f"{resB['volume']:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
-        )
-        cb2.metric("Pedidos B", resB["pedidos"])
+                st.markdown("##### 🏷️ Hierarquias faturadas (A)")
+                if resA["hier"].empty:
+                    st.info("Sem hierarquias (A).")
+                else:
+                    st.dataframe(resA["hier"], use_container_width=True, hide_index=True)
 
-        # blocos lado a lado
-        t1, t2 = st.columns(2)
+                st.markdown("##### 📦 SKUs faturados (A)")
+                if resA["sku"].empty:
+                    st.info("Sem SKUs (A).")
+                else:
+                    st.dataframe(resA["sku"], use_container_width=True, hide_index=True)
 
-        with t1:
-            st.markdown(f"##### 📅 Compras por mês (A) — {dtA_ini.strftime('%d/%m/%Y')} a {dtA_fim.strftime('%d/%m/%Y')}")
-            if resA["mes"].empty:
-                st.info("Sem dados por mês (A).")
+            with t2:
+                st.markdown(
+                    f"##### 📅 Compras por mês (B) — {dtB_ini.strftime('%d/%m/%Y')} a {dtB_fim.strftime('%d/%m/%Y')}"
+                )
+                if resB["mes"].empty:
+                    st.info("Sem dados por mês (B).")
+                else:
+                    st.dataframe(resB["mes"], use_container_width=True, hide_index=True)
+
+                st.markdown("##### 🏷️ Hierarquias faturadas (B)")
+                if resB["hier"].empty:
+                    st.info("Sem hierarquias (B).")
+                else:
+                    st.dataframe(resB["hier"], use_container_width=True, hide_index=True)
+
+                st.markdown("##### 📦 SKUs faturados (B)")
+                if resB["sku"].empty:
+                    st.info("Sem SKUs (B).")
+                else:
+                    st.dataframe(resB["sku"], use_container_width=True, hide_index=True)
+
+            # (opcional) comparação SKU a SKU (diferença)
+            st.markdown("##### 📊 Comparação SKU a SKU — A vs B (Volume)")
+            skuA = (
+                resA["sku"][["SKU", "Volume"]].rename(columns={"Volume": "Volume_A"})
+                if not resA["sku"].empty
+                else pd.DataFrame(columns=["SKU", "Volume_A"])
+            )
+            skuB = (
+                resB["sku"][["SKU", "Volume"]].rename(columns={"Volume": "Volume_B"})
+                if not resB["sku"].empty
+                else pd.DataFrame(columns=["SKU", "Volume_B"])
+            )
+
+            df_diff = skuA.merge(skuB, on="SKU", how="outer")
+            df_diff["Volume_A"] = pd.to_numeric(df_diff["Volume_A"], errors="coerce").fillna(0)
+            df_diff["Volume_B"] = pd.to_numeric(df_diff["Volume_B"], errors="coerce").fillna(0)
+            df_diff["Diferença (A-B)"] = df_diff["Volume_A"] - df_diff["Volume_B"]
+            df_diff = df_diff.sort_values("Diferença (A-B)", ascending=False)
+
+            # filtro pra não ficar gigante (mas você pode deixar "Tudo" se quiser)
+            top_n_diff = st.number_input(
+                "Mostrar quantos SKUs na comparação (ordenado por Diferença A-B):",
+                min_value=5,
+                value=30,
+                step=5,
+                key="comp_topn_diff",
+            )
+            if df_diff.empty:
+                st.info("Sem dados suficientes para comparar SKUs.")
             else:
-                st.dataframe(resA["mes"], use_container_width=True, hide_index=True)
-
-            st.markdown("##### 🏷️ Hierarquias faturadas (A)")
-            if resA["hier"].empty:
-                st.info("Sem hierarquias (A).")
-            else:
-                st.dataframe(resA["hier"], use_container_width=True, hide_index=True)
-
-            st.markdown("##### 📦 SKUs faturados (A)")
-            if resA["sku"].empty:
-                st.info("Sem SKUs (A).")
-            else:
-                st.dataframe(resA["sku"], use_container_width=True, hide_index=True)
-
-        with t2:
-            st.markdown(f"##### 📅 Compras por mês (B) — {dtB_ini.strftime('%d/%m/%Y')} a {dtB_fim.strftime('%d/%m/%Y')}")
-            if resB["mes"].empty:
-                st.info("Sem dados por mês (B).")
-            else:
-                st.dataframe(resB["mes"], use_container_width=True, hide_index=True)
-
-            st.markdown("##### 🏷️ Hierarquias faturadas (B)")
-            if resB["hier"].empty:
-                st.info("Sem hierarquias (B).")
-            else:
-                st.dataframe(resB["hier"], use_container_width=True, hide_index=True)
-
-            st.markdown("##### 📦 SKUs faturados (B)")
-            if resB["sku"].empty:
-                st.info("Sem SKUs (B).")
-            else:
-                st.dataframe(resB["sku"], use_container_width=True, hide_index=True)
-
-        # (opcional) comparação SKU a SKU (diferença)
-        st.markdown("##### 📊 Comparação SKU a SKU — A vs B (Volume)")
-        skuA = (
-            resA["sku"][["SKU", "Volume"]].rename(columns={"Volume": "Volume_A"})
-            if not resA["sku"].empty
-            else pd.DataFrame(columns=["SKU", "Volume_A"])
-        )
-        skuB = (
-            resB["sku"][["SKU", "Volume"]].rename(columns={"Volume": "Volume_B"})
-            if not resB["sku"].empty
-            else pd.DataFrame(columns=["SKU", "Volume_B"])
-        )
-
-        df_diff = skuA.merge(skuB, on="SKU", how="outer")
-        df_diff["Volume_A"] = pd.to_numeric(df_diff["Volume_A"], errors="coerce").fillna(0)
-        df_diff["Volume_B"] = pd.to_numeric(df_diff["Volume_B"], errors="coerce").fillna(0)
-        df_diff["Diferença (A-B)"] = df_diff["Volume_A"] - df_diff["Volume_B"]
-        df_diff = df_diff.sort_values("Diferença (A-B)", ascending=False)
-
-        # filtro pra não ficar gigante (mas você pode deixar "Tudo" se quiser)
-        top_n_diff = st.number_input(
-            "Mostrar quantos SKUs na comparação (ordenado por Diferença A-B):",
-            min_value=5,
-            value=30,
-            step=5,
-            key="comp_topn_diff",
-        )
-        if df_diff.empty:
-            st.info("Sem dados suficientes para comparar SKUs.")
-        else:
-            st.dataframe(df_diff.head(int(top_n_diff)), use_container_width=True, hide_index=True)
+                st.dataframe(df_diff.head(int(top_n_diff)), use_container_width=True, hide_index=True)
 
 
 
