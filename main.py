@@ -703,9 +703,6 @@ if "logado" not in st.session_state:
 
 if not st.session_state.logado:
 
-    # ✅ LOGO LOCAL (funciona mesmo com repo privado)
-    # Coloque o arquivo na mesma pasta do main.py
-    # Ex.: "pngmarata.png" (recomendado) ou "pngmarata" (se estiver sem extensão)
     import os
 
     logo_path = None
@@ -714,6 +711,78 @@ if not st.session_state.logado:
             logo_path = p
             break
 
+    # ✅ CSS SAFE (não quebra mobile)
+    st.markdown("""
+    <style>
+      /* Fundo suave */
+      div[data-testid="stAppViewContainer"]{
+        background: radial-gradient(circle at 20% 20%, #f7f9ff 0%, #f3f4f8 45%, #f6f7fb 100%);
+      }
+
+      /* Centraliza e limita largura */
+      .login-wrap{
+        max-width: 860px;
+        margin: 0 auto;
+      }
+
+      /* Título */
+      .login-h1{
+        font-size: 42px;
+        font-weight: 900;
+        letter-spacing: .5px;
+        color: #000C75;
+        margin: 0;
+        text-align: center;
+      }
+
+      .login-sub{
+        text-align:center;
+        color: rgba(17,17,17,.65);
+        font-size: 14px;
+        margin: 6px 0 16px 0;
+      }
+
+      /* Card (aplicado numa div nossa, não em container do streamlit) */
+      .login-card{
+        background: rgba(255,255,255,0.78);
+        border: 1px solid rgba(17,17,17,0.08);
+        border-radius: 18px;
+        padding: 18px 18px 14px 18px;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.07);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      /* Inputs mais arredondados (seguro) */
+      div[data-testid="stTextInput"] input{
+        border-radius: 12px !important;
+        padding: 12px 12px !important;
+        border: 1px solid rgba(17,17,17,0.10) !important;
+      }
+      div[data-testid="stTextInput"] input:focus{
+        border: 1px solid rgba(0,12,117,0.45) !important;
+        box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
+      }
+
+      /* Botão do form (seguro) */
+      div[data-testid="stForm"] button{
+        width: 100%;
+        border-radius: 14px !important;
+        padding: 12px 14px !important;
+        font-weight: 900 !important;
+        border: 1px solid rgba(17,17,17,0.08) !important;
+      }
+
+      /* Alerts arredondados */
+      div[data-testid="stAlert"]{
+        border-radius: 14px !important;
+      }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+
+    # Header (logo + título)
     col_logo, col_titulo = st.columns([0.12, 0.88], vertical_alignment="center")
 
     with col_logo:
@@ -723,18 +792,19 @@ if not st.session_state.logado:
             st.write("")
 
     with col_titulo:
-        st.markdown(
-            "<h1 style='color:#000C75; margin:0;'>GESTÃO DE VISITAS PDV</h1>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<h1 class='login-h1'>GESTÃO DE VISITAS PDV</h1>", unsafe_allow_html=True)
+        st.markdown("<div class='login-sub'>Acesse com seu usuário e senha para continuar</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
     tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
-    
+
     with tab_login:
         with st.form("login_form"):
             u_login = st.text_input("Usuário:").strip().upper()
             p_login = st.text_input("Senha:", type="password")
             lembrar = st.checkbox("Manter conectado")
+
             if st.form_submit_button("Entrar"):
                 if "USUARIO" in df_usuarios.columns and "SENHA" in df_usuarios.columns:
                     valid = df_usuarios[
@@ -744,9 +814,11 @@ if not st.session_state.logado:
                     if not valid.empty:
                         st.session_state.logado = True
                         st.session_state.usuario = u_login
+
                         if lembrar:
                             cookies["user_marata"] = u_login
                             cookies.save()
+
                         st.rerun()
                     else:
                         st.error("Usuário ou Senha incorretos.")
@@ -759,7 +831,7 @@ if not st.session_state.logado:
             u_cad = st.text_input("Nome de Usuário:").strip().upper()
             p_cad = st.text_input("Defina uma Senha:", type="password")
             p_cad_conf = st.text_input("Repita a Senha:", type="password")
-            
+
             if st.form_submit_button("Finalizar Cadastro"):
                 if u_cad and p_cad and p_cad_conf:
                     if p_cad != p_cad_conf:
@@ -768,7 +840,7 @@ if not st.session_state.logado:
                         existente = False
                         if "USUARIO" in df_usuarios.columns:
                             existente = u_cad in df_usuarios["USUARIO"].str.upper().values
-                        
+
                         if not existente:
                             novo_user = pd.DataFrame([{"USUARIO": u_cad, "SENHA": p_cad}])
                             df_final_u = pd.concat([df_usuarios, novo_user], ignore_index=True)
@@ -777,7 +849,12 @@ if not st.session_state.logado:
                             st.success("Cadastro realizado!")
                         else:
                             st.error("Este usuário já está cadastrado.")
+                else:
+                    st.warning("Preencha todos os campos.")
+
+    st.markdown("</div></div>", unsafe_allow_html=True)  # fecha login-card e login-wrap
     st.stop()
+
 
 
 # --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
