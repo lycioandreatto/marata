@@ -563,7 +563,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="
   right: -75px;      /* joga pra fora do sidebar */
   width: 90px;       /* “ponte” até a tela */
   height: 100%;
-  background: #ffffff;   /* usa a MESMA cor/gradiente do item selecionado */
+  background: linear-gradient(90deg, rgba(0, 78, 173, 1) 0%, #ffffff 75%);   /* usa a MESMA cor/gradiente do item selecionado */
   border-top-right-radius: 16px;
   border-bottom-right-radius: 16px;
 
