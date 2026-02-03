@@ -415,8 +415,8 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   align-items:center;
 
   width: 100% !important;          /* ✅ todos ocupam a mesma largura */
-  min-height: 58px;                 /* ✅ altura padronizada */
-  height: 58px;                     /* ✅ força igual */
+  min-height: 58px;                /* ✅ altura padronizada */
+  height: 58px;                    /* ✅ força igual */
   box-sizing: border-box;
 
   background: rgba(255,255,255,0.75);
@@ -429,7 +429,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 6px 18px rgba(0,0,0,0.06);
   transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-  overflow:hidden;
+  overflow: hidden; /* padrão */
 }
 
 /* bolha do ícone */
@@ -467,16 +467,30 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
   box-shadow: 0 10px 26px rgba(255,75,75,0.10);
 }
 
-/* ✅ AJUSTE: manter o contorno do hover no item selecionado (SEM mudar cor) */
+/* ===============================
+   ✅ SELECIONADO: CONTORNO FIXO + "ENCAIXE" COM A TELA
+   (sem mudar nenhuma cor)
+   =============================== */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
-  border-color: rgba(255,75,75,0.35) !important;
-}
-
-/* item ativo */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
+  /* ativo (como já estava) */
   background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
   border-color: rgba(255,75,75,0.85);
-  box-shadow: 0 16px 34px rgba(255,75,75,0.22);
+
+  /* ✅ mantém o "contorno do hover" FIXO no selecionado */
+  outline: 2px solid rgba(255,75,75,0.35);
+  outline-offset: 0px;
+
+  /* ✅ permite desenhar a "ponte" pra fora do card */
+  overflow: visible;
+
+  /* ✅ dá sensação de encaixe com a tela principal */
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
+
+  /* ✅ mantém sombra do ativo + adiciona a “ponte” lateral (mesma paleta) */
+  box-shadow:
+    0 16px 34px rgba(255,75,75,0.22),
+    22px 0 0 0 rgba(255,75,75,0.12);
 }
 
 /* texto branco no ativo */
