@@ -2959,7 +2959,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         return ["background-color: transparent" for _ in s]
 
     # 🔧 Como agora as colunas são MultiIndex, a formatação precisa usar tuplas (nivel 1, nivel 2)
-    sty = (
+        sty = (
         df_show
         .sort_values(by=("", "HIERARQUIA DE PRODUTOS"))
         .style
@@ -2987,9 +2987,13 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             [
                 {"selector": "th", "props": [("background-color", "#F2F2F2"), ("color", "#111"), ("font-weight", "700")]},
                 {"selector": "td", "props": [("border-bottom", "1px solid #EEE")]},
+
+                # ✅ CENTRALIZA O TÍTULO DO NÍVEL 0 ("META COBERTURA")
+                {"selector": "thead th.col_heading.level0", "props": [("text-align", "center")]},
             ]
         )
     )
+
 
     st.dataframe(
         sty,
