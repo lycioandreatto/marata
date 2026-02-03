@@ -2653,17 +2653,6 @@ else:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
                     
 # --- PÁGINA: DASHBOARD ---
 elif menu == "📊 Dashboard de Controle":
