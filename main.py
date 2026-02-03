@@ -711,12 +711,25 @@ if not st.session_state.logado:
             logo_path = p
             break
 
-    # ✅ CSS SAFE (não quebra mobile) + ✅ FIX do "olhinho" da senha (não fica largo)
+    # ✅ CSS SAFE (não quebra mobile) + ✅ FIX do "olhinho" + ✅ FIX do botão ficar “bolinha” + ✅ remove a “barra branca”
     st.markdown("""
     <style>
+      /* Remove “barra branca” do topo (Header do Streamlit) */
+      header[data-testid="stHeader"]{
+        background: transparent !important;
+      }
+      div[data-testid="stDecoration"]{
+        display:none !important;
+      }
+
       /* Fundo suave */
       div[data-testid="stAppViewContainer"]{
         background: radial-gradient(circle at 20% 20%, #f7f9ff 0%, #f3f4f8 45%, #f6f7fb 100%);
+      }
+
+      /* Ajuste de padding do conteúdo */
+      .block-container{
+        padding-top: 18px !important;
       }
 
       /* Centraliza e limita largura */
@@ -742,7 +755,7 @@ if not st.session_state.logado:
         margin: 6px 0 16px 0;
       }
 
-      /* Card (aplicado numa div nossa, não em container do streamlit) */
+      /* Card */
       .login-card{
         background: rgba(255,255,255,0.78);
         border: 1px solid rgba(17,17,17,0.08);
@@ -753,7 +766,7 @@ if not st.session_state.logado:
         -webkit-backdrop-filter: blur(10px);
       }
 
-      /* Inputs mais arredondados (seguro) */
+      /* Inputs */
       div[data-testid="stTextInput"] input{
         border-radius: 12px !important;
         padding: 12px 12px !important;
@@ -764,22 +777,27 @@ if not st.session_state.logado:
         box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
       }
 
-      /* ✅ Botão do form: aplica só no SUBMIT (evita o "olhinho" virar faixa gigante) */
-      div[data-testid="stForm"] button[type="submit"]{
-        width: 100%;
+      /* ✅ OLHINHO DA SENHA: mantém pequeno (só nos TextInput) */
+      div[data-testid="stTextInput"] button{
+        width: 38px !important;
+        min-width: 38px !important;
+        height: 38px !important;
+        padding: 0 !important;
+        border-radius: 999px !important;
+        box-shadow: none !important;
+        border: 1px solid rgba(17,17,17,0.08) !important;
+        background: rgba(255,255,255,0.65) !important;
+      }
+
+      /* ✅ BOTÃO DO FORM: aplica NO submit oficial do Streamlit (não vira “bolinha”) */
+      div[data-testid="stFormSubmitButton"] button{
+        width: 100% !important;
         border-radius: 14px !important;
         padding: 12px 14px !important;
         font-weight: 900 !important;
         border: 1px solid rgba(17,17,17,0.08) !important;
-      }
-
-      /* ✅ Garante que qualquer outro botão dentro do form (ex: olhinho) NÃO herde width 100% */
-      div[data-testid="stForm"] button:not([type="submit"]){
-        width: auto !important;
-        min-width: unset !important;
-        padding: 0 !important;
-        border-radius: 999px !important;
-        box-shadow: none !important;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.08) !important;
+        background: rgba(255,255,255,0.70) !important;  /* evita “branco estourado” */
       }
 
       /* Alerts arredondados */
@@ -863,6 +881,7 @@ if not st.session_state.logado:
 
     st.markdown("</div></div>", unsafe_allow_html=True)  # fecha login-card e login-wrap
     st.stop()
+
 
 
 
