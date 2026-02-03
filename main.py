@@ -1980,8 +1980,24 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         freq_media = 0
 
-            # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA) — mais didático (texto curto no card)
-    if freq_media and freq_media > 0:
+               # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA) — mais didático
+    # Regra: só calcula se tiver base mínima (evita "atrasado" com poucos dias de histórico)
+    min_pedidos_base = 4          # ajuste se quiser (ex.: 3, 4, 5)
+    min_dias_base = 15            # janela mínima de histórico (em dias)
+    min_freq_media = 3            # evita médias muito baixas (ex.: 1 dia) com base curta
+
+    # Base de datas do cliente no período atual
+    dt_min_cli = df_cli[col_data].min()
+    dt_max_cli = df_cli[col_data].max()
+    dias_base = (dt_max_cli.date() - dt_min_cli.date()).days if pd.notna(dt_min_cli) and pd.notna(dt_max_cli) else 0
+
+    base_ok = (
+        (pedidos_unicos is not None and int(pedidos_unicos) >= int(min_pedidos_base))
+        and (dias_base >= int(min_dias_base))
+        and (freq_media is not None and float(freq_media) >= float(min_freq_media))
+    )
+
+    if base_ok and freq_media and freq_media > 0:
         dias_pra_atrasar = max(0, int(round(freq_media - dias_sem)))
         nivel = dias_sem / freq_media
     else:
@@ -1991,20 +2007,24 @@ elif menu_interna == "📚 Perfil do Cliente":
     if nivel is None:
         risco_txt = "Sem base"
         risco_delta = None
-        risco_help = "Poucos pedidos no período para estimar a frequência média."
+        risco_help = (
+            f"Base insuficiente para estimar padrão: "
+            f"mín. {min_pedidos_base} pedidos, {min_dias_base} dias de histórico e freq. média ≥ {min_freq_media}d."
+        )
         msg_status = None
     else:
-        # texto curto para caber no card
+        # texto principal do card (curto)
         if dias_sem >= freq_media:
             risco_txt = "Atrasado"
-            risco_delta = f"+{int(round(dias_sem - freq_media))}d"
         else:
             risco_txt = "No prazo"
-            risco_delta = f"-{int(round(dias_pra_atrasar))}d"
 
-        risco_help = "Comparação com o padrão do cliente: dias sem comprar vs frequência média (dias) entre pedidos."
+        # delta em dias vs padrão
+        diff_dias = int(round(dias_sem - freq_media))
+        risco_delta = f"{diff_dias:+d}d"
+        risco_help = "Comparação com o padrão do cliente: (Dias sem comprar) vs (Frequência média entre pedidos)."
 
-        # mensagem de status (mantém a mesma lógica de corte)
+        # mensagem de status (mantém a mesma lógica de corte do seu código)
         if nivel > 1.5:
             msg_status = ("warning", "⚠️ Cliente acima do padrão de compra (alto risco de estar atrasado).")
         elif nivel >= 1.0:
@@ -2029,6 +2049,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.info(texto)
         else:
             st.success(texto)
+
 
 
     st.markdown("---")
