@@ -1980,20 +1980,37 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         freq_media = 0
 
-    # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA)
+        # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA) — mais didático
     if freq_media and freq_media > 0:
-        risco_atraso = dias_sem / freq_media
+        dias_pra_atrasar = max(0, int(round(freq_media - dias_sem)))
+        nivel = dias_sem / freq_media
     else:
-        risco_atraso = None
+        dias_pra_atrasar = None
+        nivel = None
 
-    if risco_atraso is None:
+    if nivel is None:
         risco_txt = "Sem base"
         risco_delta = None
         risco_help = "Poucos pedidos no período para estimar a frequência média."
+        msg_status = None
     else:
-        risco_txt = f"{risco_atraso:.2f}x"
-        risco_help = "Dias sem comprar dividido pela frequência média (dias) entre pedidos."
-        risco_delta = f"{(risco_atraso - 1):+.2f}" if risco_atraso >= 1 else f"{(risco_atraso - 1):+.2f}"
+        # texto principal do card (didático)
+        if dias_sem >= freq_media:
+            risco_txt = f"Atrasado há {int(round(dias_sem - freq_media))} dias"
+        else:
+            risco_txt = f"Faltam ~{dias_pra_atrasar} dias p/ atrasar"
+
+        # delta mostra o quanto está acima/abaixo do padrão (em dias)
+        risco_delta = f"{int(round(dias_sem - freq_media)):+d} dias"
+        risco_help = "Comparação com o padrão do cliente: (Dias sem comprar) vs (Frequência média entre pedidos)."
+
+        # mensagem de status (mantém a mesma lógica de corte do seu código)
+        if nivel > 1.5:
+            msg_status = ("warning", "⚠️ Cliente acima do padrão de compra (alto risco de estar atrasado).")
+        elif nivel >= 1.0:
+            msg_status = ("info", "ℹ️ Cliente no limite do padrão de compra (atenção).")
+        else:
+            msg_status = ("success", "✅ Cliente dentro do padrão de frequência de compra.")
 
     # Cards
     m1, m2, m3, m4, m5, m6 = st.columns(6)
@@ -2002,15 +2019,16 @@ elif menu_interna == "📚 Perfil do Cliente":
     m3.metric("Pedidos no período", int(pedidos_unicos))
     m4.metric("Volume total", f"{volume_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
     m5.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
-    m6.metric("Risco de atraso", risco_txt, delta=risco_delta, help=risco_help)
+    m6.metric("Atraso vs padrão", risco_txt, delta=risco_delta, help=risco_help)
 
-    if risco_atraso is not None:
-        if risco_atraso > 1.5:
-            st.warning("⚠️ Cliente acima do padrão de compra (alto risco de estar atrasado).")
-        elif risco_atraso >= 1.0:
-            st.info("ℹ️ Cliente no limite do padrão de compra (atenção).")
+    if msg_status is not None:
+        tipo, texto = msg_status
+        if tipo == "warning":
+            st.warning(texto)
+        elif tipo == "info":
+            st.info(texto)
         else:
-            st.success("✅ Cliente dentro do padrão de frequência de compra.")
+            st.success(texto)
 
     st.markdown("---")
 
