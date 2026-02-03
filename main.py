@@ -49,10 +49,10 @@ def enviar_excel_vendedor(
         "META 2026",
         "VOLUME",
         " ",  # espaço 1 (depois do VOLUME)
-        "CRESCIMENTO 2025",
+        "CRESC 2025",
         "% (VOL 2025)",
         "  ",  # espaço 2 (entre 2025 e 2026)
-        "CRESCIMENTO 2026",
+        "CRESC 2026",
         "% (VOL 2026)",
     ]
 
@@ -2763,9 +2763,9 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     df_final["META CLIENTES (ABS)"] = (df_final["META COBERTURA"] * base_total).apply(math.ceil) if base_total > 0 else 0
     df_final["PENDÊNCIA CLIENTES"] = (df_final["META CLIENTES (ABS)"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
-    df_final["CRESCIMENTO 2025"] = df_final["VOLUME"] - df_final.get("META 2025", 0)
+    df_final["CRESC 2025"] = df_final["VOLUME"] - df_final.get("META 2025", 0)
     df_final["% (VOL 2025)"] = (df_final["VOLUME"] / df_final.get("META 2025", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
-    df_final["CRESCIMENTO 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
+    df_final["CRESC 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
     df_final["% (VOL 2026)"] = (df_final["VOLUME"] / df_final.get("META 2026", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
@@ -2924,10 +2924,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         "  ",
         "VOLUME",
         "   ",
-        "CRESCIMENTO 2025",
+        "CRESC 2025",
         "% (VOL 2025)",
         "    ",
-        "CRESCIMENTO 2026",
+        "CRESC 2026",
         "% (VOL 2026)",
     ]
 
@@ -2956,15 +2956,15 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 "META 2025": lambda v: fmt_pt_int(v),
                 "META 2026": lambda v: fmt_pt_int(v),
                 "VOLUME": lambda v: fmt_pt_int(v),
-                "CRESCIMENTO 2025": lambda v: fmt_pt_int(v),
-                "CRESCIMENTO 2026": lambda v: fmt_pt_int(v),
+                "CRESC 2025": lambda v: fmt_pt_int(v),
+                "CRESC 2026": lambda v: fmt_pt_int(v),
                 "% (VOL 2025)": "{:.1f}%",
                 "% (VOL 2026)": "{:.1f}%",
             }
         )
         .apply(zebra_rows, axis=1)
         .apply(destacar_pendencia, subset=["PENDÊNCIA CLIENTES"])
-        .apply(destacar_negativos, subset=["CRESCIMENTO 2025", "CRESCIMENTO 2026"])
+        .apply(destacar_negativos, subset=["CRESC 2025", "CRESC 2026"])
         .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
         .set_table_styles(
             [
