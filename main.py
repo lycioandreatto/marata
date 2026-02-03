@@ -2100,84 +2100,95 @@ elif menu_interna == "📚 Perfil do Cliente":
                     hide_index=True,
                 )
 
-        # ============================
-    # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
-    # - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
-    # - Respeita o mesmo período selecionado (periodo)
     # ============================
-    st.subheader("📌 Curva ABC de Clientes (por Faturamento)")
+# ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
+# - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
+# - Respeita o mesmo período selecionado (periodo)
+# ============================
+st.subheader("📌 Curva ABC de Clientes (por Faturamento)")
 
-    # base = carteira/recorte atual (Estado/Analista/Supervisor/Vendedor)
-    df_cli_abc_base = df_fat_filtrado.copy()
+# base = carteira/recorte atual (Estado/Analista/Supervisor/Vendedor)
+df_cli_abc_base = df_fat_filtrado.copy()
 
-    # aplica o mesmo período selecionado no topo (para ser coerente com a tela)
-    if periodo != "Tudo":
-        meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
-        dt_min_abc = df_cli_abc_base[col_data].max() - pd.DateOffset(months=meses)
-        df_cli_abc_base = df_cli_abc_base[df_cli_abc_base[col_data] >= dt_min_abc].copy()
+# aplica o mesmo período selecionado no topo (para ser coerente com a tela)
+if periodo != "Tudo":
+    meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
+    dt_min_abc = df_cli_abc_base[col_data].max() - pd.DateOffset(months=meses)
+    df_cli_abc_base = df_cli_abc_base[df_cli_abc_base[col_data] >= dt_min_abc].copy()
 
-    df_abc_rec = (
-        df_cli_abc_base.groupby(col_cliente)
-        .agg(Receita=(col_rec, "sum"), Pedidos=(col_pedido, "nunique"))
-        .sort_values("Receita", ascending=False)
-        .reset_index()
-        .rename(columns={col_cliente: "Cliente"})
-    )
+df_abc_rec = (
+    df_cli_abc_base.groupby(col_cliente)
+    .agg(Receita=(col_rec, "sum"), Pedidos=(col_pedido, "nunique"))
+    .sort_values("Receita", ascending=False)
+    .reset_index()
+    .rename(columns={col_cliente: "Cliente"})
+)
 
-    if df_abc_rec.empty:
-        st.info("Sem dados suficientes para calcular ABC de clientes por faturamento.")
+if df_abc_rec.empty:
+    st.info("Sem dados suficientes para calcular ABC de clientes por faturamento.")
+else:
+    rec_total_abc = df_abc_rec["Receita"].sum()
+    if rec_total_abc <= 0:
+        st.info("Faturamento total zerado no período.")
     else:
-        rec_total_abc = df_abc_rec["Receita"].sum()
-        if rec_total_abc <= 0:
-            st.info("Faturamento total zerado no período.")
-        else:
-            df_abc_rec["% Receita"] = (df_abc_rec["Receita"] / rec_total_abc * 100)
-            df_abc_rec["% Acum."] = df_abc_rec["% Receita"].cumsum()
+        df_abc_rec["% Receita"] = (df_abc_rec["Receita"] / rec_total_abc * 100)
+        df_abc_rec["% Acum."] = df_abc_rec["% Receita"].cumsum()
 
-            def class_abc_rec(p):
-                if p <= 80:
-                    return "A"
-                elif p <= 95:
-                    return "B"
-                return "C"
+        def class_abc_rec(p):
+            if p <= 80:
+                return "A"
+            elif p <= 95:
+                return "B"
+            return "C"
 
-            df_abc_rec["Classe"] = df_abc_rec["% Acum."].apply(class_abc_rec)
+        df_abc_rec["Classe"] = df_abc_rec["% Acum."].apply(class_abc_rec)
 
-            resumo_abc_rec = (
-                df_abc_rec.groupby("Classe")
-                .agg(
-                    Clientes=("Cliente", "count"),
-                    Receita=("Receita", "sum"),
-                    Perc_Rec=("% Receita", "sum"),
-                )
-                .reset_index()
-                .sort_values("Classe")
+        resumo_abc_rec = (
+            df_abc_rec.groupby("Classe")
+            .agg(
+                Clientes=("Cliente", "count"),
+                Receita=("Receita", "sum"),
+                Perc_Rec=("% Receita", "sum"),
             )
-            resumo_abc_rec["Perc_Rec"] = resumo_abc_rec["Perc_Rec"].round(1)
+            .reset_index()
+            .sort_values("Classe")
+        )
+        resumo_abc_rec["Perc_Rec"] = resumo_abc_rec["Perc_Rec"].round(1)
 
-            # ✅ formatação BRL (R$) para exibição (sem alterar os cálculos)
-            def fmt_brl(v):
-                try:
-                    return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                except Exception:
-                    return "R$ 0,00"
+        # ✅ formatação BRL (R$) para exibição (sem alterar os cálculos)
+        def fmt_brl(v):
+            try:
+                return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return "R$ 0,00"
 
-            resumo_show = resumo_abc_rec.copy()
-            resumo_show["Receita"] = resumo_show["Receita"].apply(fmt_brl)
+        # ✅ formatação percentual pt-BR para exibição (sem alterar os cálculos)
+        def fmt_pct(v, casas=1):
+            try:
+                return f"{float(v):.{casas}f}%".replace(".", ",")
+            except Exception:
+                return f"{0:.{casas}f}%".replace(".", ",")
 
-            detalhe_show = df_abc_rec.copy()
-            detalhe_show["Receita"] = detalhe_show["Receita"].apply(fmt_brl)
+        resumo_show = resumo_abc_rec.copy()
+        resumo_show["Receita"] = resumo_show["Receita"].apply(fmt_brl)
+        resumo_show["Perc_Rec"] = resumo_show["Perc_Rec"].apply(lambda x: fmt_pct(x, 1))
 
-            cA2, cB2 = st.columns([1, 2])
-            with cA2:
-                st.dataframe(resumo_show, use_container_width=True, hide_index=True)
-            with cB2:
-                st.caption("A = até 80% do faturamento acumulado | B = 80–95% | C = 95–100%")
-                st.dataframe(
-                    detalhe_show[["Cliente", "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
-                    use_container_width=True,
-                    hide_index=True,
-                )
+        detalhe_show = df_abc_rec.copy()
+        detalhe_show["Receita"] = detalhe_show["Receita"].apply(fmt_brl)
+        detalhe_show["% Receita"] = detalhe_show["% Receita"].apply(lambda x: fmt_pct(x, 1))
+        detalhe_show["% Acum."] = detalhe_show["% Acum."].apply(lambda x: fmt_pct(x, 1))
+
+        cA2, cB2 = st.columns([1, 2])
+        with cA2:
+            st.dataframe(resumo_show, use_container_width=True, hide_index=True)
+        with cB2:
+            st.caption("A = até 80% do faturamento acumulado | B = 80–95% | C = 95–100%")
+            st.dataframe(
+                detalhe_show[["Cliente", "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
+                use_container_width=True,
+                hide_index=True,
+            )
+
 
     
    
