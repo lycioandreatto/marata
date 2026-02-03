@@ -1010,6 +1010,7 @@ with st.sidebar:
     ]
     
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
+    opcoes_menu.append("📚 Perfil do Cliente")
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
@@ -1691,6 +1692,256 @@ if menu == "📅 Agendamentos do Dia":
         st.info("Nenhum agendamento para hoje.")
 
 
+# --- PÁGINA: PERFIL DO CLIENTE (CURVA DE APRENDIZADO) ---
+elif menu_interna == "📚 Perfil do Cliente":
+    st.header("📚 Perfil do Cliente (Histórico e Mix)")
+
+    # ============================
+    # 1) Carrega FATURADO
+    # ============================
+    try:
+        df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+        if df_fat is None or df_fat.empty:
+            st.warning("A aba FATURADO está vazia.")
+            st.stop()
+
+        df_fat = df_fat.dropna(how="all").copy()
+        df_fat.columns = [str(c).strip() for c in df_fat.columns]
+
+    except Exception as e:
+        st.error(f"Erro ao ler FATURADO: {e}")
+        st.stop()
+
+    # ============================
+    # 2) Mapeamento dinâmico de colunas
+    # ============================
+    def pick_col(df, candidates, fallback=None):
+        cols_up = {c.upper(): c for c in df.columns}
+        for cand in candidates:
+            if cand.upper() in cols_up:
+                return cols_up[cand.upper()]
+        return fallback
+
+    col_cliente = pick_col(df_fat, ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE"], fallback=df_fat.columns[11] if len(df_fat.columns) > 11 else df_fat.columns[0])
+    col_data    = pick_col(df_fat, ["Data fat.", "DATA FAT.", "DATA FAT", "DATA"], fallback=None)
+    col_hier    = pick_col(df_fat, ["Hierarquia de produtos", "HIERARQUIA", "HIERARQUIA DE PRODUTOS"], fallback=None)
+    col_sku     = pick_col(df_fat, ["N° artigo", "Nº artigo", "ARTIGO", "SKU"], fallback=None)
+    col_qtd     = pick_col(df_fat, ["Qtd Vendas (S/Dec)", "QTD VENDAS (S/DEC)", "QTD", "QUANTIDADE"], fallback=None)
+    col_rec     = pick_col(df_fat, ["Receita", "RECEITA", "Valor", "VALOR"], fallback=None)
+    col_pedido  = pick_col(df_fat, ["OrdCliente", "ORDCLIENTE", "PEDIDO", "NUM PEDIDO", "Nº PEDIDO"], fallback="OrdCliente")
+
+    # valida mínimos
+    faltando = []
+    if not col_data: faltando.append("Data fat.")
+    if not col_sku: faltando.append("SKU/N° artigo")
+    if not col_qtd: faltando.append("Qtd Vendas (S/Dec)")
+    if not col_rec: faltando.append("Receita")
+    if col_pedido not in df_fat.columns: faltando.append("OrdCliente (pedido)")
+
+    if faltando:
+        st.error("Colunas obrigatórias não encontradas no FATURADO: " + ", ".join(faltando))
+        st.stop()
+
+    # ============================
+    # 3) Limpeza/normalização
+    # ============================
+    def limpar_cod(v):
+        if pd.isna(v):
+            return ""
+        return str(v).strip().replace(".0", "")
+
+    df_fat = df_fat.copy()
+    df_fat[col_cliente] = df_fat[col_cliente].apply(limpar_cod)
+    df_fat[col_pedido]  = df_fat[col_pedido].apply(limpar_cod)
+
+    df_fat[col_qtd] = pd.to_numeric(df_fat[col_qtd], errors="coerce").fillna(0)
+    df_fat[col_rec] = pd.to_numeric(df_fat[col_rec], errors="coerce").fillna(0)
+
+    df_fat[col_data] = pd.to_datetime(df_fat[col_data], errors="coerce", dayfirst=True)
+    df_fat = df_fat[df_fat[col_data].notna()].copy()
+
+    # ============================
+    # 4) (Opcional) Restringir cliente por carteira do vendedor
+    # ============================
+    # Se você quiser travar o vendedor a só ver clientes dele,
+    # descomente essa parte e ajuste a coluna do código do cliente na BASE.
+    #
+    # if is_vendedor and (df_base is not None) and (not df_base.empty):
+    #     col_cli_base = next((c for c in df_base.columns if str(c).strip().upper() in ["CLIENTE", "CÓDIGO CLIENTE", "COD CLIENTE", "CÓDIGO"] ), None)
+    #     if col_cli_base:
+    #         meus_clientes = df_base[df_base["VENDEDOR"].astype(str).str.strip().str.upper() == user_atual][col_cli_base].astype(str).str.replace(r"\.0$", "", regex=True)
+    #         meus_clientes = set(meus_clientes.dropna().unique().tolist())
+    #         df_fat = df_fat[df_fat[col_cliente].isin(meus_clientes)].copy()
+
+    # ============================
+    # 5) Filtros UI
+    # ============================
+    st.markdown("### 🔎 Selecione o Cliente")
+
+    c1, c2 = st.columns([2, 1])
+
+    lista_clientes = sorted([x for x in df_fat[col_cliente].dropna().unique().tolist() if str(x).strip() != ""])
+    if not lista_clientes:
+        st.warning("Não encontrei clientes no FATURADO após filtragens.")
+        st.stop()
+
+    with c1:
+        cli_sel = st.selectbox("Cliente (código):", lista_clientes)
+
+    with c2:
+        periodo = st.selectbox("Período:", ["Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses", "Tudo"])
+
+    df_cli = df_fat[df_fat[col_cliente] == cli_sel].copy()
+
+    if periodo != "Tudo":
+        meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
+        dt_min = df_cli[col_data].max() - pd.DateOffset(months=meses)
+        df_cli = df_cli[df_cli[col_data] >= dt_min].copy()
+
+    if df_cli.empty:
+        st.warning("Esse cliente não tem faturamento no período selecionado.")
+        st.stop()
+
+    # ============================
+    # 6) Métricas principais
+    # ============================
+    ultima_compra = df_cli[col_data].max()
+    dias_sem = (datetime.now(fuso_br).date() - ultima_compra.date()).days
+
+    pedidos_unicos = df_cli[col_pedido].nunique()
+    receita_total = float(df_cli[col_rec].sum())
+    qtd_total = float(df_cli[col_qtd].sum())
+
+    ticket_medio = (receita_total / pedidos_unicos) if pedidos_unicos > 0 else 0
+    mix_medio = (df_cli[col_sku].nunique() / pedidos_unicos) if pedidos_unicos > 0 else 0
+
+    # frequência média (dias entre pedidos)
+    df_pedidos_data = (
+        df_cli.groupby(col_pedido)[col_data]
+        .max()
+        .sort_values()
+        .reset_index()
+    )
+    if len(df_pedidos_data) >= 2:
+        diffs = df_pedidos_data[col_data].diff().dt.days.dropna()
+        freq_media = float(diffs.mean()) if not diffs.empty else 0
+    else:
+        freq_media = 0
+
+    # Cards
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Última compra", ultima_compra.strftime("%d/%m/%Y"))
+    m2.metric("Dias sem comprar", dias_sem)
+    m3.metric("Pedidos no período", int(pedidos_unicos))
+    m4.metric("Ticket médio (R$)", f"{ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    m5.metric("Frequência média (dias)", f"{freq_media:.0f}" if freq_media > 0 else "-")
+
+    st.markdown("---")
+
+    # ============================
+    # 7) Top Hierarquias e Top SKUs
+    # ============================
+    colA, colB = st.columns(2)
+
+    with colA:
+        st.subheader("🏷️ Top Hierarquias")
+        if col_hier and col_hier in df_cli.columns:
+            top_h = (
+                df_cli.groupby(col_hier)
+                .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+                .sort_values("Receita", ascending=False)
+                .head(10)
+                .reset_index()
+            )
+            st.dataframe(top_h, use_container_width=True, hide_index=True)
+        else:
+            st.info("Coluna de hierarquia não encontrada no FATURADO.")
+
+    with colB:
+        st.subheader("📦 Top SKUs")
+        top_sku = (
+            df_cli.groupby(col_sku)
+            .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+            .sort_values("Receita", ascending=False)
+            .head(15)
+            .reset_index()
+        )
+        st.dataframe(top_sku, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # ============================
+    # 8) "Compram junto" (Market Basket por pedido)
+    # ============================
+    st.subheader("🧠 Compram junto (combos mais frequentes)")
+
+    # Monta cesta por pedido
+    # (SKU únicos por pedido, evita repetir SKU no mesmo pedido)
+    pedido_skus = (
+        df_cli[[col_pedido, col_sku]]
+        .dropna()
+        .astype(str)
+        .groupby(col_pedido)[col_sku]
+        .apply(lambda x: sorted(set([i.strip() for i in x.tolist() if i.strip()])))
+    )
+
+    # Se tiver poucos pedidos, avisa
+    if pedido_skus.shape[0] < 3:
+        st.info("Poucos pedidos no período para calcular combinações com confiança.")
+    else:
+        from itertools import combinations
+        pares = {}
+
+        for skus in pedido_skus:
+            if len(skus) < 2:
+                continue
+            for a, b in combinations(skus, 2):
+                key = tuple(sorted((a, b)))
+                pares[key] = pares.get(key, 0) + 1
+
+        if not pares:
+            st.info("Não foi possível gerar pares (pedidos com 2+ SKUs).")
+        else:
+            df_pares = pd.DataFrame(
+                [{"SKU_A": k[0], "SKU_B": k[1], "Frequência": v} for k, v in pares.items()]
+            ).sort_values("Frequência", ascending=False)
+
+            # Normaliza por quantidade de pedidos para dar noção de força
+            df_pares["% dos pedidos"] = (df_pares["Frequência"] / pedido_skus.shape[0] * 100).round(1)
+
+            # filtro de SKU “âncora”
+            sku_ancora = st.selectbox(
+                "Ver combinações a partir do SKU:",
+                ["(Mostrar todos)"] + sorted(df_cli[col_sku].dropna().astype(str).unique().tolist())
+            )
+
+            df_view_pares = df_pares.copy()
+            if sku_ancora != "(Mostrar todos)":
+                df_view_pares = df_view_pares[(df_view_pares["SKU_A"] == sku_ancora) | (df_view_pares["SKU_B"] == sku_ancora)].copy()
+
+                # mostra “o outro” SKU como sugestão
+                df_view_pares["Sugestão"] = df_view_pares.apply(
+                    lambda r: r["SKU_B"] if r["SKU_A"] == sku_ancora else r["SKU_A"], axis=1
+                )
+
+            st.dataframe(df_view_pares.head(30), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # ============================
+    # 9) Linha do tempo (simples)
+    # ============================
+    st.subheader("📆 Linha do tempo de compras")
+
+    df_tempo = (
+        df_cli.groupby(pd.Grouper(key=col_data, freq="M"))
+        .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+        .reset_index()
+    )
+    df_tempo["Mês"] = df_tempo[col_data].dt.strftime("%Y-%m")
+    df_tempo = df_tempo[["Mês", "Receita", "Volume", "Pedidos"]].sort_values("Mês")
+
+    st.dataframe(df_tempo, use_container_width=True, hide_index=True)
 
 
 
