@@ -382,13 +382,13 @@ st.markdown("""
    =============================== */
 
 section[data-testid="stSidebar"]{
-  width: 320px !important;         /* ✅ largura fixa */
+  width: 320px !important;
   min-width: 320px !important;
   max-width: 320px !important;
   background: linear-gradient(180deg, #f6f7fb 0%, #f3f4f8 100%);
 }
 
-/* opcional: padding interno mais consistente */
+/* padding interno */
 section[data-testid="stSidebar"] .stSidebarContent{
   padding: 18px 18px 12px 18px !important;
 }
@@ -398,7 +398,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"]{
   display:none !important;
 }
 
-/* ✅ tira a bolinha visual do streamlit (o "controle") */
+/* tira a bolinha visual do streamlit (o "controle") */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child{
   display:none !important;
 }
@@ -414,9 +414,9 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   display:flex;
   align-items:center;
 
-  width: 100% !important;          /* ✅ todos ocupam a mesma largura */
-  min-height: 58px;                /* ✅ altura padronizada */
-  height: 58px;                    /* ✅ força igual */
+  width: 100% !important;
+  min-height: 58px;
+  height: 58px;
   box-sizing: border-box;
 
   background: rgba(255,255,255,0.75);
@@ -429,7 +429,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 6px 18px rgba(0,0,0,0.06);
   transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-  overflow: hidden; /* padrão */
+  overflow:hidden;
 }
 
 /* bolha do ícone */
@@ -445,7 +445,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label p::first-letter{
   box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
 }
 
-/* ✅ texto padronizado (mesma linha / mesmo alinhamento) */
+/* texto padronizado */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label p{
   margin:0;
   font-size: 0.95rem;
@@ -454,8 +454,8 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label p{
   letter-spacing: .2px;
 
   line-height: 1.15;
-  display: -webkit-box;            /* ✅ evita aumentar altura do card */
-  -webkit-line-clamp: 2;           /* ✅ no máximo 2 linhas */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -467,45 +467,57 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
   box-shadow: 0 10px 26px rgba(255,75,75,0.10);
 }
 
-/* ===============================
-   ✅ SELECIONADO: CONTORNO FIXO + "ENCAIXE" COM A TELA
-   (sem mudar nenhuma cor)
-   =============================== */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
-  /* ativo (como já estava) */
+/* =========================================================
+   ✅ SELECIONADO (FUNCIONA DE VERDADE)
+   Agora usando :has(input:checked)
+   - mantém contorno do hover FIXO
+   - cria "ponte/encaixe" com a tela (sem mudar cor)
+   ========================================================= */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked){
   background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
   border-color: rgba(255,75,75,0.85);
+  box-shadow: 0 16px 34px rgba(255,75,75,0.22);
 
-  /* ✅ mantém o "contorno do hover" FIXO no selecionado */
+  /* contorno do hover fixo (mesma cor do hover) */
   outline: 2px solid rgba(255,75,75,0.35);
   outline-offset: 0px;
 
-  /* ✅ permite desenhar a "ponte" pra fora do card */
-  overflow: visible;
-
-  /* ✅ dá sensação de encaixe com a tela principal */
+  /* deixa “encaixar” no lado direito */
   border-top-right-radius: 0px;
   border-bottom-right-radius: 0px;
+  overflow: visible;
+}
 
-  /* ✅ mantém sombra do ativo + adiciona a “ponte” lateral (mesma paleta) */
-  box-shadow:
-    0 16px 34px rgba(255,75,75,0.22),
-    22px 0 0 0 rgba(255,75,75,0.12);
+/* ✅ ponte para a tela (mesma cor/alpha do hover) */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked)::after{
+  content: "";
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  right: -18px;                 /* “entra” na área da tela */
+  width: 18px;                  /* largura da ponte */
+  background: rgba(255,75,75,0.12);
+  border-top-right-radius: 16px;
+  border-bottom-right-radius: 16px;
+
+  /* mesma ideia do hover */
+  box-shadow: 0 10px 26px rgba(255,75,75,0.10);
+  pointer-events: none;
 }
 
 /* texto branco no ativo */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p{
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p{
   color: #ffffff !important;
 }
 
 /* bolha do ícone no ativo vira branca */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p::first-letter{
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p::first-letter{
   background: rgba(255,255,255,0.18);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
 }
 
 /* barra lateral do ativo */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::before{
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked)::before{
   content:"";
   position:absolute;
   left: 10px;
@@ -514,15 +526,6 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="tr
   width: 6px;
   border-radius: 10px;
   background: rgba(255,255,255,0.85);
-}
-
-/* brilho suave atrás do ativo */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::after{
-  content:"";
-  position:absolute;
-  inset:-40px;
-  background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.25), rgba(255,255,255,0) 60%);
-  pointer-events:none;
 }
 
 /* some label do widget */
