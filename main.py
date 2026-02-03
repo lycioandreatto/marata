@@ -385,7 +385,7 @@ section[data-testid="stSidebar"]{
   width: 320px !important;
   min-width: 320px !important;
   max-width: 320px !important;
-  background: linear-gradient(90deg, #0A58FF 0%, #003BFF 100%);
+  background: linear-gradient(180deg, #f6f7fb 0%, #f3f4f8 100%);
 }
 
 /* padding interno */
@@ -474,7 +474,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
    - cria "ponte/encaixe" com a tela (sem mudar cor)
    ========================================================= */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked){
-  background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
+  background: linear-gradient(90deg, #0A58FF 0%, #003BFF 100%);
   border-color: rgba(255,75,75,0.85);
   box-shadow: 0 16px 34px rgba(255,75,75,0.22);
 
@@ -532,6 +532,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checke
 section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
   display:none;
 }
+
 
 
     </style>
