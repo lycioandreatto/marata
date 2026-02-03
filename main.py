@@ -533,6 +533,44 @@ section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
   display:none;
 }
 
+/* ===== EFEITO "UNIR COM A TELA" (TAB CONNECT) ===== */
+/* cole este bloco NO FINAL do seu CSS atual */
+
+/* garante que o sidebar fique acima do main pra "invadir" sem bug */
+section[data-testid="stSidebar"]{
+  position: relative;
+  z-index: 50;
+}
+
+/* o item selecionado vira "aba": sem arredondar do lado direito */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
+  border-top-right-radius: 0px !important;
+  border-bottom-right-radius: 0px !important;
+  margin-right: -14px !important;          /* puxa pra colar na tela */
+  padding-right: 28px !important;          /* compensa o espaço puxado */
+}
+
+/* “puxadinho” que invade a área principal e dá a sensação de união */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::after{
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -18px;                             /* invade um pouco o main */
+  width: 22px;
+  height: 100%;
+  background: inherit;                      /* usa o mesmo fundo do botão selecionado */
+  border-top-right-radius: 16px;
+  border-bottom-right-radius: 16px;
+  box-shadow: 10px 0 22px rgba(0,0,0,0.06); /* sombra leve pra “encaixar” */
+  pointer-events: none;
+}
+
+/* opcional: remove “corte” visual do overflow só no selecionado */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
+  overflow: visible !important;
+}
+
+
     </style>
     """, unsafe_allow_html=True)
 
