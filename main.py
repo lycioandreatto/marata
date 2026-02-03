@@ -1691,6 +1691,485 @@ if menu == "📅 Agendamentos do Dia":
     else:
         st.info("Nenhum agendamento para hoje.")
 
+# --- PÁGINA: TESTES (ACURÁCIA) ---
+elif menu_interna == "🧪 TESTES":
+    st.header("🧪 TESTES — ACURÁCIA DA PREVISÃO (SEMANAL | QTD)")
+
+    # ============================
+    # ✅ FUNÇÕES AUXILIARES
+    # ============================
+    def _to_datetime_safe(s):
+        return pd.to_datetime(s, errors="coerce", dayfirst=True)
+
+    def fmt_pt_int(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", ".")
+        except:
+            return str(v)
+
+    def _week_key(ts: pd.Series) -> pd.Series:
+        # ISO week: "YYYY-Www"
+        iso = ts.dt.isocalendar()
+        return iso["year"].astype(str) + "-W" + iso["week"].astype(int).astype(str).str.zfill(2)
+
+    def _make_weekly_series(df: pd.DataFrame, date_col: str, qty_col: str, group_cols=None) -> pd.DataFrame:
+        """
+        Retorna df semanal:
+        - sem group_cols: colunas [WEEK, Y]
+        - com group_cols: colunas group_cols + [WEEK, Y]
+        """
+        dfx = df.copy()
+        dfx = dfx[dfx[date_col].notna()].copy()
+        dfx["WEEK"] = _week_key(dfx[date_col])
+        dfx[qty_col] = pd.to_numeric(dfx[qty_col], errors="coerce").fillna(0)
+
+        if group_cols:
+            out = (
+                dfx.groupby(group_cols + ["WEEK"])[qty_col]
+                .sum()
+                .reset_index()
+                .rename(columns={qty_col: "Y"})
+            )
+        else:
+            out = (
+                dfx.groupby(["WEEK"])[qty_col]
+                .sum()
+                .reset_index()
+                .rename(columns={qty_col: "Y"})
+            )
+
+        # garantir ordenação por semana
+        out["_year"] = out["WEEK"].str.slice(0, 4).astype(int)
+        out["_w"] = out["WEEK"].str.slice(6, 8).astype(int)
+        out = out.sort_values(["_year", "_w"]).drop(columns=["_year", "_w"]).reset_index(drop=True)
+        return out
+
+    def _predict_one_step(hist: list, model: str) -> float:
+        """
+        hist: lista de Y anteriores (semanas anteriores)
+        modelo:
+          - "baseline_last": última semana
+          - "baseline_mean4": média 4 semanas
+          - "model_wma4": média ponderada 4 semanas (40/30/20/10)
+        """
+        if not hist:
+            return 0.0
+
+        if model == "baseline_last":
+            return float(hist[-1])
+
+        if model == "baseline_mean4":
+            window = hist[-4:] if len(hist) >= 4 else hist
+            return float(np.mean(window)) if window else 0.0
+
+        if model == "model_wma4":
+            window = hist[-4:] if len(hist) >= 4 else hist
+            if not window:
+                return 0.0
+            # pesos do mais recente pro mais antigo
+            weights = [0.40, 0.30, 0.20, 0.10]
+            weights = weights[:len(window)]
+            weights = np.array(weights, dtype=float)
+            weights = weights / weights.sum()
+            window_arr = np.array(window[::-1], dtype=float)  # [t-1, t-2, ...]
+            return float(np.sum(window_arr * weights))
+
+        # fallback
+        return float(hist[-1])
+
+    def _safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        # MAPE ignorando zeros (pra não explodir)
+        y_true = np.array(y_true, dtype=float)
+        y_pred = np.array(y_pred, dtype=float)
+        mask = y_true != 0
+        if mask.sum() == 0:
+            return 0.0
+        return float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100)
+
+    def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        y_true = np.array(y_true, dtype=float)
+        y_pred = np.array(y_pred, dtype=float)
+        if len(y_true) == 0:
+            return 0.0
+        return float(np.mean(np.abs(y_true - y_pred)))
+
+    def _walk_forward_backtest(df_week: pd.DataFrame, window_train: int, n_test: int,
+                               model_name: str, baseline_name: str) -> dict:
+        """
+        df_week: colunas [WEEK, Y] ordenado
+        retorna dict com:
+          - table: df com weeks test + real + prev_model + prev_base + erros
+          - metrics: MAE/MAPE model/baseline + win_rate
+        """
+        if df_week is None or df_week.empty or df_week["Y"].sum() == 0:
+            return {"table": pd.DataFrame(), "metrics": {}}
+
+        # garante apenas semanas com Y (pode ter 0, mas mantém)
+        weeks = df_week["WEEK"].tolist()
+        y = df_week["Y"].astype(float).tolist()
+
+        # define recorte de teste (últimas n_test semanas, mas precisa ter treino antes)
+        # índice do primeiro teste
+        start_test_idx = max(len(y) - n_test, 1)
+        # precisa ter pelo menos window_train semanas antes de start_test_idx
+        start_test_idx = max(start_test_idx, window_train)
+
+        rows = []
+        for i in range(start_test_idx, len(y)):
+            # treino: últimas window_train semanas antes de i
+            train_hist = y[max(0, i - window_train): i]
+            real = y[i]
+            wk = weeks[i]
+
+            pred_model = _predict_one_step(train_hist, model_name)
+            pred_base = _predict_one_step(train_hist, baseline_name)
+
+            err_abs_model = abs(real - pred_model)
+            err_abs_base = abs(real - pred_base)
+
+            err_pct_model = (err_abs_model / real * 100) if real != 0 else None
+            err_pct_base = (err_abs_base / real * 100) if real != 0 else None
+
+            rows.append({
+                "SEMANA": wk,
+                "REAL": real,
+                "PREV_MODELO": pred_model,
+                "PREV_BASELINE": pred_base,
+                "ERRO_ABS_MODELO": err_abs_model,
+                "ERRO_ABS_BASELINE": err_abs_base,
+                "ERRO_%_MODELO": err_pct_model,
+                "ERRO_%_BASELINE": err_pct_base,
+                "MODELO_VENCEU": 1 if err_abs_model < err_abs_base else 0
+            })
+
+        df_bt = pd.DataFrame(rows)
+        if df_bt.empty:
+            return {"table": df_bt, "metrics": {}}
+
+        mae_model = _mae(df_bt["REAL"].values, df_bt["PREV_MODELO"].values)
+        mae_base = _mae(df_bt["REAL"].values, df_bt["PREV_BASELINE"].values)
+
+        mape_model = _safe_mape(df_bt["REAL"].values, df_bt["PREV_MODELO"].values)
+        mape_base = _safe_mape(df_bt["REAL"].values, df_bt["PREV_BASELINE"].values)
+
+        win_rate = float(df_bt["MODELO_VENCEU"].mean() * 100)
+
+        metrics = {
+            "MAE_MODELO": mae_model,
+            "MAE_BASELINE": mae_base,
+            "MAPE_MODELO": mape_model,
+            "MAPE_BASELINE": mape_base,
+            "ACURACIA_MODELO": max(0.0, 100.0 - mape_model),
+            "WIN_RATE": win_rate
+        }
+        return {"table": df_bt, "metrics": metrics}
+
+    # ============================
+    # ✅ CONTROLES (UI)
+    # ============================
+    c0, c1, c2, c3 = st.columns([1.2, 1, 1, 1])
+
+    with c0:
+        st.caption("⚙️ Ajustes do teste")
+    with c1:
+        window_train = st.selectbox("Janela de treino (semanas)", [8, 12, 16], index=1)
+    with c2:
+        n_test = st.selectbox("Qtd semanas de teste", [4, 8, 12], index=1)
+    with c3:
+        model_choice = st.selectbox(
+            "Modelo",
+            [
+                "Média ponderada 4 semanas (40/30/20/10)",
+                "Média 4 semanas",
+                "Última semana"
+            ],
+            index=0
+        )
+
+    # baseline fixo (pra comparar)
+    baseline_choice = st.selectbox(
+        "Baseline para comparação",
+        ["Última semana", "Média 4 semanas"],
+        index=0
+    )
+
+    model_map = {
+        "Última semana": "baseline_last",
+        "Média 4 semanas": "baseline_mean4",
+        "Média ponderada 4 semanas (40/30/20/10)": "model_wma4"
+    }
+    model_name = model_map.get(model_choice, "model_wma4")
+    baseline_name = model_map.get(baseline_choice, "baseline_last")
+
+    st.markdown("---")
+
+    # ============================
+    # ✅ LEITURA DO FATURADO
+    # ============================
+    try:
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+    except Exception as e:
+        st.error(f"Erro lendo FATURADO: {e}")
+        st.stop()
+
+    if df_faturado is None or df_faturado.empty:
+        st.warning("FATURADO está vazio.")
+        st.stop()
+
+    df_faturado = df_faturado.dropna(how="all").copy()
+    df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
+
+    # renomes padrão do seu projeto
+    df_faturado.rename(columns={
+        "Região de vendas": "VENDEDOR_NOME",
+        "RG": "VENDEDOR_COD",
+        "Qtd Vendas (S/Dec)": "QTD_VENDAS",
+        "Hierarquia de produtos": "HIERARQUIA"
+    }, inplace=True)
+
+    # detectar coluna Data fat.
+    col_data_fat = None
+    for c in df_faturado.columns:
+        c_norm = str(c).strip().lower().replace(" ", "")
+        if "datafat" in c_norm or c_norm in ["datafat.", "datafat"]:
+            col_data_fat = c
+            break
+    if not col_data_fat:
+        for c in df_faturado.columns:
+            c_low = str(c).strip().lower()
+            if ("data" in c_low) and ("fat" in c_low):
+                col_data_fat = c
+                break
+    if not col_data_fat:
+        st.error("Não encontrei coluna de data de faturamento (Data fat.) no FATURADO.")
+        st.stop()
+
+    df_faturado[col_data_fat] = _to_datetime_safe(df_faturado[col_data_fat])
+    df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado.get("QTD_VENDAS", 0), errors="coerce").fillna(0)
+
+    if "VENDEDOR_NOME" not in df_faturado.columns:
+        st.error("Não encontrei coluna de vendedor (VENDEDOR_NOME / Região de vendas).")
+        st.stop()
+
+    # ============================
+    # ✅ FILTRO (opcional) — Período do histórico usado no teste
+    # ============================
+    hoje = pd.Timestamp.now().normalize()
+    default_inicio = (hoje - pd.Timedelta(days=120)).to_pydatetime()
+    default_fim = hoje.to_pydatetime()
+
+    st.markdown("### 🗓️ Período do histórico usado no teste")
+    d_ini, d_fim = st.date_input(
+        "Selecione o intervalo (sugestão: últimos 120 dias)",
+        value=(default_inicio.date(), default_fim.date()),
+        key="teste_periodo_hist"
+    )
+    d_ini = pd.Timestamp(d_ini).normalize()
+    d_fim = pd.Timestamp(d_fim).normalize()
+
+    df_base_hist = df_faturado[(df_faturado[col_data_fat].notna()) &
+                              (df_faturado[col_data_fat] >= d_ini) &
+                              (df_faturado[col_data_fat] <= d_fim)].copy()
+
+    if df_base_hist.empty:
+        st.warning("Sem dados no período escolhido.")
+        st.stop()
+
+    # ============================
+    # ✅ TOTAL GERAL — backtest
+    # ============================
+    st.markdown("## 📌 TOTAL GERAL (QTD)")
+
+    df_week_total = _make_weekly_series(df_base_hist, date_col=col_data_fat, qty_col="QTD_VENDAS", group_cols=None)
+
+    bt_total = _walk_forward_backtest(
+        df_week_total,
+        window_train=window_train,
+        n_test=n_test,
+        model_name=model_name,
+        baseline_name=baseline_name
+    )
+
+    df_bt_total = bt_total["table"]
+    met_total = bt_total["metrics"]
+
+    if df_bt_total.empty or not met_total:
+        st.info("Ainda não dá pra testar: precisa de mais semanas (treino + teste). Ajuste a janela ou o período.")
+    else:
+        # CARDS
+        cA, cB, cC, cD = st.columns(4)
+
+        with cA:
+            st.metric("Acurácia (100 - MAPE)", f"{met_total['ACURACIA_MODELO']:.1f}%")
+        with cB:
+            st.metric("MAE (un/sem)", fmt_pt_int(met_total["MAE_MODELO"]))
+        with cC:
+            diff = met_total["MAPE_BASELINE"] - met_total["MAPE_MODELO"]
+            st.metric("Ganho vs Baseline (MAPE)", f"{diff:.1f} p.p")
+        with cD:
+            selo = "✅ Confiável" if met_total["MAPE_MODELO"] < 10 else ("⚠️ Moderado" if met_total["MAPE_MODELO"] < 20 else "❌ Baixo")
+            st.metric("Selo", selo)
+
+        # Gráfico
+        st.markdown("### 📈 Real x Previsto (teste)")
+        chart_df = df_bt_total[["SEMANA", "REAL", "PREV_BASELINE", "PREV_MODELO"]].copy()
+        chart_df = chart_df.rename(columns={
+            "PREV_BASELINE": f"Previsto ({baseline_choice})",
+            "PREV_MODELO": f"Previsto ({model_choice})"
+        })
+        chart_df = chart_df.set_index("SEMANA")
+        st.line_chart(chart_df)
+
+        # Tabela de rodadas
+        st.markdown("### 🧾 Rodadas do teste (TOTAL)")
+        view_total = df_bt_total.copy()
+        st.dataframe(
+            view_total.style.format({
+                "REAL": lambda v: fmt_pt_int(v),
+                "PREV_MODELO": lambda v: fmt_pt_int(v),
+                "PREV_BASELINE": lambda v: fmt_pt_int(v),
+                "ERRO_ABS_MODELO": lambda v: fmt_pt_int(v),
+                "ERRO_ABS_BASELINE": lambda v: fmt_pt_int(v),
+                "ERRO_%_MODELO": lambda v: "" if v is None else f"{v:.1f}%",
+                "ERRO_%_BASELINE": lambda v: "" if v is None else f"{v:.1f}%",
+                "MODELO_VENCEU": lambda v: "✅" if int(v) == 1 else "—"
+            }),
+            use_container_width=True,
+            hide_index=True,
+            height=320
+        )
+
+        # Texto de insight
+        st.markdown("### 🧠 Resumo automático (TOTAL)")
+        st.write(
+            f"- Modelo venceu o baseline em **{met_total['WIN_RATE']:.0f}%** das semanas de teste.\n"
+            f"- MAE: **{fmt_pt_int(met_total['MAE_MODELO'])}** un/sem | MAPE: **{met_total['MAPE_MODELO']:.1f}%**.\n"
+            f"- Baseline MAPE: **{met_total['MAPE_BASELINE']:.1f}%** → ganho **{(met_total['MAPE_BASELINE']-met_total['MAPE_MODELO']):.1f} p.p**."
+        )
+
+    st.markdown("---")
+
+    # ============================
+    # ✅ POR VENDEDOR — ranking + detalhe
+    # ============================
+    st.markdown("## 👤 POR VENDEDOR (QTD)")
+
+    # construir séries semanais por vendedor
+    df_week_v = _make_weekly_series(
+        df_base_hist,
+        date_col=col_data_fat,
+        qty_col="QTD_VENDAS",
+        group_cols=["VENDEDOR_NOME"]
+    )
+
+    # filtro mínimo de semanas com dados (evita ranking lixo)
+    min_weeks = st.slider("Mínimo de semanas com dados (por vendedor)", 6, 20, 10, 1)
+
+    vendedores = df_week_v["VENDEDOR_NOME"].dropna().unique().tolist()
+    vendedores = sorted([str(v) for v in vendedores])
+
+    # ranking
+    rank_rows = []
+    for vnd in vendedores:
+        df_vnd = df_week_v[df_week_v["VENDEDOR_NOME"] == vnd].copy()
+        if df_vnd["WEEK"].nunique() < min_weeks:
+            continue
+
+        bt_v = _walk_forward_backtest(
+            df_vnd[["WEEK", "Y"]].rename(columns={"WEEK": "WEEK", "Y": "Y"}),
+            window_train=window_train,
+            n_test=n_test,
+            model_name=model_name,
+            baseline_name=baseline_name
+        )
+
+        if bt_v["table"].empty or not bt_v["metrics"]:
+            continue
+
+        met = bt_v["metrics"]
+        vol_med = float(df_vnd["Y"].mean()) if not df_vnd.empty else 0.0
+
+        rank_rows.append({
+            "VENDEDOR": vnd,
+            "MAPE_MODELO": met["MAPE_MODELO"],
+            "MAE_MODELO": met["MAE_MODELO"],
+            "WIN_RATE_%": met["WIN_RATE"],
+            "VOL_MÉDIO_SEM": vol_med
+        })
+
+    df_rank = pd.DataFrame(rank_rows)
+    if df_rank.empty:
+        st.info("Não foi possível montar ranking: ajuste período / min semanas / janela treino.")
+        st.stop()
+
+    df_rank = df_rank.sort_values(["MAPE_MODELO", "MAE_MODELO"], ascending=True).reset_index(drop=True)
+
+    cR1, cR2 = st.columns([1.2, 1])
+    with cR1:
+        st.markdown("### 🏁 Ranking de previsibilidade (menor MAPE = mais previsível)")
+        st.dataframe(
+            df_rank.style.format({
+                "MAPE_MODELO": "{:.1f}%",
+                "MAE_MODELO": lambda v: fmt_pt_int(v),
+                "WIN_RATE_%": "{:.0f}%",
+                "VOL_MÉDIO_SEM": lambda v: fmt_pt_int(v)
+            }),
+            use_container_width=True,
+            hide_index=True,
+            height=360
+        )
+
+    with cR2:
+        st.markdown("### 🔎 Detalhe do vendedor")
+        vendedor_sel = st.selectbox("Selecione um vendedor", df_rank["VENDEDOR"].tolist(), index=0)
+
+        # rodar backtest do selecionado
+        df_vsel = df_week_v[df_week_v["VENDEDOR_NOME"] == vendedor_sel].copy()
+        bt_sel = _walk_forward_backtest(
+            df_vsel[["WEEK", "Y"]].rename(columns={"WEEK": "WEEK", "Y": "Y"}),
+            window_train=window_train,
+            n_test=n_test,
+            model_name=model_name,
+            baseline_name=baseline_name
+        )
+        df_bt_sel = bt_sel["table"]
+        met_sel = bt_sel["metrics"]
+
+        if df_bt_sel.empty or not met_sel:
+            st.warning("Sem backtest suficiente para este vendedor (faltou histórico).")
+        else:
+            st.metric("Acurácia (100 - MAPE)", f"{met_sel['ACURACIA_MODELO']:.1f}%")
+            st.metric("MAE (un/sem)", fmt_pt_int(met_sel["MAE_MODELO"]))
+            st.metric("Modelo venceu baseline", f"{met_sel['WIN_RATE']:.0f}% das semanas")
+
+            st.markdown("#### 📈 Real x Previsto (vendedor)")
+            chart_v = df_bt_sel[["SEMANA", "REAL", "PREV_BASELINE", "PREV_MODELO"]].copy()
+            chart_v = chart_v.rename(columns={
+                "PREV_BASELINE": f"Previsto ({baseline_choice})",
+                "PREV_MODELO": f"Previsto ({model_choice})"
+            })
+            chart_v = chart_v.set_index("SEMANA")
+            st.line_chart(chart_v)
+
+            st.markdown("#### 🧾 Rodadas do teste (vendedor)")
+            st.dataframe(
+                df_bt_sel.style.format({
+                    "REAL": lambda v: fmt_pt_int(v),
+                    "PREV_MODELO": lambda v: fmt_pt_int(v),
+                    "PREV_BASELINE": lambda v: fmt_pt_int(v),
+                    "ERRO_ABS_MODELO": lambda v: fmt_pt_int(v),
+                    "ERRO_ABS_BASELINE": lambda v: fmt_pt_int(v),
+                    "ERRO_%_MODELO": lambda v: "" if v is None else f"{v:.1f}%",
+                    "ERRO_%_BASELINE": lambda v: "" if v is None else f"{v:.1f}%",
+                    "MODELO_VENCEU": lambda v: "✅" if int(v) == 1 else "—"
+                }),
+                use_container_width=True,
+                hide_index=True,
+                height=260
+            )
+
+    st.markdown("---")
+
 
 # --- PÁGINA: PERFIL DO CLIENTE (CURVA DE APRENDIZADO) ---
 elif menu_interna == "📚 Perfil do Cliente":
