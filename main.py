@@ -2549,18 +2549,39 @@ elif menu_interna == "📚 Perfil do Cliente":
         except Exception:
             return ""
 
-    # 1) Lê BASE (carteira)
+       # 1) Lê BASE (carteira)
     try:
         df_base = conn.read(spreadsheet=url_planilha, worksheet="BASE")
-        if df_base is None or df_base.empty:
-            st.warning("A aba BASE está vazia. Os alertas de carteira (sem faturamento / 30/60/90) dependem dela.")
+
+        # ✅ Diagnóstico rápido (pra você ver o que o conn.read está trazendo)
+        if df_base is None:
+            st.warning("A leitura da aba BASE retornou None (conn.read não trouxe dados).")
             df_base = None
         else:
-            df_base = df_base.dropna(how="all").copy()
+            # limpeza leve
+            df_base = df_base.copy()
+            df_base = df_base.dropna(how="all")
+            df_base = df_base.dropna(axis=1, how="all")
             df_base.columns = [str(c).strip() for c in df_base.columns]
+
+            # remove linhas "vazias" mesmo quando vêm como string vazia
+            df_base = df_base.replace(r"^\s*$", pd.NA, regex=True).dropna(how="all")
+
+            st.caption(f"BASE lida no app: {df_base.shape[0]} linhas x {df_base.shape[1]} colunas")
+            st.caption(f"Colunas BASE: {list(df_base.columns)}")
+
+            if df_base.empty:
+                st.warning(
+                    "A aba BASE foi lida, mas veio sem linhas (vazia no retorno). "
+                    "Isso normalmente acontece quando o nome da aba não bate 100% (ex.: 'Base', 'BASE ', etc.) "
+                    "ou quando o conector não está retornando o range com dados."
+                )
+                df_base = None
+
     except Exception as e:
         st.warning(f"Não consegui ler a aba BASE: {e}")
         df_base = None
+
 
            # 2) Mapeia colunas na BASE (mínimo: cliente)
         # ✅ FORÇA o "Cliente (código)" correto nas duas abas:
