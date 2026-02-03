@@ -1980,7 +1980,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         freq_media = 0
 
-        # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA) — mais didático
+            # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA) — mais didático (texto curto no card)
     if freq_media and freq_media > 0:
         dias_pra_atrasar = max(0, int(round(freq_media - dias_sem)))
         nivel = dias_sem / freq_media
@@ -1994,17 +1994,17 @@ elif menu_interna == "📚 Perfil do Cliente":
         risco_help = "Poucos pedidos no período para estimar a frequência média."
         msg_status = None
     else:
-        # texto principal do card (didático)
+        # texto curto para caber no card
         if dias_sem >= freq_media:
-            risco_txt = f"Atrasado há {int(round(dias_sem - freq_media))} dias"
+            risco_txt = "Atrasado"
+            risco_delta = f"+{int(round(dias_sem - freq_media))}d"
         else:
-            risco_txt = f"Faltam ~{dias_pra_atrasar} dias p/ atrasar"
+            risco_txt = "No prazo"
+            risco_delta = f"-{int(round(dias_pra_atrasar))}d"
 
-        # delta mostra o quanto está acima/abaixo do padrão (em dias)
-        risco_delta = f"{int(round(dias_sem - freq_media)):+d} dias"
-        risco_help = "Comparação com o padrão do cliente: (Dias sem comprar) vs (Frequência média entre pedidos)."
+        risco_help = "Comparação com o padrão do cliente: dias sem comprar vs frequência média (dias) entre pedidos."
 
-        # mensagem de status (mantém a mesma lógica de corte do seu código)
+        # mensagem de status (mantém a mesma lógica de corte)
         if nivel > 1.5:
             msg_status = ("warning", "⚠️ Cliente acima do padrão de compra (alto risco de estar atrasado).")
         elif nivel >= 1.0:
@@ -2029,6 +2029,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.info(texto)
         else:
             st.success(texto)
+
 
     st.markdown("---")
 
