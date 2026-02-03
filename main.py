@@ -3207,25 +3207,67 @@ elif menu_interna == "🔔 Aprovações":
     # Filtrar apenas os pendentes e respeitar a hierarquia
     if is_admin:
         # Admin vê todos os pendentes
-        df_pendentes = df_agenda[df_agenda['STATUS'] == "Pendente"].copy()
+        df_pendentes = df_agenda[df_agenda["STATUS"] == "Pendente"].copy()
     else:
         # Analista vê apenas os pendentes atribuídos a ele
         # Certifique-se que a coluna 'ANALISTA' existe na sua planilha
-        df_pendentes = df_agenda[(df_agenda['STATUS'] == "Pendente") & (df_agenda['ANALISTA'] == user_atual)].copy()
+        df_pendentes = df_agenda[
+            (df_agenda["STATUS"] == "Pendente") &
+            (df_agenda["ANALISTA"] == user_atual)
+        ].copy()
     
-    if df_pendentes.empty:
+    # ✅ SLICER / FILTRO DE VENDEDOR
+    df_pendentes_filtrado = df_pendentes.copy()
+    if not df_pendentes_filtrado.empty and "VENDEDOR" in df_pendentes_filtrado.columns:
+        op_vend = sorted(df_pendentes_filtrado["VENDEDOR"].dropna().astype(str).unique())
+        vend_sel = st.multiselect("Filtrar por Vendedor:", op_vend, key="filtro_vendedor_aprovacoes")
+        if vend_sel:
+            df_pendentes_filtrado = df_pendentes_filtrado[
+                df_pendentes_filtrado["VENDEDOR"].isin(vend_sel)
+            ].copy()
+
+    if df_pendentes_filtrado.empty:
         st.success("Não há agendamentos aguardando sua aprovação!")
     else:
-        st.warning(f"Existem {len(df_pendentes)} agendamentos aguardando sua ação.")
+        st.warning(f"Existem {len(df_pendentes_filtrado)} agendamentos aguardando sua ação.")
         
-        for i, row in df_pendentes.iterrows():
+        # ✅ BOTÕES: APROVAR / REPROVAR TUDO (do que estiver visível após filtro)
+        c1, c2 = st.columns(2)
+
+        if c1.button("✅ Aprovar tudo (filtrado)", use_container_width=True, key="btn_aprovar_tudo_aprovacoes"):
+            ids_aprovar = df_pendentes_filtrado["ID"].astype(str).tolist()
+            if ids_aprovar:
+                df_agenda.loc[
+                    df_agenda["ID"].astype(str).isin(ids_aprovar),
+                    ["STATUS", "APROVACAO"]
+                ] = ["Planejado", "Aprovado"]
+
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                st.cache_data.clear()
+                st.success(f"✅ {len(ids_aprovar)} agendamentos aprovados!")
+                st.rerun()
+
+        if c2.button("❌ Reprovar tudo (filtrado)", use_container_width=True, key="btn_reprovar_tudo_aprovacoes"):
+            ids_reprovar = df_pendentes_filtrado["ID"].astype(str).tolist()
+            if ids_reprovar:
+                df_agenda.loc[
+                    df_agenda["ID"].astype(str).isin(ids_reprovar),
+                    ["STATUS", "APROVACAO"]
+                ] = ["Reprovado", "Reprovado"]
+
+                conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
+                st.cache_data.clear()
+                st.error(f"❌ {len(ids_reprovar)} agendamentos reprovados!")
+                st.rerun()
+        
+        for i, row in df_pendentes_filtrado.iterrows():
             with st.expander(f"📍 {row['VENDEDOR']} -> {row['CLIENTE']} ({row['DATA']})"):
                 col1, col2 = st.columns(2)
                 
                 # Botão para Aprovar
                 if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}"):
                     # Atualiza no DataFrame principal usando o ID único
-                    df_agenda.loc[df_agenda['ID'] == row['ID'], ['STATUS', 'APROVACAO']] = ["Planejado", "Aprovado"]
+                    df_agenda.loc[df_agenda["ID"] == row["ID"], ["STATUS", "APROVACAO"]] = ["Planejado", "Aprovado"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
                     st.success(f"Agendamento de {row['CLIENTE']} aprovado!")
                     st.cache_data.clear()
@@ -3233,11 +3275,12 @@ elif menu_interna == "🔔 Aprovações":
                 
                 # Botão para Recusar
                 if col2.button("❌ Recusar", key=f"recus_{row['ID']}"):
-                    df_agenda.loc[df_agenda['ID'] == row['ID'], ['STATUS', 'APROVACAO']] = ["Reprovado", "Reprovado"]
+                    df_agenda.loc[df_agenda["ID"] == row["ID"], ["STATUS", "APROVACAO"]] = ["Reprovado", "Reprovado"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
                     st.error(f"Agendamento de {row['CLIENTE']} recusado.")
                     st.cache_data.clear()
                     st.rerun()
+
 
 # --- PÁGINA: KPI APROVAÇÃO POR ANALISTA ---
 elif menu == "📊 KPI Aprovação Analistas":
