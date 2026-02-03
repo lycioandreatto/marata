@@ -474,7 +474,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
    - cria "ponte/encaixe" com a tela (sem mudar cor)
    ========================================================= */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked){
-  background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
+  background: linear-gradient(90deg, #0B5ED7 0%, #084298 100%);
   border-color: rgba(255,75,75,0.85);
   box-shadow: 0 16px 34px rgba(255,75,75,0.22);
 
