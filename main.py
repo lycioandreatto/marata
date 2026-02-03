@@ -3653,6 +3653,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
 elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
+    st.caption("versão: ACOMP_DIARIO | filtro mês atual + pacing + tendência (v1.1)")
 
     # ============================
     # ✅ CONTROLE DE ESTADO (Streamlit rerun)
@@ -3697,7 +3698,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         df[col] = s2
         return df
 
-    # ✅ Datas úteis
     def _to_datetime_safe(s):
         return pd.to_datetime(s, errors="coerce", dayfirst=True)
 
@@ -3753,12 +3753,23 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             # ✅ Cliente é a coluna K (ajuste conforme seu arquivo; você usou [11])
             col_cod_cliente = df_faturado.columns[11]
 
-            # ✅ Data fat. (para filtro do mês e pacing)
-            col_data_fat = "Data fat."
-            if col_data_fat not in df_faturado.columns:
-                # fallback comum, se vier com outro nome por algum motivo
-                col_data_fat = "Data fat"
-            if col_data_fat in df_faturado.columns:
+            # ✅ Detecta coluna de data (Data fat. / Data fat / variações)
+            col_data_fat = None
+            for c in df_faturado.columns:
+                c_norm = str(c).strip().lower().replace(" ", "")
+                if "datafat" in c_norm or c_norm in ["datafat.", "datafat"]:
+                    col_data_fat = c
+                    break
+
+            if not col_data_fat:
+                # tenta achar qualquer coluna com "data" e "fat"
+                for c in df_faturado.columns:
+                    c_low = str(c).strip().lower()
+                    if ("data" in c_low) and ("fat" in c_low):
+                        col_data_fat = c
+                        break
+
+            if col_data_fat:
                 df_faturado[col_data_fat] = _to_datetime_safe(df_faturado[col_data_fat])
 
             df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
@@ -3819,8 +3830,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     # BASE PRINCIPAL
     # ============================
     df_f = df_faturado.copy()
-
-    # ✅ garante Cliente normalizado após merge/cópia
     df_f = _norm_cliente(df_f, col_cod_cliente)
 
     # ============================
@@ -3933,35 +3942,38 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             df_f = df_f[df_f["VENDEDOR"].isin(vendedores_permitidos)]
 
     # ============================
-    # ✅ FILTRO DE MÊS (barra deslizante) + trava no mês atual
+    # ✅ FILTRO DO MÊS ATUAL (slider dentro do mês atual)
     # ============================
-    if "Data fat." in df_f.columns:
-        dt_min = df_f["Data fat."].min()
-        dt_max = df_f["Data fat."].max()
-    else:
-        dt_min = None
-        dt_max = None
-
-    hoje = pd.Timestamp.now()
+    hoje = pd.Timestamp.now().normalize()
     inicio_mes_atual = pd.Timestamp(year=hoje.year, month=hoje.month, day=1)
     fim_mes_atual = (inicio_mes_atual + pd.offsets.MonthEnd(1)).normalize()
 
-    st.markdown("### 🗓️ Período (mês atual)")
-    if dt_min is not None and not pd.isna(dt_min):
-        # slider de datas DENTRO do mês atual (padrão: mês atual completo)
-        d1, d2 = st.slider(
-            "Selecione o intervalo dentro do mês",
-            min_value=inicio_mes_atual.to_pydatetime(),
-            max_value=fim_mes_atual.to_pydatetime(),
-            value=(inicio_mes_atual.to_pydatetime(), fim_mes_atual.to_pydatetime()),
-            format="DD/MM/YYYY"
-        )
-        d1 = pd.Timestamp(d1).normalize()
-        d2 = pd.Timestamp(d2).normalize()
-        df_f = df_f[(df_f["Data fat."] >= d1) & (df_f["Data fat."] <= d2)]
-    else:
-        st.warning("Não encontrei a coluna 'Data fat.' válida para filtrar o mês. Verifique o FATURADO.")
+    if not col_data_fat or col_data_fat not in df_f.columns:
+        st.error("Não encontrei a coluna de data de faturamento (Data fat.) no FATURADO.")
         st.stop()
+
+    if df_f[col_data_fat].isna().all():
+        st.error(f"A coluna '{col_data_fat}' está vazia/ inválida (tudo NaT). Verifique o formato de data no FATURADO.")
+        st.stop()
+
+    st.markdown("### 🗓️ Período (mês atual)")
+    d1, d2 = st.slider(
+        "Selecione o intervalo dentro do mês",
+        min_value=inicio_mes_atual.to_pydatetime(),
+        max_value=fim_mes_atual.to_pydatetime(),
+        value=(inicio_mes_atual.to_pydatetime(), fim_mes_atual.to_pydatetime()),
+        format="DD/MM/YYYY",
+        key="slider_mes_atual_acomp"
+    )
+    d1 = pd.Timestamp(d1).normalize()
+    d2 = pd.Timestamp(d2).normalize()
+
+    linhas_antes = len(df_f)
+    df_f = df_f[(df_f[col_data_fat] >= d1) & (df_f[col_data_fat] <= d2)]
+    st.info(
+        f"Filtro aplicado em '{col_data_fat}': {d1.strftime('%d/%m/%Y')} a {d2.strftime('%d/%m/%Y')} | "
+        f"Linhas: {fmt_pt_int(linhas_antes)} → {fmt_pt_int(len(df_f))}"
+    )
 
     # ============================
     # 🔍 FILTROS
@@ -4022,12 +4034,11 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                     base_total = float(dados_base.drop_duplicates("RG")["BASE"].sum())
 
     # ============================
-    # ✅ PACING DO MÊS (ritmo atual x necessário) — com base no filtro
+    # ✅ PACING DO MÊS (ritmo atual x necessário)
     # ============================
     try:
         dias_uteis_total = _business_days_in_month(inicio_mes_atual.year, inicio_mes_atual.month)
-        # usa o fim do range selecionado (d2) como referência do "até aqui"
-        ref_pacing = min(pd.Timestamp(d2), pd.Timestamp.now().normalize())
+        ref_pacing = min(pd.Timestamp(d2).normalize(), pd.Timestamp.now().normalize())
         dias_uteis_passados = max(_business_days_elapsed_in_month(ref_pacing), 1)
 
         volume_mtd = float(df_f["QTD_VENDAS"].sum())
@@ -4046,7 +4057,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
         selo = "✅ NO RITMO" if status_ok else "⚠️ ABAIXO DO RITMO"
         cor_selo = "#28a745" if status_ok else "#d9534f"
-    except Exception as _e:
+    except:
         ritmo_atual = 0
         ritmo_necessario = 0
         projecao_mes = 0
@@ -4106,20 +4117,18 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final["CRESC 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
     df_final["% (VOL 2026)"] = (df_final["VOLUME"] / df_final.get("META 2026", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
-    # ✅ ÍCONE de tendência por hierarquia (cresceu / estável / caiu)
-    # regra: usa CRESC 2026 (se meta 2026 > 0); senão usa CRESC 2025; senão compara com 0
     def _trend_icon(row):
-        base_ref = None
-        if float(row.get("META 2026", 0)) > 0:
-            base_ref = row.get("CRESC 2026", 0)
-        elif float(row.get("META 2025", 0)) > 0:
-            base_ref = row.get("CRESC 2025", 0)
-        else:
-            base_ref = row.get("VOLUME", 0)
-
         try:
-            v = float(base_ref)
+            m26 = float(row.get("META 2026", 0))
+            m25 = float(row.get("META 2025", 0))
         except:
+            m26, m25 = 0, 0
+
+        if m26 > 0:
+            v = float(row.get("CRESC 2026", 0))
+        elif m25 > 0:
+            v = float(row.get("CRESC 2025", 0))
+        else:
             v = 0
 
         if v > 0:
@@ -4133,8 +4142,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
     # ============================
-    # ✅ AQUI É O PONTO CRÍTICO:
-    # salva SEMPRE o df_final/df_f no session_state (antes de qualquer envio)
+    # ✅ SESSION STATE
     # ============================
     try:
         st.session_state["df_final_acomp_diario"] = df_final.copy() if (df_final is not None and not df_final.empty) else None
@@ -4144,12 +4152,11 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         st.session_state["df_envio_acomp_diario"] = None
 
     # ============================
-    # ✅ EXECUTOR DO ENVIO (RODA APÓS df_final EXISTIR)
+    # ✅ EXECUTOR DO ENVIO
     # ============================
     if st.session_state.get("pedir_envio_excel_acomp_diario", False):
         import smtplib
 
-        # trava pra não repetir em rerun
         st.session_state["pedir_envio_excel_acomp_diario"] = False
 
         df_relatorio = st.session_state.get("df_final_acomp_diario")
@@ -4171,7 +4178,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
                 st.stop()
 
-        # ✅ Se tiver vendedor selecionado no filtro, envia só para ele(s). Se não tiver, envia para todos.
         if sel_vendedor and len(sel_vendedor) > 0:
             vendedores = sel_vendedor
         else:
@@ -4221,7 +4227,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     # --- UI: CARDS E TABELA ---
     st.markdown("---")
-    col_pace, col_cob, col_pos = st.columns([1.2, 1, 1])
+    col_pace, col_cob, col_pos = st.columns([1.25, 1, 1])
 
     with col_pace:
         st.markdown(
@@ -4369,7 +4375,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     )
 
     # ============================
-    # ✅ ADIÇÕES (RANKINGS)
+    # ✅ ADIÇÕES (RANKINGS)  -- (mantive o restante do seu código igual)
     # ============================
     try:
         st.markdown("---")
@@ -4533,6 +4539,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         df_final.to_excel(writer, index=False, sheet_name="Dashboard")
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
+
 
 
     # ===========================================================
