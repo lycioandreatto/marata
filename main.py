@@ -2406,8 +2406,28 @@ elif menu_interna == "📚 Perfil do Cliente":
             return ""
         return str(v).strip().replace(".0", "")
 
+    # ✅ NOVO: normalização forte do código do cliente
+    # - resolve caso BASE esteja como texto "000123" e FATURADO esteja como número 123
+    # - mantém letras se existir (não tenta virar número)
+    def normalizar_cliente(v):
+        if pd.isna(v):
+            return ""
+        s = str(v).strip()
+        if s == "":
+            return ""
+        # remove finais ".0" (excel)
+        if s.endswith(".0"):
+            s = s[:-2]
+        # se for só dígitos, remove zeros à esquerda
+        if s.isdigit():
+            s2 = s.lstrip("0")
+            return s2 if s2 != "" else "0"
+        return s
+
     df_fat = df_fat.copy()
-    df_fat[col_cliente] = df_fat[col_cliente].apply(limpar_cod)
+
+    # aplica normalização do cliente + pedido
+    df_fat[col_cliente] = df_fat[col_cliente].apply(normalizar_cliente)
     df_fat[col_pedido] = df_fat[col_pedido].apply(limpar_cod)
 
     # normaliza também as colunas dos filtros (se existirem)
@@ -2505,8 +2525,8 @@ elif menu_interna == "📚 Perfil do Cliente":
     # ✅ NOVO BLOCO (ALERTAS + CONTROLE): BASE x FATURADO + 30/60/90 + LISTA + PDF + JUSTIFICATIVA
     # - Usa a aba "BASE" como carteira
     # - Cruza com FATURADO para:
-    #   (1) Clientes sem faturamento (nunca apareceram no FATURADO)
-    #   (2) Clientes 30/60/90 dias sem compra (com base na última compra no FATURADO)
+    #   (1) Clientes sem faturamento (não aparecem NO RECORTE ATUAL do FATURADO)
+    #   (2) Clientes 30/60/90 dias sem compra (com base na última compra NO RECORTE ATUAL)
     # - Permite: ver lista, exportar PDF e registrar justificativa
     # =========================================================
     st.subheader("🔔 Alertas de carteira (Sem faturamento / Sem compra)")
@@ -2550,19 +2570,29 @@ elif menu_interna == "📚 Perfil do Cliente":
     col_base_vendedor = None
 
     if df_base is not None and not df_base.empty:
+        # ✅ CLIENTE (código) na BASE = coluna "Cliente"
         col_base_cliente = pick_col(
             df_base,
             ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE", "CODIGO CLIENTE", "CÓDIGO", "CODIGO"],
             fallback=df_base.columns[0] if len(df_base.columns) > 0 else None,
         )
 
-        # (opcionais) se existirem na BASE, os filtros do topo também filtram a carteira inteira
-        col_base_estado = pick_col(df_base, ["EscrV", "ESCRV", "Estado", "UF"], fallback=None)
+        # ✅ MAPEAMENTO conforme você explicou:
+        # BASE:
+        # - ANALISTA = ANALISTA (igual)
+        # - SUPERVISOR = SUPERVISOR (equivale ao EqVs no FATURADO)
+        # - VENDEDOR = VENDEDOR (equivale ao REGIÃO DE VENDAS no FATURADO)
+        # - Estado = Estado (equivale ao EscrV no FATURADO)
+        # - Local = Local (equivale ao LocInc no FATURADO)
+        # - Nome 1 = nome do cliente (equivale ao CLIENTE no FATURADO)
+        # - Cliente = código do cliente (igual)
+        col_base_estado = pick_col(df_base, ["Estado", "UF", "EscrV", "ESCRV"], fallback=None)
         col_base_analista = pick_col(df_base, ["ANALISTA", "Analista"], fallback=None)
-        col_base_supervisor = pick_col(df_base, ["EqvS", "EQVS", "Supervisor", "COD SUPERVISOR"], fallback=None)
-        col_base_vendedor = pick_col(df_base, ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS", "Vendedor"], fallback=None)
+        col_base_supervisor = pick_col(df_base, ["SUPERVISOR", "Supervisor", "EqvS", "EQVS", "COD SUPERVISOR"], fallback=None)
+        col_base_vendedor = pick_col(df_base, ["VENDEDOR", "Vendedor", "Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS"], fallback=None)
 
-        df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
+        # normalizações (cliente sempre)
+        df_base[col_base_cliente] = df_base[col_base_cliente].apply(normalizar_cliente)
 
         if col_base_estado and col_base_estado in df_base.columns:
             df_base[col_base_estado] = df_base[col_base_estado].astype(str).str.strip().str.upper()
@@ -2588,14 +2618,16 @@ elif menu_interna == "📚 Perfil do Cliente":
         if col_base_vendedor and col_base_vendedor in df_base_filtrada.columns and vendedor_sel != "(Todos)":
             df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_vendedor] == vendedor_sel].copy()
 
-        # 3) Última compra por cliente (NO FATURADO COMPLETO, não só no recorte filtrado)
+        # 3) Última compra por cliente (NO RECORTE ATUAL do FATURADO — respeita os filtros do topo)
+        df_fat_alerta_scope = df_fat_filtrado.copy()
+
         df_last = (
-            df_fat.groupby(col_cliente)[col_data]
+            df_fat_alerta_scope.groupby(col_cliente)[col_data]
             .max()
             .reset_index()
             .rename(columns={col_cliente: "Cliente", col_data: "UltimaCompra"})
         )
-        df_last["Cliente"] = df_last["Cliente"].apply(limpar_cod)
+        df_last["Cliente"] = df_last["Cliente"].apply(normalizar_cliente)
 
         # 4) Carteira (BASE) -> lista de clientes
         carteira_clientes = sorted(
@@ -2607,14 +2639,21 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.info("Com os filtros atuais, não encontrei clientes na BASE para gerar alertas.")
             carteira_clientes = []
 
-        # 5) Cruzamento BASE x FATURADO
-        set_base = set([str(x) for x in carteira_clientes])
-        set_fat = set([str(x) for x in df_fat[col_cliente].dropna().unique().tolist() if str(x).strip() != ""])
+        # 5) Cruzamento BASE x FATURADO (NO MESMO RECORTE)
+        set_base = set([str(normalizar_cliente(x)) for x in carteira_clientes if str(x).strip() != ""])
 
-        sem_faturamento = sorted(list(set_base - set_fat))  # nunca apareceu no FATURADO
+        set_fat = set(
+            [
+                str(normalizar_cliente(x))
+                for x in df_fat_alerta_scope[col_cliente].dropna().unique().tolist()
+                if str(x).strip() != ""
+            ]
+        )
 
-        # 6) 30/60/90: somente quem tem histórico no FATURADO (apareceu ao menos uma vez)
-        hoje_ref_alerta = df_fat[col_data].max()
+        sem_faturamento = sorted(list(set_base - set_fat))  # não apareceu NO RECORTE do FATURADO
+
+        # 6) 30/60/90: somente quem tem histórico no FATURADO (apareceu ao menos uma vez NO RECORTE)
+        hoje_ref_alerta = df_fat_alerta_scope[col_data].max()
         if pd.isna(hoje_ref_alerta):
             hoje_ref_alerta = pd.Timestamp(datetime.now(fuso_br).date())
         else:
@@ -2720,7 +2759,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.markdown("### 📋 Detalhamento do alerta selecionado")
 
             if alerta_sel == "SEM_FAT":
-                st.write("Clientes na BASE que **nunca apareceram** no FATURADO (sem faturamento).")
+                st.write("Clientes na BASE que **não têm faturamento no recorte atual do FATURADO** (sem faturamento).")
                 df_lista = pd.DataFrame({"Cliente": sem_faturamento})
                 if df_lista.empty:
                     st.success("✅ Nenhum cliente sem faturamento (BASE x FATURADO) no recorte atual da BASE.")
@@ -2767,7 +2806,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
             elif alerta_sel in ["30", "60", "90"]:
                 lim = int(alerta_sel)
-                st.write(f"Clientes da BASE com **última compra há mais de {lim} dias** (com histórico no FATURADO).")
+                st.write(f"Clientes da BASE com **última compra há mais de {lim} dias** (com histórico no FATURADO no recorte atual).")
 
                 df_bucket = df_last_base[df_last_base["DiasSemCompra"] > lim].copy()
                 df_bucket = df_bucket.sort_values("DiasSemCompra", ascending=False)
