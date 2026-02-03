@@ -1011,6 +1011,8 @@ with st.sidebar:
     
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     opcoes_menu.append("📚 Perfil do Cliente")
+    opcoes_menu.append("🧪 TESTES")
+
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
