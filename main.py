@@ -2307,7 +2307,6 @@ elif menu_interna == "🧪 TESTES":
 
     st.markdown("---")
 
-
 # --- PÁGINA: PERFIL DO CLIENTE (CURVA DE APRENDIZADO) ---
 elif menu_interna == "📚 Perfil do Cliente":
     st.header("📚 Perfil do Cliente (Histórico e Mix)")
@@ -2356,13 +2355,19 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     # ✅ colunas para os filtros pedidos (vindas do FATURADO)
     col_analista = pick_col(df_fat, ["ANALISTA"], fallback=None)
-    col_estado = pick_col(df_fat, ["EscrV", "ESCRV"], fallback=None)  # Estado
+
+    # ✅ Estado no FATURADO = EscrV
+    col_estado = pick_col(df_fat, ["EscrV", "ESCRV", "ESTADO", "UF"], fallback=None)
+
+    # ✅ Vendedor no FATURADO = RG (ANTES estava errado: "Região de vendas")
     col_vendedor = pick_col(
         df_fat,
-        ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS"],
+        ["RG", "VENDEDOR"],
         fallback=None,
-    )  # Vendedor
-    col_supervisor = pick_col(df_fat, ["EqvS", "EQVS"], fallback=None)  # Código do supervisor
+    )
+
+    # ✅ Supervisor no FATURADO = EqVs (ANTES estava errado: EqvS)
+    col_supervisor = pick_col(df_fat, ["EqVs", "EQVS", "SUPERVISOR"], fallback=None)
 
     # valida mínimos
     faltando = []
@@ -2384,9 +2389,9 @@ elif menu_interna == "📚 Perfil do Cliente":
     if not col_estado:
         faltando_filtros.append("EscrV (Estado)")
     if not col_vendedor:
-        faltando_filtros.append("Região de vendas (Vendedor)")
+        faltando_filtros.append("RG (Vendedor)")
     if not col_supervisor:
-        faltando_filtros.append("EqvS (Supervisor)")
+        faltando_filtros.append("EqVs (Supervisor)")
 
     if faltando:
         st.error("Colunas obrigatórias não encontradas no FATURADO: " + ", ".join(faltando))
@@ -2413,14 +2418,16 @@ elif menu_interna == "📚 Perfil do Cliente":
     # normaliza também as colunas dos filtros (se existirem)
     if col_analista and col_analista in df_fat.columns:
         df_fat[col_analista] = df_fat[col_analista].astype(str).str.strip().str.upper()
+
     if col_estado and col_estado in df_fat.columns:
         df_fat[col_estado] = df_fat[col_estado].astype(str).str.strip().str.upper()
+
     if col_vendedor and col_vendedor in df_fat.columns:
-        df_fat[col_vendedor] = df_fat[col_vendedor].astype(str).str.strip().str.upper()
+        # vendedor (RG) pode ser numérico em algumas bases → usa limpar_cod e upper
+        df_fat[col_vendedor] = df_fat[col_vendedor].apply(limpar_cod).astype(str).str.strip().str.upper()
+
     if col_supervisor and col_supervisor in df_fat.columns:
-        df_fat[col_supervisor] = (
-            df_fat[col_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
-        )
+        df_fat[col_supervisor] = df_fat[col_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
 
     df_fat[col_qtd] = pd.to_numeric(df_fat[col_qtd], errors="coerce").fillna(0)
     df_fat[col_rec] = pd.to_numeric(df_fat[col_rec], errors="coerce").fillna(0)
@@ -2432,7 +2439,6 @@ elif menu_interna == "📚 Perfil do Cliente":
     # ✅ 4) FILTROS (Estado / Analista / Supervisor / Vendedor) - DIRETO DO FATURADO
     #    - Não muda nada do resto, só filtra a lista de clientes
     # ============================
-
     f1, f2, f3, f4 = st.columns(4)
 
     # base para filtros (começa pelo df_fat)
@@ -2544,25 +2550,33 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     # 2) Mapeia colunas na BASE (mínimo: cliente)
     col_base_cliente = None
+    col_base_nome = None
     col_base_estado = None
     col_base_analista = None
     col_base_supervisor = None
     col_base_vendedor = None
 
     if df_base is not None and not df_base.empty:
+        # ✅ BASE: código do cliente = "Cliente"
         col_base_cliente = pick_col(
             df_base,
             ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE", "CODIGO CLIENTE", "CÓDIGO", "CODIGO"],
             fallback=df_base.columns[0] if len(df_base.columns) > 0 else None,
         )
 
-        # (opcionais) se existirem na BASE, os filtros do topo também filtram a carteira inteira
-        col_base_estado = pick_col(df_base, ["EscrV", "ESCRV", "Estado", "UF"], fallback=None)
+        # ✅ BASE: nome do cliente = "Nome 1"
+        col_base_nome = pick_col(df_base, ["Nome 1", "NOME 1", "NOME", "CLIENTE NOME", "RAZÃO SOCIAL", "RAZAO SOCIAL"], fallback=None)
+
+        # ✅ BASE: mapeamentos exatos que você informou
+        col_base_estado = pick_col(df_base, ["Estado", "ESTADO", "EscrV", "ESCRV", "UF"], fallback=None)
         col_base_analista = pick_col(df_base, ["ANALISTA", "Analista"], fallback=None)
-        col_base_supervisor = pick_col(df_base, ["EqvS", "EQVS", "Supervisor", "COD SUPERVISOR"], fallback=None)
-        col_base_vendedor = pick_col(df_base, ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS", "Vendedor"], fallback=None)
+        col_base_supervisor = pick_col(df_base, ["SUPERVISOR", "Supervisor", "EqVs", "EQVS"], fallback=None)
+        col_base_vendedor = pick_col(df_base, ["VENDEDOR", "Vendedor", "RG"], fallback=None)
 
         df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
+
+        if col_base_nome and col_base_nome in df_base.columns:
+            df_base[col_base_nome] = df_base[col_base_nome].astype(str).str.strip()
 
         if col_base_estado and col_base_estado in df_base.columns:
             df_base[col_base_estado] = df_base[col_base_estado].astype(str).str.strip().str.upper()
@@ -2571,7 +2585,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         if col_base_supervisor and col_base_supervisor in df_base.columns:
             df_base[col_base_supervisor] = df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
         if col_base_vendedor and col_base_vendedor in df_base.columns:
-            df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
+            df_base[col_base_vendedor] = df_base[col_base_vendedor].apply(limpar_cod).astype(str).str.strip().str.upper()
 
         # aplica os mesmos filtros do topo na BASE (SE as colunas existirem)
         df_base_filtrada = df_base.copy()
@@ -2721,7 +2735,20 @@ elif menu_interna == "📚 Perfil do Cliente":
 
             if alerta_sel == "SEM_FAT":
                 st.write("Clientes na BASE que **nunca apareceram** no FATURADO (sem faturamento).")
-                df_lista = pd.DataFrame({"Cliente": sem_faturamento})
+
+                # ✅ melhora: tenta trazer Nome 1 junto (se existir)
+                if col_base_nome and col_base_nome in df_base_filtrada.columns:
+                    df_lista = (
+                        df_base_filtrada[df_base_filtrada[col_base_cliente].astype(str).isin(sem_faturamento)]
+                        [[col_base_cliente, col_base_nome]]
+                        .drop_duplicates()
+                        .rename(columns={col_base_cliente: "Cliente", col_base_nome: "Nome 1"})
+                        .sort_values("Cliente")
+                        .reset_index(drop=True)
+                    )
+                else:
+                    df_lista = pd.DataFrame({"Cliente": sem_faturamento})
+
                 if df_lista.empty:
                     st.success("✅ Nenhum cliente sem faturamento (BASE x FATURADO) no recorte atual da BASE.")
                 else:
@@ -2743,7 +2770,13 @@ elif menu_interna == "📚 Perfil do Cliente":
                 # justificativa (para cliente da lista)
                 if not df_lista.empty:
                     st.markdown("#### 📝 Justificativa (controle)")
-                    cli_j = st.selectbox("Cliente (sem faturamento):", df_lista["Cliente"].astype(str).tolist(), key="cli_j_semfat")
+                    # pega sempre o código do cliente para salvar
+                    if "Cliente" in df_lista.columns:
+                        cli_opts = df_lista["Cliente"].astype(str).tolist()
+                    else:
+                        cli_opts = df_lista.iloc[:, 0].astype(str).tolist()
+
+                    cli_j = st.selectbox("Cliente (sem faturamento):", cli_opts, key="cli_j_semfat")
                     just = st.text_area("Justificativa:", placeholder="Ex.: cliente inativo, fechamento, sem atendimento, troca de CNPJ, concorrência, etc.", key="txt_j_semfat")
                     if st.button("Salvar justificativa", key="btn_save_j_semfat"):
                         now_ts = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
@@ -3415,15 +3448,11 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     # ============================
     # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
-    # - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
-    # - Respeita o mesmo período selecionado (periodo)
     # ============================
     st.subheader("📌 Curva ABC de Clientes (por Faturamento)")
 
-    # base = carteira/recorte atual (Estado/Analista/Supervisor/Vendedor)
     df_cli_abc_base = df_fat_filtrado.copy()
 
-    # aplica o mesmo período selecionado no topo (para ser coerente com a tela)
     if periodo != "Tudo":
         meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
         dt_min_abc = df_cli_abc_base[col_data].max() - pd.DateOffset(months=meses)
@@ -3444,7 +3473,6 @@ elif menu_interna == "📚 Perfil do Cliente":
         if rec_total_abc <= 0:
             st.info("Faturamento total zerado no período.")
         else:
-            # ⚙️ cálculos (mantém numérico)
             df_abc_rec["% Receita"] = (df_abc_rec["Receita"] / rec_total_abc * 100)
             df_abc_rec["% Acum."] = df_abc_rec["% Receita"].cumsum()
 
@@ -3468,14 +3496,12 @@ elif menu_interna == "📚 Perfil do Cliente":
                 .sort_values("Classe")
             )
 
-            # ✅ formatação BRL (R$) para exibição (sem alterar os cálculos)
             def fmt_brl(v):
                 try:
                     return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 except Exception:
                     return "R$ 0,00"
 
-            # ✅ formatação % (somente exibição)
             def fmt_pct(v, casas=1):
                 try:
                     return f"{float(v):.{casas}f}%".replace(".", ",")
@@ -3759,7 +3785,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                 if recs.empty:
                     st.info("Sem recomendações após o filtro mínimo de clientes.")
                 else:
-                    # ✅ aqui foi o ajuste: "Hierarquia (mais comum)" antes do SKU (N° artigo)
                     cols_show = []
                     if "Hierarquia (mais comum)" in recs.columns:
                         cols_show.append("Hierarquia (mais comum)")
@@ -3837,14 +3862,10 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     # =========================================================
     # ✅ ADIÇÃO FINAL: COMPARATIVO (Cliente/Período X vs Cliente/Período Y) POR DATA
-    # - Não altera nada acima: só acrescenta no final
-    # - Compara por intervalo de datas (início/fim) do FATURADO
-    # - Mostra Volume total + (por mês) + Hierarquias + SKUs + quantidades
     # =========================================================
     st.markdown("---")
     st.subheader("🆚 Comparativo por período")
 
-    # Base de comparação respeita os filtros do topo (Estado/Analista/Supervisor/Vendedor)
     df_comp_base = df_fat_filtrado.copy()
 
     lista_clientes_comp = sorted(
@@ -3856,7 +3877,6 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         comp1, comp2 = st.columns(2)
 
-        # referência de datas disponíveis no recorte atual
         dt_min_base = df_comp_base[col_data].min()
         dt_max_base = df_comp_base[col_data].max()
 
@@ -3870,7 +3890,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                 st.markdown("#### 📌 Lado A")
                 cli_A = st.selectbox("Cliente A", lista_clientes_comp, index=0, key="comp_cli_A")
 
-                # por padrão: últimos 3 meses dentro do recorte atual
                 dtA_ini_default = max(dt_min_base_d, (dt_max_base - pd.DateOffset(months=3)).date())
                 dtA_fim_default = dt_max_base_d
 
@@ -3884,7 +3903,6 @@ elif menu_interna == "📚 Perfil do Cliente":
 
             with comp2:
                 st.markdown("#### 📌 Lado B")
-                # default: mesmo cliente selecionado na tela (se existir), senão o primeiro
                 idx_default = 0
                 try:
                     idx_default = lista_clientes_comp.index(str(cli_sel))
@@ -3893,7 +3911,6 @@ elif menu_interna == "📚 Perfil do Cliente":
 
                 cli_B = st.selectbox("Cliente B", lista_clientes_comp, index=idx_default, key="comp_cli_B")
 
-                # por padrão: últimos 6 meses dentro do recorte atual
                 dtB_ini_default = max(dt_min_base_d, (dt_max_base - pd.DateOffset(months=6)).date())
                 dtB_fim_default = dt_max_base_d
 
@@ -3905,7 +3922,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                     key="comp_dt_B",
                 )
 
-            # garante ordem caso o usuário selecione invertido
             if dtA_ini > dtA_fim:
                 dtA_ini, dtA_fim = dtA_fim, dtA_ini
             if dtB_ini > dtB_fim:
@@ -3914,12 +3930,10 @@ elif menu_interna == "📚 Perfil do Cliente":
             def filtrar_por_datas(df_in, dt_ini, dt_fim, col_dt):
                 if df_in is None or df_in.empty:
                     return df_in
-                # converte para Timestamp e inclui o dia final inteiro
                 ini_ts = pd.to_datetime(dt_ini)
                 fim_ts = pd.to_datetime(dt_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
                 return df_in[(df_in[col_dt] >= ini_ts) & (df_in[col_dt] <= fim_ts)].copy()
 
-            # df do cliente A/B (no recorte do topo) + filtro por datas
             df_A_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_A)].copy()
             df_B_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_B)].copy()
 
@@ -3927,7 +3941,6 @@ elif menu_interna == "📚 Perfil do Cliente":
             df_B = filtrar_por_datas(df_B_full, dtB_ini, dtB_fim, col_data)
 
             def resumo_comp(df_in):
-                # estrutura fixa (pra não quebrar UI)
                 out = {
                     "volume": 0.0,
                     "pedidos": 0,
@@ -3942,7 +3955,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                 out["volume"] = float(df_in[col_qtd].sum())
                 out["pedidos"] = int(df_in[col_pedido].nunique())
 
-                # compras por mês (YYYY-MM)
                 df_mes = (
                     df_in.groupby(pd.Grouper(key=col_data, freq="M"))
                     .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
@@ -3953,7 +3965,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                     df_mes = df_mes[["Mês", "Volume", "Pedidos"]].sort_values("Mês")
                     out["mes"] = df_mes
 
-                # hierarquias (todas) com volume/pedidos
                 if col_hier and col_hier in df_in.columns:
                     hier_df = (
                         df_in.groupby(col_hier)
@@ -3964,7 +3975,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                     )
                     out["hier"] = hier_df
 
-                # skus (todos) com volume/pedidos
                 sku_df = (
                     df_in.groupby(col_sku)
                     .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
@@ -3979,7 +3989,6 @@ elif menu_interna == "📚 Perfil do Cliente":
             resA = resumo_comp(df_A)
             resB = resumo_comp(df_B)
 
-            # cards: volume total + pedidos
             ca1, ca2, cb1, cb2 = st.columns(4)
             ca1.metric(
                 "Volume total A",
@@ -3992,7 +4001,6 @@ elif menu_interna == "📚 Perfil do Cliente":
             )
             cb2.metric("Pedidos B", resB["pedidos"])
 
-            # blocos lado a lado
             t1, t2 = st.columns(2)
 
             with t1:
@@ -4037,7 +4045,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                 else:
                     st.dataframe(resB["sku"], use_container_width=True, hide_index=True)
 
-            # (opcional) comparação SKU a SKU (diferença)
             st.markdown("##### 📊 Comparação SKU a SKU — A vs B (Volume)")
             skuA = (
                 resA["sku"][["SKU", "Volume"]].rename(columns={"Volume": "Volume_A"})
@@ -4056,7 +4063,6 @@ elif menu_interna == "📚 Perfil do Cliente":
             df_diff["Diferença (A-B)"] = df_diff["Volume_A"] - df_diff["Volume_B"]
             df_diff = df_diff.sort_values("Diferença (A-B)", ascending=False)
 
-            # filtro pra não ficar gigante (mas você pode deixar "Tudo" se quiser)
             top_n_diff = st.number_input(
                 "Mostrar quantos SKUs na comparação (ordenado por Diferença A-B):",
                 min_value=5,
@@ -4068,6 +4074,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                 st.info("Sem dados suficientes para comparar SKUs.")
             else:
                 st.dataframe(df_diff.head(int(top_n_diff)), use_container_width=True, hide_index=True)
+
 
 
 
