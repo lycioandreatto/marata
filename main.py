@@ -33,7 +33,7 @@ def enviar_excel_vendedor(
     # ✅ AJUSTE SÓ PARA O EXCEL:
     # Essas duas colunas no app estão em 0–100 (ex: 21.86),
     # mas no Excel com formato % precisa estar 0–1 (ex: 0.2186)
-    for col in ['ATINGIMENTO % (VOL 2025)', 'ATINGIMENTO % (VOL 2026)']:
+    for col in ['% 2025)', '% 2026)']:
         if col in df_export.columns:
             df_export[col] = pd.to_numeric(df_export[col], errors='coerce').fillna(0) / 100
 
@@ -50,10 +50,10 @@ def enviar_excel_vendedor(
         "VOLUME",
         " ",  # espaço 1 (depois do VOLUME)
         "CRESCIMENTO 2025",
-        "ATINGIMENTO % (VOL 2025)",
+        "% (VOL 2025)",
         "  ",  # espaço 2 (entre 2025 e 2026)
         "CRESCIMENTO 2026",
-        "ATINGIMENTO % (VOL 2026)",
+        "% (VOL 2026)",
     ]
 
     # Garante que colunas em branco existam
@@ -171,8 +171,8 @@ def enviar_excel_vendedor(
         # =========================
         colunas_pct = [
             "META COBERTURA",
-            "ATINGIMENTO % (VOL 2025)",
-            "ATINGIMENTO % (VOL 2026)",
+            "% (VOL 2025)",
+            "% (VOL 2026)",
         ]
 
         # Ajuste de larguras (leve)
@@ -2764,9 +2764,9 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final["META CLIENTES (ABS)"] = (df_final["META COBERTURA"] * base_total).apply(math.ceil) if base_total > 0 else 0
     df_final["PENDÊNCIA CLIENTES"] = (df_final["META CLIENTES (ABS)"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
     df_final["CRESCIMENTO 2025"] = df_final["VOLUME"] - df_final.get("META 2025", 0)
-    df_final["ATINGIMENTO % (VOL 2025)"] = (df_final["VOLUME"] / df_final.get("META 2025", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
+    df_final["% (VOL 2025)"] = (df_final["VOLUME"] / df_final.get("META 2025", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
     df_final["CRESCIMENTO 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
-    df_final["ATINGIMENTO % (VOL 2026)"] = (df_final["VOLUME"] / df_final.get("META 2026", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
+    df_final["% (VOL 2026)"] = (df_final["VOLUME"] / df_final.get("META 2026", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
@@ -2925,10 +2925,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         "VOLUME",
         "   ",
         "CRESCIMENTO 2025",
-        "ATINGIMENTO % (VOL 2025)",
+        "% (VOL 2025)",
         "    ",
         "CRESCIMENTO 2026",
-        "ATINGIMENTO % (VOL 2026)",
+        "% (VOL 2026)",
     ]
 
     def zebra_rows(row):
@@ -2958,8 +2958,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 "VOLUME": lambda v: fmt_pt_int(v),
                 "CRESCIMENTO 2025": lambda v: fmt_pt_int(v),
                 "CRESCIMENTO 2026": lambda v: fmt_pt_int(v),
-                "ATINGIMENTO % (VOL 2025)": "{:.1f}%",
-                "ATINGIMENTO % (VOL 2026)": "{:.1f}%",
+                "% (VOL 2025)": "{:.1f}%",
+                "% (VOL 2026)": "{:.1f}%",
             }
         )
         .apply(zebra_rows, axis=1)
