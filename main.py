@@ -2432,7 +2432,6 @@ elif menu_interna == "📚 Perfil do Cliente":
     # ✅ 4) FILTROS (Estado / Analista / Supervisor / Vendedor) - DIRETO DO FATURADO
     #    - Não muda nada do resto, só filtra a lista de clientes
     # ============================
-    
 
     f1, f2, f3, f4 = st.columns(4)
 
@@ -2570,6 +2569,305 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.warning("Esse cliente não tem faturamento no período selecionado.")
         st.stop()
 
+    # =========================================================
+    # ✅ NOVO BLOCO: RESUMO EXECUTIVO + ABAS (Potencial / Visitas / Ação)
+    # - Não remove nada do que já existe abaixo
+    # - Usa FATURADO + (se existir) df_agenda
+    # =========================================================
+    def _fmt_int_pt(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(v)
+
+    def _fmt_brl(v):
+        try:
+            return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return "R$ 0,00"
+
+    def _month_key(ts):
+        return ts.dt.to_period("M").astype(str)
+
+    def _week_key(ts):
+        iso = ts.dt.isocalendar()
+        return iso["year"].astype(str) + "-W" + iso["week"].astype(int).astype(str).str.zfill(2)
+
+    # --------- POTENCIAL (FATURADO) ---------
+    receita_total_full = float(df_cli_full[col_rec].sum())
+    volume_total_full = float(df_cli_full[col_qtd].sum())
+    pedidos_unicos_full = int(df_cli_full[col_pedido].nunique())
+
+    ticket_medio_full = (receita_total_full / pedidos_unicos_full) if pedidos_unicos_full > 0 else 0.0
+
+    df_cli_full["_MES"] = _month_key(df_cli_full[col_data])
+    df_cli_full["_SEMANA"] = _week_key(df_cli_full[col_data])
+
+    mensal_full = (
+        df_cli_full.groupby("_MES")
+        .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+        .reset_index()
+        .sort_values("_MES")
+    )
+
+    semanal_full = (
+        df_cli_full.groupby("_SEMANA")
+        .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+        .reset_index()
+        .sort_values("_SEMANA")
+    )
+
+    media_mensal_rec = float(mensal_full["Receita"].mean()) if not mensal_full.empty else 0.0
+    media_semanal_rec = float(semanal_full["Receita"].mean()) if not semanal_full.empty else 0.0
+
+    pico_mensal_rec = float(mensal_full["Receita"].max()) if not mensal_full.empty else 0.0
+    pico_semanal_rec = float(semanal_full["Receita"].max()) if not semanal_full.empty else 0.0
+
+    # Classe A/B/C/D (por média mensal de RECEITA do cliente no histórico filtrado pelo topo)
+    if media_mensal_rec > 300000:
+        classe_cli = "A"
+    elif media_mensal_rec >= 100000:
+        classe_cli = "B"
+    elif media_mensal_rec > 15000:
+        classe_cli = "C"
+    else:
+        classe_cli = "D"
+
+    # Status Ativo / Caiu / Parado (por Receita) com janela simples de comparação
+    hoje_ref = df_cli_full[col_data].max()
+    if pd.isna(hoje_ref):
+        status_cli = "Ativo"
+        queda_pct = 0.0
+    else:
+        ini_30 = hoje_ref - pd.Timedelta(days=30)
+        ini_60 = hoje_ref - pd.Timedelta(days=60)
+
+        rec_0_30 = float(df_cli_full[(df_cli_full[col_data] > ini_30) & (df_cli_full[col_data] <= hoje_ref)][col_rec].sum())
+        rec_30_60 = float(df_cli_full[(df_cli_full[col_data] > ini_60) & (df_cli_full[col_data] <= ini_30)][col_rec].sum())
+
+        if rec_0_30 <= 0:
+            status_cli = "Parado"
+            queda_pct = 100.0
+        else:
+            if rec_30_60 <= 0:
+                status_cli = "Ativo"
+                queda_pct = 0.0
+            else:
+                queda_pct = ((rec_0_30 - rec_30_60) / rec_30_60) * 100.0
+                # queda forte => "Caiu"
+                status_cli = "Caiu" if queda_pct < -20 else "Ativo"
+
+    # --------- VISITAS (AGENDA) ---------
+    dias_sem_visita = None
+    prox_visita_agendada = None
+    ultima_visita_realizada = None
+    visitas_30 = 0
+    visitas_60 = 0
+    visitas_90 = 0
+    intervalo_medio_visitas = None
+    semaforo_furo = "—"
+    semaforo_txt = "Sem dados"
+
+    # tenta usar df_agenda do seu app (se existir)
+    try:
+        _df_ag = df_agenda.copy() if (df_agenda is not None and not df_agenda.empty) else None
+    except Exception:
+        _df_ag = None
+
+    if _df_ag is not None and not _df_ag.empty:
+        _df_ag = _df_ag.dropna(how="all").copy()
+        _df_ag.columns = [str(c).strip() for c in _df_ag.columns]
+
+        col_ag_cliente = pick_col(_df_ag, ["CÓDIGO CLIENTE", "COD CLIENTE", "CLIENTE", "CÓDIGO", "CODIGO"], fallback=None)
+        col_ag_data = pick_col(_df_ag, ["DATA", "Data", "DATA VISITA", "DATA AGENDADA"], fallback=None)
+        col_ag_status = pick_col(_df_ag, ["STATUS", "Status"], fallback=None)
+
+        if col_ag_cliente and col_ag_data and col_ag_status:
+            _df_ag[col_ag_cliente] = _df_ag[col_ag_cliente].apply(limpar_cod)
+            _df_ag[col_ag_data] = pd.to_datetime(_df_ag[col_ag_data], errors="coerce", dayfirst=True)
+            _df_ag[col_ag_status] = _df_ag[col_ag_status].astype(str).str.strip().str.upper()
+
+            _df_ag = _df_ag[_df_ag[col_ag_data].notna()].copy()
+            _df_cli_ag = _df_ag[_df_ag[col_ag_cliente].astype(str) == str(cli_sel)].copy()
+
+            if not _df_cli_ag.empty:
+                hoje_d = datetime.now(fuso_br).date()
+
+                # define "realizada" por status contendo REALIZ
+                _df_cli_ag["_REALIZADA"] = _df_cli_ag[col_ag_status].str.contains("REALIZ", na=False)
+
+                # última realizada
+                _real = _df_cli_ag[_df_cli_ag["_REALIZADA"] == True].copy()
+                if not _real.empty:
+                    ultima_visita_realizada = _real[col_ag_data].max()
+                    dias_sem_visita = (hoje_d - ultima_visita_realizada.date()).days
+
+                # próxima agendada: data futura e NÃO realizada
+                _fut = _df_cli_ag[(_df_cli_ag[col_ag_data].dt.date >= hoje_d) & (_df_cli_ag["_REALIZADA"] == False)].copy()
+                if not _fut.empty:
+                    prox_visita_agendada = _fut[col_ag_data].min()
+
+                # contagens 30/60/90 (visitas realizadas)
+                dt_30 = pd.Timestamp(hoje_d) - pd.Timedelta(days=30)
+                dt_60 = pd.Timestamp(hoje_d) - pd.Timedelta(days=60)
+                dt_90 = pd.Timestamp(hoje_d) - pd.Timedelta(days=90)
+
+                if not _real.empty:
+                    visitas_30 = int((_real[col_ag_data] >= dt_30).sum())
+                    visitas_60 = int((_real[col_ag_data] >= dt_60).sum())
+                    visitas_90 = int((_real[col_ag_data] >= dt_90).sum())
+
+                    # intervalo médio entre visitas (dias)
+                    _real_dates = _real[[col_ag_data]].sort_values(col_ag_data).dropna()
+                    if _real_dates.shape[0] >= 2:
+                        diffs = _real_dates[col_ag_data].diff().dt.days.dropna()
+                        if not diffs.empty:
+                            intervalo_medio_visitas = float(diffs.mean())
+
+                # semáforo por classe (limites)
+                # A: alerta > 10d / vermelho > 20d
+                # B/C: alerta > 20d / vermelho > 35d
+                # D: alerta > 30d / vermelho > 60d
+                if dias_sem_visita is None:
+                    semaforo_furo = "—"
+                    semaforo_txt = "Sem visita realizada"
+                else:
+                    if classe_cli == "A":
+                        lim_am = 10
+                        lim_vm = 20
+                    elif classe_cli in ["B", "C"]:
+                        lim_am = 20
+                        lim_vm = 35
+                    else:
+                        lim_am = 30
+                        lim_vm = 60
+
+                    if dias_sem_visita <= lim_am:
+                        semaforo_furo = "🟢"
+                        semaforo_txt = "Cobertura ok"
+                    elif dias_sem_visita <= lim_vm:
+                        semaforo_furo = "🟡"
+                        semaforo_txt = "Atenção (furo de rota)"
+                    else:
+                        semaforo_furo = "🔴"
+                        semaforo_txt = "Crítico (furo de rota)"
+
+    # --------- PLANO DE AÇÃO (selo) ---------
+    # Reativar: parado (sem compra recente) ou dias sem comprar muito alto
+    # Recuperar: caiu
+    # Expandir: ativo
+    if status_cli == "Parado":
+        selo_acao = "REATIVAR"
+    elif status_cli == "Caiu":
+        selo_acao = "RECUPERAR"
+    else:
+        selo_acao = "EXPANDIR"
+
+    # Top SKUs do cliente (para sugestão rápida)
+    top_sku_cliente = (
+        df_cli.groupby(col_sku)
+        .agg(Volume=(col_qtd, "sum"), Receita=(col_rec, "sum"), Pedidos=(col_pedido, "nunique"))
+        .sort_values("Volume", ascending=False)
+        .head(5)
+        .reset_index()
+    )
+
+    # checklist (texto objetivo)
+    checklist = []
+    if selo_acao == "REATIVAR":
+        checklist = [
+            "Confirmar se existe próxima visita agendada (se não, agendar).",
+            "Levar 3 SKUs âncora do histórico do cliente (top volume).",
+            "Abrir com argumento: 'você já comprou isso com volume antes, vamos retomar'.",
+        ]
+    elif selo_acao == "RECUPERAR":
+        checklist = [
+            "Comparar últimos 30 dias vs 30 dias anteriores e identificar queda.",
+            "Reativar SKUs que sumiram (gap) + reforçar itens de giro.",
+            "Agendar retorno curto (pra classe alta, reduzir intervalo).",
+        ]
+    else:
+        checklist = [
+            "Proteger os SKUs A (80% do volume) e evitar ruptura.",
+            "Aumentar mix com SKUs da carteira que o cliente não compra.",
+            "Planejar execução por visita: 1 objetivo + 3 ofertas.",
+        ]
+
+    # ---------------- RESUMO EXECUTIVO (cards) ----------------
+    st.markdown("---")
+    st.subheader("📌 Resumo executivo")
+
+    e1, e2, e3, e4, e5 = st.columns(5)
+
+    with e1:
+        st.metric("Classe / Status", f"{classe_cli} | {status_cli}")
+    with e2:
+        # dias sem compra (usa o df_cli atual, que já respeita o período)
+        ultima_compra_exec = df_cli[col_data].max()
+        dias_sem_compra_exec = (datetime.now(fuso_br).date() - ultima_compra_exec.date()).days if pd.notna(ultima_compra_exec) else "-"
+        st.metric("Dias sem compra", dias_sem_compra_exec)
+    with e3:
+        st.metric("Dias sem visita", dias_sem_visita if dias_sem_visita is not None else "—")
+    with e4:
+        st.metric("Próx. visita agendada", prox_visita_agendada.strftime("%d/%m/%Y") if prox_visita_agendada is not None else "—")
+    with e5:
+        st.metric("Potencial (pico mensal)", _fmt_brl(pico_mensal_rec))
+
+    # ---------------- ABAS ORGANIZADAS ----------------
+    tab_pot, tab_vis, tab_acao = st.tabs(["📈 Potencial", "🧭 Visitas", "✅ Ação"])
+
+    with tab_pot:
+        st.markdown("### Potencial real do cliente")
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            st.metric("Ticket médio (R$/pedido)", _fmt_brl(ticket_medio_full))
+        with p2:
+            st.metric("Média mensal (R$)", _fmt_brl(media_mensal_rec))
+        with p3:
+            st.metric("Pico mensal (R$)", _fmt_brl(pico_mensal_rec))
+        with p4:
+            st.metric("Pico semanal (R$)", _fmt_brl(pico_semanal_rec))
+
+        st.caption("💡 Pico = capacidade comprovada: se já atingiu esse patamar, é potencial realista quando bem trabalhado.")
+
+    with tab_vis:
+        st.markdown("### Cobertura & execução (visitas do jeito certo)")
+        v1, v2, v3, v4 = st.columns(4)
+        with v1:
+            st.metric("Visitas 30d", visitas_30)
+        with v2:
+            st.metric("Visitas 60d", visitas_60)
+        with v3:
+            st.metric("Visitas 90d", visitas_90)
+        with v4:
+            st.metric("Intervalo médio (dias)", f"{intervalo_medio_visitas:.1f}" if intervalo_medio_visitas is not None else "—")
+
+        vv1, vv2, vv3 = st.columns(3)
+        with vv1:
+            st.metric("Última visita realizada", ultima_visita_realizada.strftime("%d/%m/%Y") if ultima_visita_realizada is not None else "—")
+        with vv2:
+            st.metric("Próxima agendada", prox_visita_agendada.strftime("%d/%m/%Y") if prox_visita_agendada is not None else "—")
+        with vv3:
+            st.metric("Furo de rota", f"{semaforo_furo} {semaforo_txt}")
+
+        st.caption("⚠️ Se a agenda não tiver dados para o cliente, os indicadores de visitas ficam como '—'.")
+
+    with tab_acao:
+        st.markdown("### Plano de ação (saindo pronto)")
+        st.metric("Selo de ação", selo_acao)
+
+        st.markdown("#### Checklist — próxima ação recomendada")
+        for item in checklist:
+            st.write(f"- {item}")
+
+        st.markdown("#### Top SKUs (âncora do cliente no período)")
+        if top_sku_cliente is None or top_sku_cliente.empty:
+            st.info("Sem SKUs suficientes no período para sugerir.")
+        else:
+            show_top = top_sku_cliente.copy()
+            show_top["Receita"] = show_top["Receita"].apply(_fmt_brl)
+            st.dataframe(show_top.head(5), use_container_width=True, hide_index=True)
+
     # ============================
     # 6) Métricas principais (FOCO VOLUME)
     # ============================
@@ -2665,8 +2963,6 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.info(texto)
         else:
             st.success(texto)
-
-
 
     st.markdown("---")
 
@@ -2785,7 +3081,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                     hide_index=True,
                 )
 
-
            # ============================
     # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
     # - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
@@ -2874,10 +3169,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                     use_container_width=True,
                     hide_index=True,
                 )
-
-
-    
-   
 
     st.markdown("---")
 
@@ -3158,8 +3449,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                         use_container_width=True,
                         hide_index=True,
                     )
-
-
 
     # =========================================================
     # ✅ ADIÇÃO 3: RANKING DO CLIENTE NA CARTEIRA (por Volume)
@@ -3447,6 +3736,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                 st.info("Sem dados suficientes para comparar SKUs.")
             else:
                 st.dataframe(df_diff.head(int(top_n_diff)), use_container_width=True, hide_index=True)
+
 
 
 
