@@ -4251,10 +4251,10 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         # ----------------------------
         # ✅ SUGESTÕES (beta) - só aparece quando selecionar vendedor
         # ----------------------------
-        st.markdown("## 🧠 Sugestões automáticas (beta)")
+        st.markdown("## 🧠 Sugestões automáticas")
 
         if not (sel_vendedor and len(sel_vendedor) > 0):
-            st.info("Selecione um vendedor no filtro para exibir as sugestões (evita poluir a tela).")
+            st.info("Selecione um vendedor no filtro para exibir as sugestões.")
         else:
             # 🔎 Coluna K = nome do cliente ("CLIENTE")
             col_nome_cliente = "CLIENTE" if ("CLIENTE" in df_faturado.columns) else (df_faturado.columns[10] if len(df_faturado.columns) > 10 else None)
