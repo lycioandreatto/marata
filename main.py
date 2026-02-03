@@ -1954,13 +1954,22 @@ elif menu_interna == "🧪 TESTES":
         st.stop()
 
     # ============================
-    # ✅ FILTRO (opcional) — Período do histórico usado no teste
+    # ✅ SOMENTE MESES FECHADOS (ignora o mês atual)
     # ============================
     hoje = pd.Timestamp.now().normalize()
-    default_inicio = (hoje - pd.Timedelta(days=120)).to_pydatetime()
-    default_fim = hoje.to_pydatetime()
+    inicio_mes_atual = pd.Timestamp(year=hoje.year, month=hoje.month, day=1)
+    fim_mes_fechado = (inicio_mes_atual - pd.Timedelta(days=1)).normalize()  # último dia do mês anterior
 
-    st.markdown("### 🗓️ Período do histórico usado no teste")
+    # ============================
+    # ✅ FILTRO (opcional) — Período do histórico usado no teste
+    #    (mas o fim sempre é o último dia do mês fechado)
+    # ============================
+    default_inicio = (fim_mes_fechado - pd.Timedelta(days=120)).to_pydatetime()
+    default_fim = fim_mes_fechado.to_pydatetime()
+
+    st.markdown("### 🗓️ Período do histórico usado no teste (somente meses fechados)")
+    st.caption(f"⚠️ O mês atual é ignorado. Fim máximo permitido: {fim_mes_fechado.strftime('%d/%m/%Y')}")
+
     d_ini, d_fim = st.date_input(
         "Selecione o intervalo (sugestão: últimos 120 dias)",
         value=(default_inicio.date(), default_fim.date()),
@@ -1969,12 +1978,23 @@ elif menu_interna == "🧪 TESTES":
     d_ini = pd.Timestamp(d_ini).normalize()
     d_fim = pd.Timestamp(d_fim).normalize()
 
-    df_base_hist = df_faturado[(df_faturado[col_data_fat].notna()) &
-                              (df_faturado[col_data_fat] >= d_ini) &
-                              (df_faturado[col_data_fat] <= d_fim)].copy()
+    # força o fim no último mês fechado
+    if d_fim > fim_mes_fechado:
+        d_fim = fim_mes_fechado
+
+    # se o usuário escolher só mês atual, corrige e pode ficar vazio
+    if d_ini > d_fim:
+        st.warning("O intervalo selecionado ficou inválido após ignorar o mês atual. Ajuste o período.")
+        st.stop()
+
+    df_base_hist = df_faturado[
+        (df_faturado[col_data_fat].notna()) &
+        (df_faturado[col_data_fat] >= d_ini) &
+        (df_faturado[col_data_fat] <= d_fim)
+    ].copy()
 
     if df_base_hist.empty:
-        st.warning("Sem dados no período escolhido.")
+        st.warning("Sem dados no período escolhido (considerando apenas meses fechados).")
         st.stop()
 
     # ============================
