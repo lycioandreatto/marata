@@ -2904,7 +2904,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             unsafe_allow_html=True,
         )
 
-    st.markdown("### 📈 Desempenho por Hierarquia")
+       st.markdown("### 📈 Desempenho por Hierarquia")
 
     df_view = df_final.copy()
     df_view[" "] = ""
@@ -2931,6 +2931,21 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         "% (VOL 2026)",
     ]
 
+    # ============================
+    # ✅ CABEÇALHO "MESCLADO" (MultiIndex)
+    # Grupo "META COBERTURA" acima das 4 colunas
+    # ============================
+    df_show = df_view[cols_view].copy()
+
+    col_tuples = []
+    for c in cols_view:
+        if c in ["META COBERTURA", "CLIENTES", "POSITIVAÇÃO", "PENDÊNCIA"]:
+            col_tuples.append(("META COBERTURA", c))
+        else:
+            col_tuples.append(("", c))
+
+    df_show.columns = pd.MultiIndex.from_tuples(col_tuples)
+
     def zebra_rows(row):
         return ["background-color: #FAFAFA" if row.name % 2 else "" for _ in row]
 
@@ -2943,29 +2958,31 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     def limpar_espacos(s):
         return ["background-color: transparent" for _ in s]
 
+    # 🔧 Como agora as colunas são MultiIndex, a formatação precisa usar tuplas (nivel 1, nivel 2)
     sty = (
-        df_view[cols_view]
-        .sort_values(by="HIERARQUIA DE PRODUTOS")
+        df_show
+        .sort_values(by=("", "HIERARQUIA DE PRODUTOS"))
         .style
         .format(
             {
-                "META COBERTURA": "{:.0%}",
-                "CLIENTES": lambda v: fmt_pt_int(v),
-                "POSITIVAÇÃO": lambda v: fmt_pt_int(v),
-                "PENDÊNCIA": lambda v: fmt_pt_int(v),
-                "META 2025": lambda v: fmt_pt_int(v),
-                "META 2026": lambda v: fmt_pt_int(v),
-                "VOLUME": lambda v: fmt_pt_int(v),
-                "CRESC 2025": lambda v: fmt_pt_int(v),
-                "CRESC 2026": lambda v: fmt_pt_int(v),
-                "% (VOL 2025)": "{:.1f}%",
-                "% (VOL 2026)": "{:.1f}%",
+                ("META COBERTURA", "META COBERTURA"): "{:.0%}",
+                ("META COBERTURA", "CLIENTES"): lambda v: fmt_pt_int(v),
+                ("META COBERTURA", "POSITIVAÇÃO"): lambda v: fmt_pt_int(v),
+                ("META COBERTURA", "PENDÊNCIA"): lambda v: fmt_pt_int(v),
+
+                ("", "META 2025"): lambda v: fmt_pt_int(v),
+                ("", "META 2026"): lambda v: fmt_pt_int(v),
+                ("", "VOLUME"): lambda v: fmt_pt_int(v),
+                ("", "CRESC 2025"): lambda v: fmt_pt_int(v),
+                ("", "CRESC 2026"): lambda v: fmt_pt_int(v),
+                ("", "% (VOL 2025)"): "{:.1f}%",
+                ("", "% (VOL 2026)"): "{:.1f}%",
             }
         )
         .apply(zebra_rows, axis=1)
-        .apply(destacar_pendencia, subset=["PENDÊNCIA"])
-        .apply(destacar_negativos, subset=["CRESC 2025", "CRESC 2026"])
-        .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
+        .apply(destacar_pendencia, subset=[("META COBERTURA", "PENDÊNCIA")])
+        .apply(destacar_negativos, subset=[("", "CRESC 2025"), ("", "CRESC 2026")])
+        .apply(limpar_espacos, subset=[("", " "), ("", "  "), ("", "   "), ("", "    ")])
         .set_table_styles(
             [
                 {"selector": "th", "props": [("background-color", "#F2F2F2"), ("color", "#111"), ("font-weight", "700")]},
@@ -2980,6 +2997,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         hide_index=True,
         height=560,
     )
+
 
     # ============================
     # ✅ ADIÇÕES (RANKINGS)
