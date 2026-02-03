@@ -376,6 +376,37 @@ st.markdown("""
     .user-card-icon {
         font-size: 1.5em;
     }
+
+    /* ===== MENU MODERNO (radio estilizado como sidebar nav) ===== */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+        background: transparent;
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin: 6px 0;
+        border: 1px solid rgba(0,0,0,0.08);
+        transition: all .15s ease-in-out;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
+        background: rgba(255, 75, 75, 0.08);
+        border-color: rgba(255, 75, 75, 0.35);
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] {
+        background: rgba(255, 75, 75, 0.14);
+        border-color: rgba(255, 75, 75, 0.60);
+        font-weight: 700;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] svg {
+        display: none;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] p {
+        margin: 0;
+        font-size: 0.95rem;
+    }
+    /* esconde o label do widget do menu */
+    section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"] {
+        display: none;
+    }
+
     </style>
     """, unsafe_allow_html=True)
 
@@ -730,14 +761,19 @@ with st.sidebar:
         texto_ver_agenda
     ]
     
-    
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
         opcoes_menu.append("📊 KPI Aprovação Analistas")  # ✅ NOVA OPÇÃO
     
-    menu = st.selectbox("Menu Principal", opcoes_menu)
+    # ✅ ALTERAÇÃO AQUI: selectbox -> radio (menu moderno)
+    menu = st.radio(
+        "Menu Principal",
+        opcoes_menu,
+        label_visibility="collapsed",
+        key="menu_principal_radio"
+    )
     
     if "pagina_direta" not in st.session_state:
         st.session_state.pagina_direta = None
