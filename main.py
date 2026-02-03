@@ -2501,6 +2501,334 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     st.markdown("---")
 
+    # =========================================================
+    # ✅ NOVO BLOCO (ALERTAS + CONTROLE): BASE x FATURADO + 30/60/90 + LISTA + PDF + JUSTIFICATIVA
+    # - Usa a aba "BASE" como carteira
+    # - Cruza com FATURADO para:
+    #   (1) Clientes sem faturamento (nunca apareceram no FATURADO)
+    #   (2) Clientes 30/60/90 dias sem compra (com base na última compra no FATURADO)
+    # - Permite: ver lista, exportar PDF e registrar justificativa
+    # =========================================================
+    st.subheader("🔔 Alertas de carteira (Sem faturamento / Sem compra)")
+
+    def _fmt_int_pt(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(v)
+
+    def _dt_pt(ts):
+        try:
+            return pd.to_datetime(ts).strftime("%d/%m/%Y")
+        except Exception:
+            return "-"
+
+    def _safe_upper(x):
+        try:
+            return str(x).strip().upper()
+        except Exception:
+            return ""
+
+    # 1) Lê BASE (carteira)
+    try:
+        df_base = conn.read(spreadsheet=url_planilha, worksheet="BASE")
+        if df_base is None or df_base.empty:
+            st.warning("A aba BASE está vazia. Os alertas de carteira (sem faturamento / 30/60/90) dependem dela.")
+            df_base = None
+        else:
+            df_base = df_base.dropna(how="all").copy()
+            df_base.columns = [str(c).strip() for c in df_base.columns]
+    except Exception as e:
+        st.warning(f"Não consegui ler a aba BASE: {e}")
+        df_base = None
+
+    # 2) Mapeia colunas na BASE (mínimo: cliente)
+    col_base_cliente = None
+    col_base_estado = None
+    col_base_analista = None
+    col_base_supervisor = None
+    col_base_vendedor = None
+
+    if df_base is not None and not df_base.empty:
+        col_base_cliente = pick_col(
+            df_base,
+            ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE", "CODIGO CLIENTE", "CÓDIGO", "CODIGO"],
+            fallback=df_base.columns[0] if len(df_base.columns) > 0 else None,
+        )
+
+        # (opcionais) se existirem na BASE, os filtros do topo também filtram a carteira inteira
+        col_base_estado = pick_col(df_base, ["EscrV", "ESCRV", "Estado", "UF"], fallback=None)
+        col_base_analista = pick_col(df_base, ["ANALISTA", "Analista"], fallback=None)
+        col_base_supervisor = pick_col(df_base, ["EqvS", "EQVS", "Supervisor", "COD SUPERVISOR"], fallback=None)
+        col_base_vendedor = pick_col(df_base, ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS", "Vendedor"], fallback=None)
+
+        df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
+
+        if col_base_estado and col_base_estado in df_base.columns:
+            df_base[col_base_estado] = df_base[col_base_estado].astype(str).str.strip().str.upper()
+        if col_base_analista and col_base_analista in df_base.columns:
+            df_base[col_base_analista] = df_base[col_base_analista].astype(str).str.strip().str.upper()
+        if col_base_supervisor and col_base_supervisor in df_base.columns:
+            df_base[col_base_supervisor] = df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
+        if col_base_vendedor and col_base_vendedor in df_base.columns:
+            df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
+
+        # aplica os mesmos filtros do topo na BASE (SE as colunas existirem)
+        df_base_filtrada = df_base.copy()
+
+        if col_base_estado and col_base_estado in df_base_filtrada.columns and estado_sel != "(Todos)":
+            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_estado] == estado_sel].copy()
+
+        if col_base_analista and col_base_analista in df_base_filtrada.columns and analista_sel != "(Todos)":
+            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_analista] == analista_sel].copy()
+
+        if col_base_supervisor and col_base_supervisor in df_base_filtrada.columns and supervisor_sel != "(Todos)":
+            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_supervisor] == supervisor_sel].copy()
+
+        if col_base_vendedor and col_base_vendedor in df_base_filtrada.columns and vendedor_sel != "(Todos)":
+            df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_vendedor] == vendedor_sel].copy()
+
+        # 3) Última compra por cliente (NO FATURADO COMPLETO, não só no recorte filtrado)
+        df_last = (
+            df_fat.groupby(col_cliente)[col_data]
+            .max()
+            .reset_index()
+            .rename(columns={col_cliente: "Cliente", col_data: "UltimaCompra"})
+        )
+        df_last["Cliente"] = df_last["Cliente"].apply(limpar_cod)
+
+        # 4) Carteira (BASE) -> lista de clientes
+        carteira_clientes = sorted(
+            [x for x in df_base_filtrada[col_base_cliente].dropna().unique().tolist() if str(x).strip() != ""]
+        )
+
+        # Se a BASE filtrada ficou vazia, não quebra a tela
+        if not carteira_clientes:
+            st.info("Com os filtros atuais, não encontrei clientes na BASE para gerar alertas.")
+            carteira_clientes = []
+
+        # 5) Cruzamento BASE x FATURADO
+        set_base = set([str(x) for x in carteira_clientes])
+        set_fat = set([str(x) for x in df_fat[col_cliente].dropna().unique().tolist() if str(x).strip() != ""])
+
+        sem_faturamento = sorted(list(set_base - set_fat))  # nunca apareceu no FATURADO
+
+        # 6) 30/60/90: somente quem tem histórico no FATURADO (apareceu ao menos uma vez)
+        hoje_ref_alerta = df_fat[col_data].max()
+        if pd.isna(hoje_ref_alerta):
+            hoje_ref_alerta = pd.Timestamp(datetime.now(fuso_br).date())
+        else:
+            hoje_ref_alerta = pd.Timestamp(hoje_ref_alerta.date())
+
+        # base de dias sem comprar (para clientes da BASE)
+        df_last_base = df_last[df_last["Cliente"].astype(str).isin(set_base)].copy()
+
+        df_last_base["DiasSemCompra"] = (hoje_ref_alerta - df_last_base["UltimaCompra"].dt.floor("D")).dt.days
+        df_last_base["DiasSemCompra"] = pd.to_numeric(df_last_base["DiasSemCompra"], errors="coerce").fillna(0).astype(int)
+
+        # buckets
+        df_30 = df_last_base[df_last_base["DiasSemCompra"] > 30].copy()
+        df_60 = df_last_base[df_last_base["DiasSemCompra"] > 60].copy()
+        df_90 = df_last_base[df_last_base["DiasSemCompra"] > 90].copy()
+
+        # contagens
+        c_alert1, c_alert2, c_alert3, c_alert4 = st.columns(4)
+
+        with c_alert1:
+            st.metric("Sem faturamento (BASE x FATURADO)", _fmt_int_pt(len(sem_faturamento)))
+            if st.button("Ver lista", key="btn_lista_sem_fat"):
+                st.session_state["alerta_selec"] = "SEM_FAT"
+
+        with c_alert2:
+            st.metric("Clientes > 30 dias sem compra", _fmt_int_pt(int(df_30.shape[0])))
+            if st.button("Ver 30d", key="btn_lista_30"):
+                st.session_state["alerta_selec"] = "30"
+
+        with c_alert3:
+            st.metric("Clientes > 60 dias sem compra", _fmt_int_pt(int(df_60.shape[0])))
+            if st.button("Ver 60d", key="btn_lista_60"):
+                st.session_state["alerta_selec"] = "60"
+
+        with c_alert4:
+            st.metric("Clientes > 90 dias sem compra", _fmt_int_pt(int(df_90.shape[0])))
+            if st.button("Ver 90d", key="btn_lista_90"):
+                st.session_state["alerta_selec"] = "90"
+
+        # painel de lista + PDF + justificativa
+        alerta_sel = st.session_state.get("alerta_selec", None)
+
+        def _make_pdf_bytes(titulo, df_lista):
+            try:
+                from fpdf import FPDF
+                import io
+
+                pdf = FPDF()
+                pdf.set_auto_page_break(auto=True, margin=10)
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 12)
+                pdf.multi_cell(0, 8, titulo)
+
+                pdf.set_font("Arial", "", 9)
+                pdf.ln(2)
+
+                if df_lista is None or df_lista.empty:
+                    pdf.multi_cell(0, 6, "Sem registros para este filtro.")
+                else:
+                    # cabeçalho
+                    cols = df_lista.columns.tolist()
+                    line = " | ".join(cols)
+                    pdf.set_font("Arial", "B", 8)
+                    pdf.multi_cell(0, 5, line)
+                    pdf.set_font("Arial", "", 8)
+
+                    # linhas (limite para não ficar gigante)
+                    max_rows = min(500, df_lista.shape[0])
+                    for i in range(max_rows):
+                        row = df_lista.iloc[i].tolist()
+                        row_txt = " | ".join([str(x) for x in row])
+                        pdf.multi_cell(0, 5, row_txt)
+
+                out = pdf.output(dest="S").encode("latin-1", errors="replace")
+                return out
+            except Exception:
+                return None
+
+        def _append_justificativa(df_row):
+            """
+            Tenta gravar numa aba JUSTIFICATIVAS (append).
+            Não quebra a página se o método não existir.
+            """
+            try:
+                # tenta ler para descobrir a próxima linha
+                df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVAS")
+                if df_j is None or df_j.empty:
+                    df_j = pd.DataFrame(columns=df_row.columns.tolist())
+            except Exception:
+                df_j = pd.DataFrame()
+
+            try:
+                df_out = pd.concat([df_j, df_row], ignore_index=True)
+
+                # streamlit_gsheets geralmente aceita update com DataFrame
+                conn.update(spreadsheet=url_planilha, worksheet="JUSTIFICATIVAS", data=df_out)
+                return True, None
+            except Exception as e:
+                return False, str(e)
+
+        if alerta_sel is not None:
+            st.markdown("---")
+            st.markdown("### 📋 Detalhamento do alerta selecionado")
+
+            if alerta_sel == "SEM_FAT":
+                st.write("Clientes na BASE que **nunca apareceram** no FATURADO (sem faturamento).")
+                df_lista = pd.DataFrame({"Cliente": sem_faturamento})
+                if df_lista.empty:
+                    st.success("✅ Nenhum cliente sem faturamento (BASE x FATURADO) no recorte atual da BASE.")
+                else:
+                    st.dataframe(df_lista, use_container_width=True, hide_index=True)
+
+                pdf_bytes = _make_pdf_bytes(
+                    f"Sem faturamento (BASE x FATURADO) | Ref: {hoje_ref_alerta.strftime('%d/%m/%Y')}",
+                    df_lista,
+                )
+                if pdf_bytes:
+                    st.download_button(
+                        "📄 Exportar PDF (sem faturamento)",
+                        data=pdf_bytes,
+                        file_name="clientes_sem_faturamento.pdf",
+                        mime="application/pdf",
+                        key="dl_pdf_sem_fat",
+                    )
+
+                # justificativa (para cliente da lista)
+                if not df_lista.empty:
+                    st.markdown("#### 📝 Justificativa (controle)")
+                    cli_j = st.selectbox("Cliente (sem faturamento):", df_lista["Cliente"].astype(str).tolist(), key="cli_j_semfat")
+                    just = st.text_area("Justificativa:", placeholder="Ex.: cliente inativo, fechamento, sem atendimento, troca de CNPJ, concorrência, etc.", key="txt_j_semfat")
+                    if st.button("Salvar justificativa", key="btn_save_j_semfat"):
+                        now_ts = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
+                        df_row = pd.DataFrame([{
+                            "Timestamp": now_ts,
+                            "Tipo": "SEM_FATURAMENTO",
+                            "Cliente": str(cli_j),
+                            "DiasSemCompra": "",
+                            "UltimaCompra": "",
+                            "Estado_Filtro": str(estado_sel),
+                            "Analista_Filtro": str(analista_sel),
+                            "Supervisor_Filtro": str(supervisor_sel),
+                            "Vendedor_Filtro": str(vendedor_sel),
+                            "Justificativa": str(just).strip(),
+                        }])
+                        ok, err = _append_justificativa(df_row)
+                        if ok:
+                            st.success("✅ Justificativa salva na aba JUSTIFICATIVAS.")
+                        else:
+                            st.warning(f"Não consegui salvar na aba JUSTIFICATIVAS. Erro: {err}")
+
+            elif alerta_sel in ["30", "60", "90"]:
+                lim = int(alerta_sel)
+                st.write(f"Clientes da BASE com **última compra há mais de {lim} dias** (com histórico no FATURADO).")
+
+                df_bucket = df_last_base[df_last_base["DiasSemCompra"] > lim].copy()
+                df_bucket = df_bucket.sort_values("DiasSemCompra", ascending=False)
+                df_show = df_bucket.copy()
+                df_show["UltimaCompra"] = df_show["UltimaCompra"].dt.strftime("%d/%m/%Y")
+                df_show = df_show.rename(columns={"UltimaCompra": "Última compra", "DiasSemCompra": "Dias sem compra"})
+
+                if df_show.empty:
+                    st.success(f"✅ Nenhum cliente acima de {lim} dias sem compra no recorte atual da BASE.")
+                else:
+                    st.dataframe(df_show[["Cliente", "Última compra", "Dias sem compra"]], use_container_width=True, hide_index=True)
+
+                pdf_bytes = _make_pdf_bytes(
+                    f"Clientes > {lim} dias sem compra | Ref: {hoje_ref_alerta.strftime('%d/%m/%Y')}",
+                    (df_show[["Cliente", "Última compra", "Dias sem compra"]] if not df_show.empty else df_show),
+                )
+                if pdf_bytes:
+                    st.download_button(
+                        f"📄 Exportar PDF ({lim}d+)",
+                        data=pdf_bytes,
+                        file_name=f"clientes_{lim}d_sem_compra.pdf",
+                        mime="application/pdf",
+                        key=f"dl_pdf_{lim}",
+                    )
+
+                # justificativa (para cliente do bucket)
+                if not df_show.empty:
+                    st.markdown("#### 📝 Justificativa (controle)")
+                    cli_j = st.selectbox("Cliente:", df_show["Cliente"].astype(str).tolist(), key=f"cli_j_{lim}")
+                    just = st.text_area("Justificativa:", placeholder="Ex.: sem estoque, visitado e não fechou, cliente fechado, sem giro, problema de preço, etc.", key=f"txt_j_{lim}")
+                    if st.button("Salvar justificativa", key=f"btn_save_j_{lim}"):
+                        now_ts = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
+
+                        # busca última compra e dias
+                        row_ = df_bucket[df_bucket["Cliente"].astype(str) == str(cli_j)].head(1)
+                        ult = row_["UltimaCompra"].iloc[0] if not row_.empty else None
+                        dias_ = int(row_["DiasSemCompra"].iloc[0]) if not row_.empty else ""
+
+                        df_row = pd.DataFrame([{
+                            "Timestamp": now_ts,
+                            "Tipo": f"{lim}D_SEM_COMPRA",
+                            "Cliente": str(cli_j),
+                            "DiasSemCompra": dias_,
+                            "UltimaCompra": (_dt_pt(ult) if ult is not None else ""),
+                            "Estado_Filtro": str(estado_sel),
+                            "Analista_Filtro": str(analista_sel),
+                            "Supervisor_Filtro": str(supervisor_sel),
+                            "Vendedor_Filtro": str(vendedor_sel),
+                            "Justificativa": str(just).strip(),
+                        }])
+                        ok, err = _append_justificativa(df_row)
+                        if ok:
+                            st.success("✅ Justificativa salva na aba JUSTIFICATIVAS.")
+                        else:
+                            st.warning(f"Não consegui salvar na aba JUSTIFICATIVAS. Erro: {err}")
+
+    else:
+        st.info("Para habilitar os alertas (sem faturamento / 30/60/90 + controle), a aba BASE precisa existir e ter clientes.")
+
+    st.markdown("---")
+
     # ============================
     # 5) Filtros UI
     # ============================
@@ -2574,12 +2902,6 @@ elif menu_interna == "📚 Perfil do Cliente":
     # - Não remove nada do que já existe abaixo
     # - Usa FATURADO + (se existir) df_agenda
     # =========================================================
-    def _fmt_int_pt(v):
-        try:
-            return f"{float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except Exception:
-            return str(v)
-
     def _fmt_brl(v):
         try:
             return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -2599,6 +2921,9 @@ elif menu_interna == "📚 Perfil do Cliente":
     pedidos_unicos_full = int(df_cli_full[col_pedido].nunique())
 
     ticket_medio_full = (receita_total_full / pedidos_unicos_full) if pedidos_unicos_full > 0 else 0.0
+
+    # ✅ NOVO: “ticket médio” em VOLUME (unid/pedido)
+    ticket_medio_vol_full = (volume_total_full / pedidos_unicos_full) if pedidos_unicos_full > 0 else 0.0
 
     df_cli_full["_MES"] = _month_key(df_cli_full[col_data])
     df_cli_full["_SEMANA"] = _week_key(df_cli_full[col_data])
@@ -2622,6 +2947,12 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     pico_mensal_rec = float(mensal_full["Receita"].max()) if not mensal_full.empty else 0.0
     pico_semanal_rec = float(semanal_full["Receita"].max()) if not semanal_full.empty else 0.0
+
+    # ✅ NOVO: médias/picos em VOLUME
+    media_mensal_vol = float(mensal_full["Volume"].mean()) if not mensal_full.empty else 0.0
+    media_semanal_vol = float(semanal_full["Volume"].mean()) if not semanal_full.empty else 0.0
+    pico_mensal_vol = float(mensal_full["Volume"].max()) if not mensal_full.empty else 0.0
+    pico_semanal_vol = float(semanal_full["Volume"].max()) if not semanal_full.empty else 0.0
 
     # Classe A/B/C/D (por média mensal de RECEITA do cliente no histórico filtrado pelo topo)
     if media_mensal_rec > 300000:
@@ -2811,24 +3142,25 @@ elif menu_interna == "📚 Perfil do Cliente":
     with e4:
         st.metric("Próx. visita agendada", prox_visita_agendada.strftime("%d/%m/%Y") if prox_visita_agendada is not None else "—")
     with e5:
-        st.metric("Potencial (pico mensal)", _fmt_brl(pico_mensal_rec))
+        # ✅ AJUSTE: potencial agora em VOLUME (pico mensal)
+        st.metric("Potencial (pico mensal - volume)", _fmt_int_pt(pico_mensal_vol))
 
     # ---------------- ABAS ORGANIZADAS ----------------
     tab_pot, tab_vis, tab_acao = st.tabs(["📈 Potencial", "🧭 Visitas", "✅ Ação"])
 
     with tab_pot:
-        st.markdown("### Potencial real do cliente")
+        st.markdown("### Potencial real do cliente (FOCO VOLUME)")
         p1, p2, p3, p4 = st.columns(4)
         with p1:
-            st.metric("Ticket médio (R$/pedido)", _fmt_brl(ticket_medio_full))
+            st.metric("Ticket médio (unid/pedido)", _fmt_int_pt(ticket_medio_vol_full))
         with p2:
-            st.metric("Média mensal (R$)", _fmt_brl(media_mensal_rec))
+            st.metric("Média mensal (Volume)", _fmt_int_pt(media_mensal_vol))
         with p3:
-            st.metric("Pico mensal (R$)", _fmt_brl(pico_mensal_rec))
+            st.metric("Pico mensal (Volume)", _fmt_int_pt(pico_mensal_vol))
         with p4:
-            st.metric("Pico semanal (R$)", _fmt_brl(pico_semanal_rec))
+            st.metric("Pico semanal (Volume)", _fmt_int_pt(pico_semanal_vol))
 
-        st.caption("💡 Pico = capacidade comprovada: se já atingiu esse patamar, é potencial realista quando bem trabalhado.")
+        st.caption("💡 Pico = capacidade comprovada em VOLUME: se já atingiu esse patamar, é potencial realista quando bem trabalhado.")
 
     with tab_vis:
         st.markdown("### Cobertura & execução (visitas do jeito certo)")
@@ -2894,7 +3226,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         freq_media = 0
 
-               # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA) — mais didático
+    # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA) — mais didático
     # Regra: só calcula se tiver base mínima (evita "atrasado" com poucos dias de histórico)
     min_pedidos_base = 4          # ajuste se quiser (ex.: 3, 4, 5)
     min_dias_base = 15            # janela mínima de histórico (em dias)
@@ -2966,7 +3298,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     st.markdown("---")
 
-       # ============================
+    # ============================
     # 7) Top Hierarquias e Top SKUs (ordena por VOLUME)
     # ============================
     colA, colB = st.columns(2)
@@ -3013,7 +3345,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     st.markdown("---")
 
-       # ============================
+    # ============================
     # ✅ NOVO (2/3): ABC DO CLIENTE (FOCO VOLUME)
     # ============================
     st.subheader("📌 Curva ABC do Cliente (por Volume)")
@@ -3081,7 +3413,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                     hide_index=True,
                 )
 
-           # ============================
+    # ============================
     # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
     # - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
     # - Respeita o mesmo período selecionado (periodo)
@@ -3353,7 +3685,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         st.dataframe(compras_dow, use_container_width=True, hide_index=True)
 
-        # =========================================================
+    # =========================================================
     # ✅ ADIÇÃO 2: GAP / RECOMENDAÇÃO POR CARTEIRA
     # =========================================================
     st.markdown("---")
