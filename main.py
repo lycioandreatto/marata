@@ -2101,19 +2101,31 @@ elif menu_interna == "📚 Perfil do Cliente":
                 )
 
         # ============================
-    # ✅ NOVO (2.1/3): ABC DO CLIENTE (FOCO FATURAMENTO / RECEITA)
+    # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
+    # - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
+    # - Respeita o mesmo período selecionado (periodo)
     # ============================
-    st.subheader("📌 Curva ABC do Cliente (por Faturamento)")
+    st.subheader("📌 Curva ABC de Clientes (por Faturamento)")
+
+    # base = carteira/recorte atual (Estado/Analista/Supervisor/Vendedor)
+    df_cli_abc_base = df_fat_filtrado.copy()
+
+    # aplica o mesmo período selecionado no topo (para ser coerente com a tela)
+    if periodo != "Tudo":
+        meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
+        dt_min_abc = df_cli_abc_base[col_data].max() - pd.DateOffset(months=meses)
+        df_cli_abc_base = df_cli_abc_base[df_cli_abc_base[col_data] >= dt_min_abc].copy()
 
     df_abc_rec = (
-        df_cli.groupby(col_sku)
+        df_cli_abc_base.groupby(col_cliente)
         .agg(Receita=(col_rec, "sum"), Pedidos=(col_pedido, "nunique"))
         .sort_values("Receita", ascending=False)
         .reset_index()
+        .rename(columns={col_cliente: "Cliente"})
     )
 
     if df_abc_rec.empty:
-        st.info("Sem dados suficientes para calcular ABC por faturamento.")
+        st.info("Sem dados suficientes para calcular ABC de clientes por faturamento.")
     else:
         rec_total_abc = df_abc_rec["Receita"].sum()
         if rec_total_abc <= 0:
@@ -2134,7 +2146,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             resumo_abc_rec = (
                 df_abc_rec.groupby("Classe")
                 .agg(
-                    SKUs=(col_sku, "count"),
+                    Clientes=("Cliente", "count"),
                     Receita=("Receita", "sum"),
                     Perc_Rec=("% Receita", "sum"),
                 )
@@ -2149,11 +2161,12 @@ elif menu_interna == "📚 Perfil do Cliente":
             with cB2:
                 st.caption("A = até 80% do faturamento acumulado | B = 80–95% | C = 95–100%")
                 st.dataframe(
-                    df_abc_rec[[col_sku, "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
+                    df_abc_rec[["Cliente", "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
                     use_container_width=True,
                     hide_index=True,
                 )
 
+   
 
     st.markdown("---")
 
