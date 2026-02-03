@@ -2502,7 +2502,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                         .groupby(col_sku)[col_hier]
                         .agg(lambda x: x.value_counts().index[0] if len(x) else "")
                         .reset_index()
-                        .rename(columns={col_hier: "Hierarquia (mais comum)"})
+                        .rename(columns={col_hier: "Hierarquia"})
                     )
                     recs = recs.merge(sku_hier, on=col_sku, how="left")
 
