@@ -1722,21 +1722,34 @@ elif menu_interna == "📚 Perfil do Cliente":
                 return cols_up[cand.upper()]
         return fallback
 
-    col_cliente = pick_col(df_fat, ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE"], fallback=df_fat.columns[11] if len(df_fat.columns) > 11 else df_fat.columns[0])
-    col_data    = pick_col(df_fat, ["Data fat.", "DATA FAT.", "DATA FAT", "DATA"], fallback=None)
-    col_hier    = pick_col(df_fat, ["Hierarquia de produtos", "HIERARQUIA", "HIERARQUIA DE PRODUTOS"], fallback=None)
-    col_sku     = pick_col(df_fat, ["N° artigo", "Nº artigo", "ARTIGO", "SKU"], fallback=None)
-    col_qtd     = pick_col(df_fat, ["Qtd Vendas (S/Dec)", "QTD VENDAS (S/DEC)", "QTD", "QUANTIDADE"], fallback=None)
-    col_rec     = pick_col(df_fat, ["Receita", "RECEITA", "Valor", "VALOR"], fallback=None)
-    col_pedido  = pick_col(df_fat, ["OrdCliente", "ORDCLIENTE", "PEDIDO", "NUM PEDIDO", "Nº PEDIDO"], fallback="OrdCliente")
+    col_cliente = pick_col(
+        df_fat,
+        ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE"],
+        fallback=df_fat.columns[11] if len(df_fat.columns) > 11 else df_fat.columns[0],
+    )
+    col_data = pick_col(df_fat, ["Data fat.", "DATA FAT.", "DATA FAT", "DATA"], fallback=None)
+    col_hier = pick_col(df_fat, ["Hierarquia de produtos", "HIERARQUIA", "HIERARQUIA DE PRODUTOS"], fallback=None)
+    col_sku = pick_col(df_fat, ["N° artigo", "Nº artigo", "ARTIGO", "SKU"], fallback=None)
+    col_qtd = pick_col(df_fat, ["Qtd Vendas (S/Dec)", "QTD VENDAS (S/DEC)", "QTD", "QUANTIDADE"], fallback=None)
+    col_rec = pick_col(df_fat, ["Receita", "RECEITA", "Valor", "VALOR"], fallback=None)
+    col_pedido = pick_col(
+        df_fat,
+        ["OrdCliente", "ORDCLIENTE", "PEDIDO", "NUM PEDIDO", "Nº PEDIDO"],
+        fallback="OrdCliente",
+    )
 
     # valida mínimos
     faltando = []
-    if not col_data: faltando.append("Data fat.")
-    if not col_sku: faltando.append("SKU/N° artigo")
-    if not col_qtd: faltando.append("Qtd Vendas (S/Dec)")
-    if not col_rec: faltando.append("Receita")
-    if col_pedido not in df_fat.columns: faltando.append("OrdCliente (pedido)")
+    if not col_data:
+        faltando.append("Data fat.")
+    if not col_sku:
+        faltando.append("SKU/N° artigo")
+    if not col_qtd:
+        faltando.append("Qtd Vendas (S/Dec)")
+    if not col_rec:
+        faltando.append("Receita")
+    if col_pedido not in df_fat.columns:
+        faltando.append("OrdCliente (pedido)")
 
     if faltando:
         st.error("Colunas obrigatórias não encontradas no FATURADO: " + ", ".join(faltando))
@@ -1752,7 +1765,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     df_fat = df_fat.copy()
     df_fat[col_cliente] = df_fat[col_cliente].apply(limpar_cod)
-    df_fat[col_pedido]  = df_fat[col_pedido].apply(limpar_cod)
+    df_fat[col_pedido] = df_fat[col_pedido].apply(limpar_cod)
 
     df_fat[col_qtd] = pd.to_numeric(df_fat[col_qtd], errors="coerce").fillna(0)
     df_fat[col_rec] = pd.to_numeric(df_fat[col_rec], errors="coerce").fillna(0)
@@ -1791,8 +1804,13 @@ elif menu_interna == "📚 Perfil do Cliente":
     with c2:
         periodo = st.selectbox("Período:", ["Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses", "Tudo"])
 
-    df_cli = df_fat[df_fat[col_cliente] == cli_sel].copy()
+    df_cli_full = df_fat[df_fat[col_cliente] == cli_sel].copy()
+    if df_cli_full.empty:
+        st.warning("Esse cliente não tem faturamento.")
+        st.stop()
 
+    # aplica filtro principal de período (o resto da tela)
+    df_cli = df_cli_full.copy()
     if periodo != "Tudo":
         meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
         dt_min = df_cli[col_data].max() - pd.DateOffset(months=meses)
@@ -1803,16 +1821,16 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.stop()
 
     # ============================
-    # 6) Métricas principais
+    # 6) Métricas principais (FOCO VOLUME)
     # ============================
     ultima_compra = df_cli[col_data].max()
     dias_sem = (datetime.now(fuso_br).date() - ultima_compra.date()).days
 
     pedidos_unicos = df_cli[col_pedido].nunique()
     receita_total = float(df_cli[col_rec].sum())
-    qtd_total = float(df_cli[col_qtd].sum())
+    volume_total = float(df_cli[col_qtd].sum())
 
-    ticket_medio = (receita_total / pedidos_unicos) if pedidos_unicos > 0 else 0
+    # mix médio por pedido
     mix_medio = (df_cli[col_sku].nunique() / pedidos_unicos) if pedidos_unicos > 0 else 0
 
     # frequência média (dias entre pedidos)
@@ -1828,28 +1846,56 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         freq_media = 0
 
-    # Cards
-    m1, m2, m3, m4, m5 = st.columns(5)
+    # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA)
+    # score = dias sem comprar / frequência média
+    if freq_media and freq_media > 0:
+        risco_atraso = dias_sem / freq_media
+    else:
+        risco_atraso = None
+
+    # label do risco
+    if risco_atraso is None:
+        risco_txt = "Sem base"
+        risco_delta = None
+        risco_help = "Poucos pedidos no período para estimar a frequência média."
+    else:
+        risco_txt = f"{risco_atraso:.2f}x"
+        risco_help = "Dias sem comprar dividido pela frequência média (dias) entre pedidos."
+        # delta “pra cima” se > 1 (atrasando)
+        risco_delta = f"{(risco_atraso - 1):+.2f}" if risco_atraso >= 1 else f"{(risco_atraso - 1):+.2f}"
+
+    # Cards (ajustado pro comercial de volume)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Última compra", ultima_compra.strftime("%d/%m/%Y"))
     m2.metric("Dias sem comprar", dias_sem)
     m3.metric("Pedidos no período", int(pedidos_unicos))
-    m4.metric("Ticket médio (R$)", f"{ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    m5.metric("Frequência média (dias)", f"{freq_media:.0f}" if freq_media > 0 else "-")
+    m4.metric("Volume total", f"{volume_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    m5.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
+    m6.metric("Risco de atraso", risco_txt, delta=risco_delta, help=risco_help)
+
+    # Alert visual simples
+    if risco_atraso is not None:
+        if risco_atraso > 1.5:
+            st.warning("⚠️ Cliente acima do padrão de compra (alto risco de estar atrasado).")
+        elif risco_atraso >= 1.0:
+            st.info("ℹ️ Cliente no limite do padrão de compra (atenção).")
+        else:
+            st.success("✅ Cliente dentro do padrão de frequência de compra.")
 
     st.markdown("---")
 
     # ============================
-    # 7) Top Hierarquias e Top SKUs
+    # 7) Top Hierarquias e Top SKUs (ordena por VOLUME)
     # ============================
     colA, colB = st.columns(2)
 
     with colA:
-        st.subheader("🏷️ Top Hierarquias")
+        st.subheader("🏷️ Top Hierarquias (por Volume)")
         if col_hier and col_hier in df_cli.columns:
             top_h = (
                 df_cli.groupby(col_hier)
-                .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
-                .sort_values("Receita", ascending=False)
+                .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"), Receita=(col_rec, "sum"))
+                .sort_values("Volume", ascending=False)
                 .head(10)
                 .reset_index()
             )
@@ -1858,11 +1904,11 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.info("Coluna de hierarquia não encontrada no FATURADO.")
 
     with colB:
-        st.subheader("📦 Top SKUs")
+        st.subheader("📦 Top SKUs (por Volume)")
         top_sku = (
             df_cli.groupby(col_sku)
-            .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
-            .sort_values("Receita", ascending=False)
+            .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"), Receita=(col_rec, "sum"))
+            .sort_values("Volume", ascending=False)
             .head(15)
             .reset_index()
         )
@@ -1871,12 +1917,152 @@ elif menu_interna == "📚 Perfil do Cliente":
     st.markdown("---")
 
     # ============================
+    # ✅ NOVO (2/3): ABC DO CLIENTE (FOCO VOLUME)
+    # ============================
+    st.subheader("📌 Curva ABC do Cliente (por Volume)")
+
+    df_abc = (
+        df_cli.groupby(col_sku)
+        .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+        .sort_values("Volume", ascending=False)
+        .reset_index()
+    )
+
+    if df_abc.empty:
+        st.info("Sem dados suficientes para calcular ABC.")
+    else:
+        vol_total_abc = df_abc["Volume"].sum()
+        if vol_total_abc <= 0:
+            st.info("Volume total zerado no período.")
+        else:
+            df_abc["% Volume"] = (df_abc["Volume"] / vol_total_abc * 100)
+            df_abc["% Acum."] = df_abc["% Volume"].cumsum()
+
+            # Classificação ABC (80/95)
+            def class_abc(p):
+                if p <= 80:
+                    return "A"
+                elif p <= 95:
+                    return "B"
+                return "C"
+
+            df_abc["Classe"] = df_abc["% Acum."].apply(class_abc)
+
+            # Resumo por classe
+            resumo_abc = (
+                df_abc.groupby("Classe")
+                .agg(
+                    SKUs=(col_sku, "count"),
+                    Volume=("Volume", "sum"),
+                    Perc_Vol=("% Volume", "sum"),
+                )
+                .reset_index()
+                .sort_values("Classe")
+            )
+            resumo_abc["Perc_Vol"] = resumo_abc["Perc_Vol"].round(1)
+
+            cA, cB = st.columns([1, 2])
+            with cA:
+                st.dataframe(resumo_abc, use_container_width=True, hide_index=True)
+            with cB:
+                st.caption("A = até 80% do volume acumulado | B = 80–95% | C = 95–100%")
+                st.dataframe(
+                    df_abc[[col_sku, "Classe", "Volume", "% Volume", "% Acum.", "Pedidos"]]
+                    .head(30),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+    st.markdown("---")
+
+    # ============================
+    # ✅ NOVO (3/3): GAPS (SKUs que SUMIRAM)
+    # ============================
+    st.subheader("🕳️ O que está faltando? (SKUs que o cliente comprava e parou)")
+
+    # Janela “antes” vs “agora” baseada no período escolhido:
+    # - Se período = 3 meses: "agora" = 3m, "antes" = 12m (exceto os 3m mais recentes)
+    # - Se período = 6 meses: "agora" = 6m, "antes" = 12m (exceto 6m)
+    # - Se período = 12 meses: "agora" = 12m, "antes" = 24m (exceto 12m) (se tiver dados)
+    # - Se tudo: usa 6m agora e 12m antes (padrão)
+    dt_ref = df_cli_full[col_data].max()
+
+    if periodo == "Últimos 3 meses":
+        meses_agora = 3
+        meses_total = 12
+    elif periodo == "Últimos 6 meses":
+        meses_agora = 6
+        meses_total = 12
+    elif periodo == "Últimos 12 meses":
+        meses_agora = 12
+        meses_total = 24
+    else:
+        meses_agora = 6
+        meses_total = 12
+
+    dt_ini_total = dt_ref - pd.DateOffset(months=meses_total)
+    dt_ini_agora = dt_ref - pd.DateOffset(months=meses_agora)
+
+    df_total = df_cli_full[df_cli_full[col_data] >= dt_ini_total].copy()
+    df_agora = df_cli_full[df_cli_full[col_data] >= dt_ini_agora].copy()
+    df_antes = df_total[df_total[col_data] < dt_ini_agora].copy()
+
+    if df_antes.empty or df_agora.empty:
+        st.info("Sem histórico suficiente para comparar 'antes' vs 'agora'.")
+    else:
+        # volume por SKU nas duas janelas
+        vol_antes = (
+            df_antes.groupby(col_sku)
+            .agg(Volume_Antes=(col_qtd, "sum"), Pedidos_Antes=(col_pedido, "nunique"))
+            .reset_index()
+        )
+        vol_agora = (
+            df_agora.groupby(col_sku)
+            .agg(Volume_Agora=(col_qtd, "sum"), Pedidos_Agora=(col_pedido, "nunique"))
+            .reset_index()
+        )
+
+        df_gap = vol_antes.merge(vol_agora, on=col_sku, how="left")
+        df_gap["Volume_Agora"] = df_gap["Volume_Agora"].fillna(0)
+        df_gap["Pedidos_Agora"] = df_gap["Pedidos_Agora"].fillna(0)
+
+        # “sumiram” = comprava antes e agora está 0 (ou quase 0)
+        # filtro mínimo pra não trazer SKU irrelevante
+        min_vol_antes = st.number_input(
+            "Volume mínimo no 'antes' para considerar (evita ruído):",
+            min_value=0.0,
+            value=10.0,
+            step=5.0,
+        )
+
+        df_sumiram = df_gap[(df_gap["Volume_Antes"] >= float(min_vol_antes)) & (df_gap["Volume_Agora"] <= 0)].copy()
+        df_sumiram["Diferença"] = df_sumiram["Volume_Agora"] - df_sumiram["Volume_Antes"]
+
+        df_sumiram = df_sumiram.sort_values("Volume_Antes", ascending=False).head(30)
+
+        cG1, cG2 = st.columns([2, 1])
+        with cG2:
+            st.caption(f"Agora = últimos {meses_agora}m | Antes = {meses_total}m (exceto agora)")
+            st.caption(f"Base de comparação até: {dt_ref.strftime('%d/%m/%Y')}")
+
+        with cG1:
+            if df_sumiram.empty:
+                st.success("✅ Não encontrei SKUs relevantes que o cliente parou de comprar (no critério definido).")
+            else:
+                st.dataframe(
+                    df_sumiram[[col_sku, "Volume_Antes", "Pedidos_Antes", "Volume_Agora", "Pedidos_Agora"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+    st.markdown("---")
+
+    # ============================
     # 8) "Compram junto" (Market Basket por pedido)
     # ============================
     st.subheader("🧠 Compram junto (combos mais frequentes)")
 
-    # Monta cesta por pedido
-    # (SKU únicos por pedido, evita repetir SKU no mesmo pedido)
+    # Monta cesta por pedido (SKU únicos por pedido)
     pedido_skus = (
         df_cli[[col_pedido, col_sku]]
         .dropna()
@@ -1885,13 +2071,12 @@ elif menu_interna == "📚 Perfil do Cliente":
         .apply(lambda x: sorted(set([i.strip() for i in x.tolist() if i.strip()])))
     )
 
-    # Se tiver poucos pedidos, avisa
     if pedido_skus.shape[0] < 3:
         st.info("Poucos pedidos no período para calcular combinações com confiança.")
     else:
         from itertools import combinations
-        pares = {}
 
+        pares = {}
         for skus in pedido_skus:
             if len(skus) < 2:
                 continue
@@ -1902,24 +2087,25 @@ elif menu_interna == "📚 Perfil do Cliente":
         if not pares:
             st.info("Não foi possível gerar pares (pedidos com 2+ SKUs).")
         else:
-            df_pares = pd.DataFrame(
-                [{"SKU_A": k[0], "SKU_B": k[1], "Frequência": v} for k, v in pares.items()]
-            ).sort_values("Frequência", ascending=False)
-
-            # Normaliza por quantidade de pedidos para dar noção de força
+            df_pares = (
+                pd.DataFrame([{"SKU_A": k[0], "SKU_B": k[1], "Frequência": v} for k, v in pares.items()])
+                .sort_values("Frequência", ascending=False)
+                .reset_index(drop=True)
+            )
             df_pares["% dos pedidos"] = (df_pares["Frequência"] / pedido_skus.shape[0] * 100).round(1)
 
-            # filtro de SKU “âncora”
             sku_ancora = st.selectbox(
                 "Ver combinações a partir do SKU:",
-                ["(Mostrar todos)"] + sorted(df_cli[col_sku].dropna().astype(str).unique().tolist())
+                ["(Mostrar todos)"] + sorted(df_cli[col_sku].dropna().astype(str).unique().tolist()),
+                key="sku_ancora_pairs",
             )
 
             df_view_pares = df_pares.copy()
             if sku_ancora != "(Mostrar todos)":
-                df_view_pares = df_view_pares[(df_view_pares["SKU_A"] == sku_ancora) | (df_view_pares["SKU_B"] == sku_ancora)].copy()
+                df_view_pares = df_view_pares[
+                    (df_view_pares["SKU_A"] == sku_ancora) | (df_view_pares["SKU_B"] == sku_ancora)
+                ].copy()
 
-                # mostra “o outro” SKU como sugestão
                 df_view_pares["Sugestão"] = df_view_pares.apply(
                     lambda r: r["SKU_B"] if r["SKU_A"] == sku_ancora else r["SKU_A"], axis=1
                 )
@@ -1935,13 +2121,14 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     df_tempo = (
         df_cli.groupby(pd.Grouper(key=col_data, freq="M"))
-        .agg(Receita=(col_rec, "sum"), Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+        .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"), Receita=(col_rec, "sum"))
         .reset_index()
     )
     df_tempo["Mês"] = df_tempo[col_data].dt.strftime("%Y-%m")
-    df_tempo = df_tempo[["Mês", "Receita", "Volume", "Pedidos"]].sort_values("Mês")
+    df_tempo = df_tempo[["Mês", "Volume", "Pedidos", "Receita"]].sort_values("Mês")
 
     st.dataframe(df_tempo, use_container_width=True, hide_index=True)
+
 
 
 
