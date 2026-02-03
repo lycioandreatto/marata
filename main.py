@@ -2446,7 +2446,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         st.dataframe(compras_dow, use_container_width=True, hide_index=True)
 
-    # =========================================================
+        # =========================================================
     # ✅ ADIÇÃO 2: GAP / RECOMENDAÇÃO POR CARTEIRA
     # =========================================================
     st.markdown("---")
@@ -2520,9 +2520,11 @@ elif menu_interna == "📚 Perfil do Cliente":
                 if recs.empty:
                     st.info("Sem recomendações após o filtro mínimo de clientes.")
                 else:
-                    cols_show = [col_sku]
+                    # ✅ aqui foi o ajuste: "Hierarquia (mais comum)" antes do SKU (N° artigo)
+                    cols_show = []
                     if "Hierarquia (mais comum)" in recs.columns:
                         cols_show.append("Hierarquia (mais comum)")
+                    cols_show.append(col_sku)
                     cols_show += ["Volume_Carteira", "% Volume na carteira", "Clientes_Carteira", "Pedidos_Carteira"]
 
                     st.dataframe(
@@ -2530,6 +2532,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                         use_container_width=True,
                         hide_index=True,
                     )
+
 
     # =========================================================
     # ✅ ADIÇÃO 3: RANKING DO CLIENTE NA CARTEIRA (por Volume)
