@@ -2655,7 +2655,7 @@ else:
 
                     
 # --- PÁGINA: DASHBOARD ---
-elif menu == "📊 Dashboard de Controle":
+    elif menu == "📊 Dashboard de Controle":
     # Cabeçalho com Botão de Atualizar
     col_titulo, col_btn = st.columns([0.8, 0.2])
     with col_titulo:
