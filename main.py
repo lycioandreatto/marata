@@ -3970,8 +3970,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     linhas_antes = len(df_f)
     df_f = df_f[(df_f[col_data_fat] >= d1) & (df_f[col_data_fat] <= d2)]
     st.info(
-        {col_data_fat}': {d1.strftime('%d/%m/%Y')} a {d2.strftime('%d/%m/%Y')} | "
-        {fmt_pt_int(linhas_antes)} → {fmt_pt_int(len(df_f))}"
+        f"Filtro aplicado em '{col_data_fat}': {d1.strftime('%d/%m/%Y')} a {d2.strftime('%d/%m/%Y')} | "
+        f"Linhas: {fmt_pt_int(linhas_antes)} → {fmt_pt_int(len(df_f))}"
     )
 
     # ============================
