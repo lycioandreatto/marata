@@ -377,63 +377,114 @@ st.markdown("""
         font-size: 1.5em;
     }
 
-    /* ===== MENU MODERNO (radio estilizado como botões) ===== */
+/* ===============================
+   SIDEBAR PREMIUM NAV (APP STYLE)
+   =============================== */
 
-/* remove bolinha (radio) */
-section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"] {
-    display: none !important;
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #f6f7fb 0%, #f3f4f8 100%);
 }
 
-/* card do item */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-    background: #ffffff;
-    border-radius: 14px;
-    padding: 12px 14px;
-    margin: 10px 0;
-    border: 1px solid rgba(0,0,0,0.10);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-    transition: all .15s ease-in-out;
+/* tira bolinha do radio */
+section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"]{
+  display:none !important;
 }
 
-/* hover bonito */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
-    transform: translateY(-1px);
-    border-color: rgba(255, 75, 75, 0.45);
-    box-shadow: 0 6px 18px rgba(255, 75, 75, 0.12);
+/* wrapper do grupo */
+section[data-testid="stSidebar"] div[role="radiogroup"]{
+  gap: 10px;
 }
 
-/* item selecionado (destaque forte) */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] {
-    background: linear-gradient(90deg, rgba(255, 75, 75, 0.18), rgba(255, 75, 75, 0.06));
-    border: 1px solid rgba(255, 75, 75, 0.70);
-    box-shadow: 0 10px 22px rgba(255, 75, 75, 0.18);
-    position: relative;
+/* cada item vira "card-button" */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label{
+  position: relative;
+  display:flex;
+  align-items:center;
+  background: rgba(255,255,255,0.75);
+  border: 1px solid rgba(17,17,17,0.08);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+  overflow:hidden;
 }
 
-/* barrinha de destaque no selecionado */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::before {
-    content: "";
-    position: absolute;
-    left: 10px;
-    top: 10px;
-    bottom: 10px;
-    width: 6px;
-    border-radius: 8px;
-    background: #ff4b4b;
+/* bolha do ícone (pega o emoji do texto e dá “cara de app”) */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label p::first-letter{
+  display:inline-block;
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  text-align:center;
+  border-radius: 12px;
+  margin-right: 10px;
+  background: rgba(255,75,75,0.12);
+  box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
 }
 
-/* texto do item */
-section[data-testid="stSidebar"] div[role="radiogroup"] p {
-    margin: 0;
-    padding-left: 18px; /* espaço pra barrinha */
-    font-size: 0.95rem;
-    font-weight: 650;
-    color: #111;
+/* texto */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label p{
+  margin:0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color:#1c1c1c;
+  letter-spacing: .2px;
 }
 
-/* esconde o label do widget do menu */
-section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"] {
-    display: none;
+/* hover */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,75,75,0.35);
+  box-shadow: 0 10px 26px rgba(255,75,75,0.10);
+}
+
+/* ===== ITEM ATIVO (bem destaque) ===== */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
+  background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
+  border-color: rgba(255,75,75,0.85);
+  box-shadow: 0 16px 34px rgba(255,75,75,0.22);
+}
+
+/* texto branco no ativo */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p{
+  color: #ffffff !important;
+}
+
+/* bolha do ícone no ativo vira branca */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p::first-letter{
+  background: rgba(255,255,255,0.18);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
+}
+
+/* barra lateral do ativo */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::before{
+  content:"";
+  position:absolute;
+  left: 10px;
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.85);
+}
+
+/* brilho suave atrás do ativo */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::after{
+  content:"";
+  position:absolute;
+  inset:-40px;
+  background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.25), rgba(255,255,255,0) 60%);
+  pointer-events:none;
+}
+
+/* some label do widget */
+section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
+  display:none;
+}
+
 }
 
     </style>
