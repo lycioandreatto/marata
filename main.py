@@ -381,12 +381,25 @@ st.markdown("""
    SIDEBAR PREMIUM NAV (APP STYLE)
    =============================== */
 
-section[data-testid="stSidebar"] {
+section[data-testid="stSidebar"]{
+  width: 320px !important;         /* ✅ largura fixa */
+  min-width: 320px !important;
+  max-width: 320px !important;
   background: linear-gradient(180deg, #f6f7fb 0%, #f3f4f8 100%);
 }
 
-/* tira bolinha do radio */
+/* opcional: padding interno mais consistente */
+section[data-testid="stSidebar"] .stSidebarContent{
+  padding: 18px 18px 12px 18px !important;
+}
+
+/* tira bolinha do radio (input) */
 section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"]{
+  display:none !important;
+}
+
+/* ✅ tira a bolinha visual do streamlit (o "controle") */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child{
   display:none !important;
 }
 
@@ -400,11 +413,18 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   position: relative;
   display:flex;
   align-items:center;
+
+  width: 100% !important;          /* ✅ todos ocupam a mesma largura */
+  min-height: 58px;                 /* ✅ altura padronizada */
+  height: 58px;                     /* ✅ força igual */
+  box-sizing: border-box;
+
   background: rgba(255,255,255,0.75);
   border: 1px solid rgba(17,17,17,0.08);
   border-radius: 16px;
   padding: 12px 14px;
   margin: 10px 0;
+
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 6px 18px rgba(0,0,0,0.06);
@@ -412,7 +432,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   overflow:hidden;
 }
 
-/* bolha do ícone (pega o emoji do texto e dá “cara de app”) */
+/* bolha do ícone */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label p::first-letter{
   display:inline-block;
   width: 34px;
@@ -425,13 +445,19 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label p::first-letter{
   box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
 }
 
-/* texto */
+/* ✅ texto padronizado (mesma linha / mesmo alinhamento) */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label p{
   margin:0;
   font-size: 0.95rem;
   font-weight: 700;
   color:#1c1c1c;
   letter-spacing: .2px;
+
+  line-height: 1.15;
+  display: -webkit-box;            /* ✅ evita aumentar altura do card */
+  -webkit-line-clamp: 2;           /* ✅ no máximo 2 linhas */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* hover */
@@ -441,7 +467,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
   box-shadow: 0 10px 26px rgba(255,75,75,0.10);
 }
 
-/* ===== ITEM ATIVO (bem destaque) ===== */
+/* item ativo */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
   background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
   border-color: rgba(255,75,75,0.85);
@@ -485,7 +511,6 @@ section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
   display:none;
 }
 
-}
 
     </style>
     """, unsafe_allow_html=True)
