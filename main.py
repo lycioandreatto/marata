@@ -3697,6 +3697,20 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         df[col] = s2
         return df
 
+    # ✅ Datas úteis
+    def _to_datetime_safe(s):
+        return pd.to_datetime(s, errors="coerce", dayfirst=True)
+
+    def _business_days_in_month(year, month):
+        inicio = pd.Timestamp(year=year, month=month, day=1)
+        fim = (inicio + pd.offsets.MonthEnd(1)).normalize()
+        return len(pd.bdate_range(inicio, fim))
+
+    def _business_days_elapsed_in_month(ref_date):
+        inicio = pd.Timestamp(year=ref_date.year, month=ref_date.month, day=1)
+        fim = pd.Timestamp(ref_date.date())
+        return len(pd.bdate_range(inicio, fim))
+
     # ============================
     # >>> PROCESSAMENTO / LEITURA
     # ============================
@@ -3738,6 +3752,14 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
             # ✅ Cliente é a coluna K (ajuste conforme seu arquivo; você usou [11])
             col_cod_cliente = df_faturado.columns[11]
+
+            # ✅ Data fat. (para filtro do mês e pacing)
+            col_data_fat = "Data fat."
+            if col_data_fat not in df_faturado.columns:
+                # fallback comum, se vier com outro nome por algum motivo
+                col_data_fat = "Data fat"
+            if col_data_fat in df_faturado.columns:
+                df_faturado[col_data_fat] = _to_datetime_safe(df_faturado[col_data_fat])
 
             df_faturado["QTD_VENDAS"] = pd.to_numeric(df_faturado["QTD_VENDAS"], errors="coerce").fillna(0)
             df_faturado["VENDEDOR_COD"] = df_faturado["VENDEDOR_COD"].astype(str).str.replace(r"\.0$", "", regex=True)
@@ -3911,6 +3933,37 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             df_f = df_f[df_f["VENDEDOR"].isin(vendedores_permitidos)]
 
     # ============================
+    # ✅ FILTRO DE MÊS (barra deslizante) + trava no mês atual
+    # ============================
+    if "Data fat." in df_f.columns:
+        dt_min = df_f["Data fat."].min()
+        dt_max = df_f["Data fat."].max()
+    else:
+        dt_min = None
+        dt_max = None
+
+    hoje = pd.Timestamp.now()
+    inicio_mes_atual = pd.Timestamp(year=hoje.year, month=hoje.month, day=1)
+    fim_mes_atual = (inicio_mes_atual + pd.offsets.MonthEnd(1)).normalize()
+
+    st.markdown("### 🗓️ Período (mês atual)")
+    if dt_min is not None and not pd.isna(dt_min):
+        # slider de datas DENTRO do mês atual (padrão: mês atual completo)
+        d1, d2 = st.slider(
+            "Selecione o intervalo dentro do mês",
+            min_value=inicio_mes_atual.to_pydatetime(),
+            max_value=fim_mes_atual.to_pydatetime(),
+            value=(inicio_mes_atual.to_pydatetime(), fim_mes_atual.to_pydatetime()),
+            format="DD/MM/YYYY"
+        )
+        d1 = pd.Timestamp(d1).normalize()
+        d2 = pd.Timestamp(d2).normalize()
+        df_f = df_f[(df_f["Data fat."] >= d1) & (df_f["Data fat."] <= d2)]
+    else:
+        st.warning("Não encontrei a coluna 'Data fat.' válida para filtrar o mês. Verifique o FATURADO.")
+        st.stop()
+
+    # ============================
     # 🔍 FILTROS
     # ============================
     st.markdown("### 🔍 Filtros")
@@ -3969,6 +4022,39 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                     base_total = float(dados_base.drop_duplicates("RG")["BASE"].sum())
 
     # ============================
+    # ✅ PACING DO MÊS (ritmo atual x necessário) — com base no filtro
+    # ============================
+    try:
+        dias_uteis_total = _business_days_in_month(inicio_mes_atual.year, inicio_mes_atual.month)
+        # usa o fim do range selecionado (d2) como referência do "até aqui"
+        ref_pacing = min(pd.Timestamp(d2), pd.Timestamp.now().normalize())
+        dias_uteis_passados = max(_business_days_elapsed_in_month(ref_pacing), 1)
+
+        volume_mtd = float(df_f["QTD_VENDAS"].sum())
+
+        meta_mes_2026 = 0.0
+        if df_meta_sistema is not None and not df_meta_sistema.empty and "RG" in df_meta_sistema.columns:
+            meta_mes_2026 = float(
+                df_meta_sistema[df_meta_sistema["RG"].isin(vendedores_ids)]["QTD"].sum()
+            )
+
+        ritmo_atual = (volume_mtd / dias_uteis_passados) if dias_uteis_passados > 0 else 0
+        ritmo_necessario = (meta_mes_2026 / dias_uteis_total) if dias_uteis_total > 0 else 0
+
+        projecao_mes = ritmo_atual * dias_uteis_total
+        status_ok = projecao_mes >= meta_mes_2026 if meta_mes_2026 > 0 else True
+
+        selo = "✅ NO RITMO" if status_ok else "⚠️ ABAIXO DO RITMO"
+        cor_selo = "#28a745" if status_ok else "#d9534f"
+    except Exception as _e:
+        ritmo_atual = 0
+        ritmo_necessario = 0
+        projecao_mes = 0
+        meta_mes_2026 = 0
+        selo = "—"
+        cor_selo = "#999999"
+
+    # ============================
     # PROCESSAMENTO FINAL
     # ============================
     df_agrup_f = (
@@ -4020,6 +4106,30 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final["CRESC 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
     df_final["% (VOL 2026)"] = (df_final["VOLUME"] / df_final.get("META 2026", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
+    # ✅ ÍCONE de tendência por hierarquia (cresceu / estável / caiu)
+    # regra: usa CRESC 2026 (se meta 2026 > 0); senão usa CRESC 2025; senão compara com 0
+    def _trend_icon(row):
+        base_ref = None
+        if float(row.get("META 2026", 0)) > 0:
+            base_ref = row.get("CRESC 2026", 0)
+        elif float(row.get("META 2025", 0)) > 0:
+            base_ref = row.get("CRESC 2025", 0)
+        else:
+            base_ref = row.get("VOLUME", 0)
+
+        try:
+            v = float(base_ref)
+        except:
+            v = 0
+
+        if v > 0:
+            return "📈"
+        if v < 0:
+            return "📉"
+        return "➖"
+
+    df_final["TENDÊNCIA"] = df_final.apply(_trend_icon, axis=1)
+
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
     # ============================
@@ -4061,9 +4171,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 st.error("Não encontrei a coluna do vendedor (VENDEDOR_NOME / Região de vendas).")
                 st.stop()
 
-        # ✅ AJUSTE PEDIDO (SÓ ISSO):
-        # Se tiver vendedor selecionado no filtro, envia só para ele(s).
-        # Se não tiver, envia para todos.
+        # ✅ Se tiver vendedor selecionado no filtro, envia só para ele(s). Se não tiver, envia para todos.
         if sel_vendedor and len(sel_vendedor) > 0:
             vendedores = sel_vendedor
         else:
@@ -4113,7 +4221,22 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     # --- UI: CARDS E TABELA ---
     st.markdown("---")
-    col_res, col_cob, col_pos = st.columns([1.2, 1, 1])
+    col_pace, col_cob, col_pos = st.columns([1.2, 1, 1])
+
+    with col_pace:
+        st.markdown(
+            f"""
+            <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9;">
+                <small>PACING DO MÊS (Meta 2026)</small><br>
+                <span style="font-size: 1.0em;">Meta mês: <b>{fmt_pt_int(meta_mes_2026)}</b></span><br>
+                <span style="font-size: 1.0em;">Proj. mês: <b>{fmt_pt_int(projecao_mes)}</b></span><br>
+                <span style="font-size: 1.0em;">Ritmo atual: <b>{fmt_pt_int(ritmo_atual)}</b>/dia útil</span><br>
+                <span style="font-size: 1.0em;">Ritmo necessário: <b>{fmt_pt_int(ritmo_necessario)}</b>/dia útil</span><br>
+                <span style="color:{cor_selo}; font-size: 1.4em; font-weight: 800;">{selo}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with col_cob:
         real_perc = (df_f[col_cod_cliente].nunique() / base_total * 100) if base_total > 0 else 0
@@ -4135,7 +4258,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             positivos_total = df_f[col_cod_cliente].nunique()
 
         dados_pos = df_metas_cob[df_metas_cob["RG"].isin(vendedores_ids)].drop_duplicates("RG") if df_metas_cob is not None else pd.DataFrame()
-
         base_pos = pd.to_numeric(dados_pos["BASE"], errors="coerce").fillna(0).sum() if "BASE" in dados_pos.columns else 0
 
         meta_pos = pd.to_numeric(dados_pos["META"], errors="coerce").fillna(0).mean() if "META" in dados_pos.columns else 0
@@ -4165,6 +4287,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_view["    "] = ""
 
     cols_view = [
+        "TENDÊNCIA",
         "HIERARQUIA DE PRODUTOS",
         "META COBERTURA",
         "CLIENTES",
@@ -4192,6 +4315,17 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     def destacar_pendencia(s):
         return ["background-color: #FFD6D6; color: #7A0000; font-weight: 700" if v > 0 else "" for v in s]
 
+    def destacar_tendencia(s):
+        out = []
+        for v in s:
+            if v == "📈":
+                out.append("background-color: #E8F5E9; font-weight: 900;")
+            elif v == "📉":
+                out.append("background-color: #FFEBEE; font-weight: 900;")
+            else:
+                out.append("background-color: #F7F7F7; font-weight: 900;")
+        return out
+
     def limpar_espacos(s):
         return ["background-color: transparent" for _ in s]
 
@@ -4215,6 +4349,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             }
         )
         .apply(zebra_rows, axis=1)
+        .apply(destacar_tendencia, subset=["TENDÊNCIA"])
         .apply(destacar_pendencia, subset=["PENDÊNCIA"])
         .apply(destacar_negativos, subset=["CRESC 2025", "CRESC 2026"])
         .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
@@ -4398,6 +4533,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         df_final.to_excel(writer, index=False, sheet_name="Dashboard")
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
+
 
     # ===========================================================
     # ✅ BLOCO DUPLICADO DO SEU CÓDIGO (MANTIDO, MAS NÃO EXECUTA)
