@@ -1802,7 +1802,9 @@ elif menu_interna == "📚 Perfil do Cliente":
     if col_vendedor and col_vendedor in df_fat.columns:
         df_fat[col_vendedor] = df_fat[col_vendedor].astype(str).str.strip().str.upper()
     if col_supervisor and col_supervisor in df_fat.columns:
-        df_fat[col_supervisor] = df_fat[col_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
+        df_fat[col_supervisor] = (
+            df_fat[col_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
+        )
 
     df_fat[col_qtd] = pd.to_numeric(df_fat[col_qtd], errors="coerce").fillna(0)
     df_fat[col_rec] = pd.to_numeric(df_fat[col_rec], errors="coerce").fillna(0)
@@ -2036,9 +2038,9 @@ elif menu_interna == "📚 Perfil do Cliente":
         top_sku = (
             df_cli.groupby(col_sku)
             .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"), Receita=(col_rec, "sum"))
-            .sort_values("Volume", ascending=False)
-            .head(15)
-            .reset_index()
+                .sort_values("Volume", ascending=False)
+                .head(15)
+                .reset_index()
         )
         st.dataframe(top_sku, use_container_width=True, hide_index=True)
 
@@ -2250,8 +2252,6 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     # =========================================================
     # ✅ ADIÇÃO 1: SAZONALIDADE (DIA DA SEMANA)
-    # - Compras por dia da semana (ótimo pra rota/agenda)
-    # - Não mexe em nada existente; só adiciona um bloco novo
     # =========================================================
     st.markdown("---")
     st.subheader("🗓️ Sazonalidade (Dia da Semana)")
@@ -2284,31 +2284,24 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.dataframe(compras_dow, use_container_width=True, hide_index=True)
 
     # =========================================================
-    # ✅ ADIÇÃO 2: GAP / RECOMENDAÇÃO POR CARTEIRA (se usar filtros)
-    # - “SKUs que a carteira compra e este cliente não compra”
-    # - Usa o mesmo recorte (Estado/Analista/Supervisor/Vendedor) + Período
+    # ✅ ADIÇÃO 2: GAP / RECOMENDAÇÃO POR CARTEIRA
     # =========================================================
     st.markdown("---")
     st.subheader("🧩 Recomendações por carteira (SKUs que a carteira compra e este cliente não compra)")
 
-    # define base da carteira: sempre o df_fat_filtrado (já respeita Estado/Analista/Supervisor/Vendedor)
     df_carteira = df_fat_filtrado.copy()
 
-    # aplica período na carteira para comparar no mesmo recorte do cliente
     df_carteira_periodo = df_carteira.copy()
     if periodo != "Tudo":
         meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
         dt_min_carteira = df_carteira_periodo[col_data].max() - pd.DateOffset(months=meses)
         df_carteira_periodo = df_carteira_periodo[df_carteira_periodo[col_data] >= dt_min_carteira].copy()
 
-    # garante que tenha volume
     if df_carteira_periodo.empty:
         st.info("Sem dados na carteira (com os filtros/período atuais) para gerar recomendações.")
     else:
-        # SKUs comprados pelo cliente no período (conjunto)
         skus_cliente = set(df_cli[col_sku].dropna().astype(str).str.strip().tolist())
 
-        # volume da carteira por SKU (exclui o próprio cliente para evitar enviesar)
         df_carteira_sem_cliente = df_carteira_periodo[df_carteira_periodo[col_cliente] != str(cli_sel)].copy()
 
         if df_carteira_sem_cliente.empty:
@@ -2325,7 +2318,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                 .sort_values("Volume_Carteira", ascending=False)
             )
 
-            # filtra SKUs que o cliente NÃO compra
             carteira_sku["__sku_str"] = carteira_sku[col_sku].astype(str).str.strip()
             recs = carteira_sku[~carteira_sku["__sku_str"].isin(skus_cliente)].copy()
             recs = recs.drop(columns=["__sku_str"])
@@ -2333,14 +2325,12 @@ elif menu_interna == "📚 Perfil do Cliente":
             if recs.empty:
                 st.success("✅ Pelo recorte atual, não encontrei SKUs relevantes da carteira que este cliente ainda não compra.")
             else:
-                # % participação no volume da carteira (pra dar “força”)
                 vol_cart_total = recs["Volume_Carteira"].sum()
                 if vol_cart_total > 0:
                     recs["% Volume na carteira"] = (recs["Volume_Carteira"] / vol_cart_total * 100).round(1)
                 else:
                     recs["% Volume na carteira"] = 0.0
 
-                # se tiver hierarquia, puxa a “mais comum” desse SKU na carteira (só pra enriquecer)
                 if col_hier and col_hier in df_carteira_sem_cliente.columns:
                     sku_hier = (
                         df_carteira_sem_cliente[[col_sku, col_hier]]
@@ -2353,7 +2343,6 @@ elif menu_interna == "📚 Perfil do Cliente":
                     )
                     recs = recs.merge(sku_hier, on=col_sku, how="left")
 
-                # controle de ruído
                 min_clientes = st.number_input(
                     "Recomendação: mínimo de clientes da carteira comprando o SKU (evita ruído):",
                     min_value=1,
@@ -2380,16 +2369,13 @@ elif menu_interna == "📚 Perfil do Cliente":
                     )
 
     # =========================================================
-    # ✅ ADIÇÃO 3: RANKING DO CLIENTE NA CARTEIRA
-    # - Posição do cliente por volume dentro do recorte atual
-    # - Participação no volume total da carteira
+    # ✅ ADIÇÃO 3: RANKING DO CLIENTE NA CARTEIRA (por Volume)
     # =========================================================
     st.markdown("---")
     st.subheader("🏆 Ranking do cliente na carteira (por Volume)")
 
     df_rank_base = df_fat_filtrado.copy()
 
-    # aplica período no ranking
     df_rank_periodo = df_rank_base.copy()
     if periodo != "Tudo":
         meses = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}[periodo]
@@ -2434,6 +2420,157 @@ elif menu_interna == "📚 Perfil do Cliente":
                 use_container_width=True,
                 hide_index=True,
             )
+
+    # =========================================================
+    # ✅ ADIÇÃO FINAL: COMPARATIVO (Cliente/Período X vs Cliente/Período Y)
+    # - Não altera nada acima: só acrescenta no final
+    # - Mostra volume + top hierarquias + top SKUs (lado a lado)
+    # =========================================================
+    st.markdown("---")
+    st.subheader("🆚 Comparativo por período (e/ou clientes diferentes)")
+
+    def filtrar_periodo_df(df_in, modo_periodo, col_dt):
+        df_out = df_in.copy()
+        if modo_periodo == "Tudo":
+            return df_out
+        meses_map = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}
+        meses_loc = meses_map.get(modo_periodo, None)
+        if not meses_loc:
+            return df_out
+        dt_ref_loc = df_out[col_dt].max()
+        if pd.isna(dt_ref_loc):
+            return df_out.iloc[0:0].copy()
+        dt_min_loc = dt_ref_loc - pd.DateOffset(months=meses_loc)
+        return df_out[df_out[col_dt] >= dt_min_loc].copy()
+
+    # Base de comparação respeita os filtros do topo (Estado/Analista/Supervisor/Vendedor)
+    df_comp_base = df_fat_filtrado.copy()
+
+    comp1, comp2 = st.columns(2)
+
+    # listas
+    lista_clientes_comp = sorted([x for x in df_comp_base[col_cliente].dropna().unique().tolist() if str(x).strip() != ""])
+    if not lista_clientes_comp:
+        st.info("Sem clientes disponíveis para comparativo (no recorte atual).")
+    else:
+        with comp1:
+            st.markdown("#### 📌 Lado A")
+            cli_A = st.selectbox("Cliente A", lista_clientes_comp, index=0, key="comp_cli_A")
+            per_A = st.selectbox(
+                "Período A",
+                ["Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses", "Tudo"],
+                index=0,
+                key="comp_per_A",
+            )
+
+        with comp2:
+            st.markdown("#### 📌 Lado B")
+            # default: mesmo cliente selecionado na tela, se existir na lista; senão pega o primeiro
+            idx_default = lista_clientes_comp.index(cli_sel) if str(cli_sel) in [str(x) for x in lista_clientes_comp] else 0
+            cli_B = st.selectbox("Cliente B", lista_clientes_comp, index=idx_default, key="comp_cli_B")
+            per_B = st.selectbox(
+                "Período B",
+                ["Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses", "Tudo"],
+                index=1 if len(["Últimos 3 meses","Últimos 6 meses","Últimos 12 meses","Tudo"]) > 1 else 0,
+                key="comp_per_B",
+            )
+
+        # prepara DF A/B
+        df_A_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_A)].copy()
+        df_B_full = df_comp_base[df_comp_base[col_cliente].astype(str) == str(cli_B)].copy()
+
+        df_A = filtrar_periodo_df(df_A_full, per_A, col_data)
+        df_B = filtrar_periodo_df(df_B_full, per_B, col_data)
+
+        def resumo_comp(df_in):
+            if df_in is None or df_in.empty:
+                return {
+                    "volume": 0.0,
+                    "pedidos": 0,
+                    "hier": pd.DataFrame(columns=["Hierarquia", "Volume", "Pedidos"]),
+                    "sku": pd.DataFrame(columns=["SKU", "Volume", "Pedidos"]),
+                }
+
+            vol = float(df_in[col_qtd].sum())
+            ped = int(df_in[col_pedido].nunique())
+
+            # hierarquia (se existir)
+            if col_hier and col_hier in df_in.columns:
+                hier_df = (
+                    df_in.groupby(col_hier)
+                    .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+                    .sort_values("Volume", ascending=False)
+                    .head(10)
+                    .reset_index()
+                    .rename(columns={col_hier: "Hierarquia"})
+                )
+            else:
+                hier_df = pd.DataFrame(columns=["Hierarquia", "Volume", "Pedidos"])
+
+            sku_df = (
+                df_in.groupby(col_sku)
+                .agg(Volume=(col_qtd, "sum"), Pedidos=(col_pedido, "nunique"))
+                .sort_values("Volume", ascending=False)
+                .head(15)
+                .reset_index()
+                .rename(columns={col_sku: "SKU"})
+            )
+
+            return {"volume": vol, "pedidos": ped, "hier": hier_df, "sku": sku_df}
+
+        resA = resumo_comp(df_A)
+        resB = resumo_comp(df_B)
+
+        # cards comparativos
+        ca1, ca2, cb1, cb2 = st.columns(4)
+        ca1.metric("Volume A", f"{resA['volume']:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        ca2.metric("Pedidos A", resA["pedidos"])
+        cb1.metric("Volume B", f"{resB['volume']:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        cb2.metric("Pedidos B", resB["pedidos"])
+
+        # tabelas lado a lado
+        t1, t2 = st.columns(2)
+
+        with t1:
+            st.markdown("##### 🏷️ Top Hierarquias (A)")
+            if resA["hier"].empty:
+                st.info("Sem hierarquias (A).")
+            else:
+                st.dataframe(resA["hier"], use_container_width=True, hide_index=True)
+
+            st.markdown("##### 📦 Top SKUs (A)")
+            if resA["sku"].empty:
+                st.info("Sem SKUs (A).")
+            else:
+                st.dataframe(resA["sku"], use_container_width=True, hide_index=True)
+
+        with t2:
+            st.markdown("##### 🏷️ Top Hierarquias (B)")
+            if resB["hier"].empty:
+                st.info("Sem hierarquias (B).")
+            else:
+                st.dataframe(resB["hier"], use_container_width=True, hide_index=True)
+
+            st.markdown("##### 📦 Top SKUs (B)")
+            if resB["sku"].empty:
+                st.info("Sem SKUs (B).")
+            else:
+                st.dataframe(resB["sku"], use_container_width=True, hide_index=True)
+
+        # (opcional) tabela única "diferença" de SKUs (só volume) - sem mexer no layout principal
+        st.markdown("##### 📊 Diferença rápida (Top SKUs) — A vs B")
+        skuA = resA["sku"][["SKU", "Volume"]].rename(columns={"Volume": "Volume_A"}) if not resA["sku"].empty else pd.DataFrame(columns=["SKU", "Volume_A"])
+        skuB = resB["sku"][["SKU", "Volume"]].rename(columns={"Volume": "Volume_B"}) if not resB["sku"].empty else pd.DataFrame(columns=["SKU", "Volume_B"])
+        df_diff = skuA.merge(skuB, on="SKU", how="outer")
+        df_diff["Volume_A"] = pd.to_numeric(df_diff["Volume_A"], errors="coerce").fillna(0)
+        df_diff["Volume_B"] = pd.to_numeric(df_diff["Volume_B"], errors="coerce").fillna(0)
+        df_diff["Diferença (A-B)"] = df_diff["Volume_A"] - df_diff["Volume_B"]
+        df_diff = df_diff.sort_values("Diferença (A-B)", ascending=False).head(20)
+
+        if df_diff.empty:
+            st.info("Sem dados suficientes para comparar SKUs.")
+        else:
+            st.dataframe(df_diff, use_container_width=True, hide_index=True)
 
 
 
