@@ -42,7 +42,7 @@ def enviar_excel_vendedor(
     ordem_colunas = [
         "HIERARQUIA DE PRODUTOS",
         "META COBERTURA",
-        "META CLIENTES (ABS)",
+        "CLIENTES",
         "POSITIVAÇÃO",
         "PENDÊNCIA",
         "META 2025",
@@ -124,7 +124,7 @@ def enviar_excel_vendedor(
 
         # Define ranges dos grupos (se existirem)
         # Grupo 1: COBERTURA X POSITIVAÇÃO (4 colunas)
-        grp1_cols = ["META COBERTURA", "META CLIENTES (ABS)", "POSITIVAÇÃO", "PENDÊNCIA"]
+        grp1_cols = ["META COBERTURA", "CLIENTES", "POSITIVAÇÃO", "PENDÊNCIA"]
         if all(c in col_idx for c in grp1_cols):
             c0 = col_idx[grp1_cols[0]]
             c1 = col_idx[grp1_cols[-1]]
@@ -2761,8 +2761,8 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final = df_final.merge(df_agrup_25, on="HIERARQUIA", how="left")
     df_final = df_final.merge(df_agrup_26, on="HIERARQUIA", how="left").fillna(0)
 
-    df_final["META CLIENTES (ABS)"] = (df_final["META COBERTURA"] * base_total).apply(math.ceil) if base_total > 0 else 0
-    df_final["PENDÊNCIA"] = (df_final["META CLIENTES (ABS)"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
+    df_final["CLIENTES"] = (df_final["META COBERTURA"] * base_total).apply(math.ceil) if base_total > 0 else 0
+    df_final["PENDÊNCIA"] = (df_final["CLIENTES"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
     df_final["CRESC 2025"] = df_final["VOLUME"] - df_final.get("META 2025", 0)
     df_final["% (VOL 2025)"] = (df_final["VOLUME"] / df_final.get("META 2025", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
     df_final["CRESC 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
@@ -2915,7 +2915,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     cols_view = [
         "HIERARQUIA DE PRODUTOS",
         "META COBERTURA",
-        "META CLIENTES (ABS)",
+        "CLIENTES",
         "POSITIVAÇÃO",
         "PENDÊNCIA",
         " ",
@@ -2950,7 +2950,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         .format(
             {
                 "META COBERTURA": "{:.0%}",
-                "META CLIENTES (ABS)": lambda v: fmt_pt_int(v),
+                "CLIENTES": lambda v: fmt_pt_int(v),
                 "POSITIVAÇÃO": lambda v: fmt_pt_int(v),
                 "PENDÊNCIA": lambda v: fmt_pt_int(v),
                 "META 2025": lambda v: fmt_pt_int(v),
