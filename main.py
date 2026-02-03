@@ -2342,7 +2342,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     st.markdown("---")
 
-    # ============================
+       # ============================
     # 8) "Compram junto" (Market Basket por pedido)
     # ============================
     st.subheader("🧠 Compram junto (combos mais frequentes)")
@@ -2378,13 +2378,23 @@ elif menu_interna == "📚 Perfil do Cliente":
             )
             df_pares["% dos pedidos"] = (df_pares["Frequência"] / pedido_skus.shape[0] * 100).round(1)
 
+            # ✅ ajuste APENAS de formatação (sem alterar lógica/cálculo)
+            df_pares_show = df_pares.copy()
+            df_pares_show["% dos pedidos"] = (
+                pd.to_numeric(df_pares_show["% dos pedidos"], errors="coerce")
+                .fillna(0)
+                .round(1)
+                .astype(str)
+                .add("%")
+            )
+
             sku_ancora = st.selectbox(
                 "Ver combinações a partir do SKU:",
                 ["(Mostrar todos)"] + sorted(df_cli[col_sku].dropna().astype(str).unique().tolist()),
                 key="sku_ancora_pairs",
             )
 
-            df_view_pares = df_pares.copy()
+            df_view_pares = df_pares_show.copy()
             if sku_ancora != "(Mostrar todos)":
                 df_view_pares = df_view_pares[
                     (df_view_pares["SKU_A"] == sku_ancora) | (df_view_pares["SKU_B"] == sku_ancora)
@@ -2397,6 +2407,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.dataframe(df_view_pares.head(30), use_container_width=True, hide_index=True)
 
     st.markdown("---")
+
 
     # ============================
     # 9) Linha do tempo (simples)
