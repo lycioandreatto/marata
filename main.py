@@ -44,7 +44,7 @@ def enviar_excel_vendedor(
         "META COBERTURA",
         "META CLIENTES (ABS)",
         "POSITIVAÇÃO",
-        "PENDÊNCIA CLIENTES",
+        "PENDÊNCIA",
         "META 2025",
         "META 2026",
         "VOLUME",
@@ -124,7 +124,7 @@ def enviar_excel_vendedor(
 
         # Define ranges dos grupos (se existirem)
         # Grupo 1: COBERTURA X POSITIVAÇÃO (4 colunas)
-        grp1_cols = ["META COBERTURA", "META CLIENTES (ABS)", "POSITIVAÇÃO", "PENDÊNCIA CLIENTES"]
+        grp1_cols = ["META COBERTURA", "META CLIENTES (ABS)", "POSITIVAÇÃO", "PENDÊNCIA"]
         if all(c in col_idx for c in grp1_cols):
             c0 = col_idx[grp1_cols[0]]
             c1 = col_idx[grp1_cols[-1]]
@@ -2762,7 +2762,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
     df_final = df_final.merge(df_agrup_26, on="HIERARQUIA", how="left").fillna(0)
 
     df_final["META CLIENTES (ABS)"] = (df_final["META COBERTURA"] * base_total).apply(math.ceil) if base_total > 0 else 0
-    df_final["PENDÊNCIA CLIENTES"] = (df_final["META CLIENTES (ABS)"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
+    df_final["PENDÊNCIA"] = (df_final["META CLIENTES (ABS)"] - df_final["POSITIVAÇÃO"]).apply(lambda x: x if x > 0 else 0)
     df_final["CRESC 2025"] = df_final["VOLUME"] - df_final.get("META 2025", 0)
     df_final["% (VOL 2025)"] = (df_final["VOLUME"] / df_final.get("META 2025", 0) * 100).replace([np.inf, -np.inf], 0).fillna(0)
     df_final["CRESC 2026"] = df_final["VOLUME"] - df_final.get("META 2026", 0)
@@ -2917,7 +2917,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         "META COBERTURA",
         "META CLIENTES (ABS)",
         "POSITIVAÇÃO",
-        "PENDÊNCIA CLIENTES",
+        "PENDÊNCIA",
         " ",
         "META 2025",
         "META 2026",
@@ -2952,7 +2952,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 "META COBERTURA": "{:.0%}",
                 "META CLIENTES (ABS)": lambda v: fmt_pt_int(v),
                 "POSITIVAÇÃO": lambda v: fmt_pt_int(v),
-                "PENDÊNCIA CLIENTES": lambda v: fmt_pt_int(v),
+                "PENDÊNCIA": lambda v: fmt_pt_int(v),
                 "META 2025": lambda v: fmt_pt_int(v),
                 "META 2026": lambda v: fmt_pt_int(v),
                 "VOLUME": lambda v: fmt_pt_int(v),
@@ -2963,7 +2963,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             }
         )
         .apply(zebra_rows, axis=1)
-        .apply(destacar_pendencia, subset=["PENDÊNCIA CLIENTES"])
+        .apply(destacar_pendencia, subset=["PENDÊNCIA"])
         .apply(destacar_negativos, subset=["CRESC 2025", "CRESC 2026"])
         .apply(limpar_espacos, subset=[" ", "  ", "   ", "    "])
         .set_table_styles(
