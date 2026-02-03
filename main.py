@@ -1816,7 +1816,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     # ✅ 4) FILTROS (Estado / Analista / Supervisor / Vendedor) - DIRETO DO FATURADO
     #    - Não muda nada do resto, só filtra a lista de clientes
     # ============================
-    st.markdown("### 🧭 Filtros (Estado / Analista / Supervisor / Vendedor)")
+    st.markdown("### 🧭 Filtros")
 
     f1, f2, f3, f4 = st.columns(4)
 
