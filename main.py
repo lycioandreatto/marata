@@ -382,13 +382,13 @@ st.markdown("""
    =============================== */
 
 section[data-testid="stSidebar"]{
-  width: 320px !important;
+  width: 320px !important;         /* ✅ largura fixa */
   min-width: 320px !important;
   max-width: 320px !important;
   background: linear-gradient(180deg, #f6f7fb 0%, #f3f4f8 100%);
 }
 
-/* padding interno */
+/* opcional: padding interno mais consistente */
 section[data-testid="stSidebar"] .stSidebarContent{
   padding: 18px 18px 12px 18px !important;
 }
@@ -398,7 +398,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"]{
   display:none !important;
 }
 
-/* tira a bolinha visual do streamlit (o "controle") */
+/* ✅ tira a bolinha visual do streamlit (o "controle") */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child{
   display:none !important;
 }
@@ -414,9 +414,9 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   display:flex;
   align-items:center;
 
-  width: 100% !important;
-  min-height: 58px;
-  height: 58px;
+  width: 100% !important;          /* ✅ todos ocupam a mesma largura */
+  min-height: 58px;                /* ✅ altura padronizada */
+  height: 58px;                    /* ✅ força igual */
   box-sizing: border-box;
 
   background: rgba(255,255,255,0.75);
@@ -429,7 +429,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 6px 18px rgba(0,0,0,0.06);
   transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-  overflow:hidden;
+  overflow: hidden; /* padrão */
 }
 
 /* bolha do ícone */
@@ -445,7 +445,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label p::first-letter{
   box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
 }
 
-/* texto padronizado */
+/* ✅ texto padronizado (mesma linha / mesmo alinhamento) */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label p{
   margin:0;
   font-size: 0.95rem;
@@ -454,8 +454,8 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label p{
   letter-spacing: .2px;
 
   line-height: 1.15;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
+  display: -webkit-box;            /* ✅ evita aumentar altura do card */
+  -webkit-line-clamp: 2;           /* ✅ no máximo 2 linhas */
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -467,57 +467,45 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
   box-shadow: 0 10px 26px rgba(255,75,75,0.10);
 }
 
-/* =========================================================
-   ✅ SELECIONADO (FUNCIONA DE VERDADE)
-   Agora usando :has(input:checked)
-   - mantém contorno do hover FIXO
-   - cria "ponte/encaixe" com a tela (sem mudar cor)
-   ========================================================= */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked){
-  background: linear-gradient(90deg, #0B5ED7 0%, #084298 100%);
+/* ===============================
+   ✅ SELECIONADO: CONTORNO FIXO + "ENCAIXE" COM A TELA
+   (sem mudar nenhuma cor)
+   =============================== */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
+  /* ativo (como já estava) */
+  background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
   border-color: rgba(255,75,75,0.85);
-  box-shadow: 0 16px 34px rgba(255,75,75,0.22);
 
-  /* contorno do hover fixo (mesma cor do hover) */
+  /* ✅ mantém o "contorno do hover" FIXO no selecionado */
   outline: 2px solid rgba(255,75,75,0.35);
   outline-offset: 0px;
 
-  /* deixa “encaixar” no lado direito */
+  /* ✅ permite desenhar a "ponte" pra fora do card */
+  overflow: visible;
+
+  /* ✅ dá sensação de encaixe com a tela principal */
   border-top-right-radius: 0px;
   border-bottom-right-radius: 0px;
-  overflow: visible;
-}
 
-/* ✅ ponte para a tela (mesma cor/alpha do hover) */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked)::after{
-  content: "";
-  position: absolute;
-  top: -1px;
-  bottom: -1px;
-  right: -18px;                 /* “entra” na área da tela */
-  width: 18px;                  /* largura da ponte */
-  background: rgba(255,75,75,0.12);
-  border-top-right-radius: 16px;
-  border-bottom-right-radius: 16px;
-
-  /* mesma ideia do hover */
-  box-shadow: 0 10px 26px rgba(255,75,75,0.10);
-  pointer-events: none;
+  /* ✅ mantém sombra do ativo + adiciona a “ponte” lateral (mesma paleta) */
+  box-shadow:
+    0 16px 34px rgba(255,75,75,0.22),
+    22px 0 0 0 rgba(255,75,75,0.12);
 }
 
 /* texto branco no ativo */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p{
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p{
   color: #ffffff !important;
 }
 
 /* bolha do ícone no ativo vira branca */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p::first-letter{
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p::first-letter{
   background: rgba(255,255,255,0.18);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
 }
 
 /* barra lateral do ativo */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked)::before{
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::before{
   content:"";
   position:absolute;
   left: 10px;
@@ -528,49 +516,18 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checke
   background: rgba(255,255,255,0.85);
 }
 
+/* brilho suave atrás do ativo */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::after{
+  content:"";
+  position:absolute;
+  inset:-40px;
+  background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.25), rgba(255,255,255,0) 60%);
+  pointer-events:none;
+}
+
 /* some label do widget */
 section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
   display:none;
-}
-
-/* ===== FIX: permitir o item "sair" do sidebar (necessário pro efeito unir) ===== */
-section[data-testid="stSidebar"],
-section[data-testid="stSidebar"] .stSidebarContent,
-section[data-testid="stSidebar"] div[role="radiogroup"]{
-  overflow: visible !important;
-}
-
-/* ===== item selecionado: pega por :has(input:checked) (mais confiável) ===== */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="radio"]:checked){
-  border-top-right-radius: 0px !important;
-  border-bottom-right-radius: 0px !important;
-
-  /* puxa o card pra “encostar” na área principal */
-  margin-right: -40px !important;
-
-  /* dá espaço pra não cortar o conector */
-  padding-right: 30px !important;
-
-  position: relative !important;
-  z-index: 60 !important;
-}
-
-/* ===== conector: prolonga o mesmo fundo do item selecionado para a direita ===== */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="radio"]:checked)::after{
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -75px;      /* joga pra fora do sidebar */
-  width: 90px;       /* “ponte” até a tela */
-  height: 100%;
-  background: linear-gradient(90deg,#0b63d6 0%,#004ead 55%,#ffffff 100%);   /* usa a MESMA cor/gradiente do item selecionado */
-  border-top-right-radius: 16px;
-  border-bottom-right-radius: 16px;
-
-  /* sombra suave igual ao resto */
-  box-shadow: 10px 0 22px rgba(0,0,0,0.06);
-
-  pointer-events: none;
 }
 
 
