@@ -711,7 +711,7 @@ if not st.session_state.logado:
             logo_path = p
             break
 
-    # ✅ CSS SAFE (não quebra mobile) + ✅ FIX do "olhinho" + ✅ FIX do botão ficar “bolinha” + ✅ remove a “barra branca”
+    # ✅ CSS SAFE (não quebra mobile) + ✅ FIX do "olhinho" + ✅ remove a “barra branca” + ✅ título realmente centralizado
     st.markdown("""
     <style>
       /* Remove “barra branca” do topo (Header do Streamlit) */
@@ -777,7 +777,7 @@ if not st.session_state.logado:
         box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
       }
 
-      /* ✅ OLHINHO DA SENHA: mantém pequeno (só nos TextInput) */
+      /* ✅ OLHINHO DA SENHA: pequeno e CENTRALIZADO no círculo */
       div[data-testid="stTextInput"] button{
         width: 38px !important;
         min-width: 38px !important;
@@ -787,9 +787,19 @@ if not st.session_state.logado:
         box-shadow: none !important;
         border: 1px solid rgba(17,17,17,0.08) !important;
         background: rgba(255,255,255,0.65) !important;
+
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
       }
 
-      /* ✅ BOTÃO DO FORM: aplica NO submit oficial do Streamlit (não vira “bolinha”) */
+      /* Centraliza o ícone (SVG) dentro do botão */
+      div[data-testid="stTextInput"] button svg{
+        display: block !important;
+        margin: 0 !important;
+      }
+
+      /* ✅ BOTÃO DO FORM (submit) */
       div[data-testid="stFormSubmitButton"] button{
         width: 100% !important;
         border-radius: 14px !important;
@@ -797,7 +807,7 @@ if not st.session_state.logado:
         font-weight: 900 !important;
         border: 1px solid rgba(17,17,17,0.08) !important;
         box-shadow: 0 10px 28px rgba(0,0,0,0.08) !important;
-        background: rgba(255,255,255,0.70) !important;  /* evita “branco estourado” */
+        background: rgba(255,255,255,0.70) !important;
       }
 
       /* Alerts arredondados */
@@ -809,8 +819,8 @@ if not st.session_state.logado:
 
     st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
 
-    # Header (logo + título)
-    col_logo, col_titulo = st.columns([0.12, 0.88], vertical_alignment="center")
+    # ✅ Header (logo | título central | espaço) => título fica REALMENTE centralizado na página
+    col_logo, col_mid, col_spacer = st.columns([0.12, 0.76, 0.12], vertical_alignment="center")
 
     with col_logo:
         if logo_path:
@@ -818,9 +828,12 @@ if not st.session_state.logado:
         else:
             st.write("")
 
-    with col_titulo:
+    with col_mid:
         st.markdown("<h1 class='login-h1'>GESTÃO DE VISITAS PDV</h1>", unsafe_allow_html=True)
         st.markdown("<div class='login-sub'>Acesse com seu usuário e senha para continuar</div>", unsafe_allow_html=True)
+
+    with col_spacer:
+        st.write("")
 
     st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
@@ -881,6 +894,7 @@ if not st.session_state.logado:
 
     st.markdown("</div></div>", unsafe_allow_html=True)  # fecha login-card e login-wrap
     st.stop()
+
 
 
 
