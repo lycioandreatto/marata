@@ -1738,6 +1738,12 @@ elif menu_interna == "📚 Perfil do Cliente":
         fallback="OrdCliente",
     )
 
+    # ✅ colunas para os filtros pedidos (vindas do FATURADO)
+    col_analista = pick_col(df_fat, ["ANALISTA"], fallback=None)
+    col_estado = pick_col(df_fat, ["EscrV", "ESCRV"], fallback=None)  # Estado
+    col_vendedor = pick_col(df_fat, ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS"], fallback=None)  # Vendedor
+    col_supervisor = pick_col(df_fat, ["EqvS", "EQVS"], fallback=None)  # Código do supervisor
+
     # valida mínimos
     faltando = []
     if not col_data:
@@ -1751,9 +1757,26 @@ elif menu_interna == "📚 Perfil do Cliente":
     if col_pedido not in df_fat.columns:
         faltando.append("OrdCliente (pedido)")
 
+    # valida colunas dos filtros (não trava a página; só avisa e desliga o filtro correspondente)
+    faltando_filtros = []
+    if not col_analista:
+        faltando_filtros.append("ANALISTA")
+    if not col_estado:
+        faltando_filtros.append("EscrV (Estado)")
+    if not col_vendedor:
+        faltando_filtros.append("Região de vendas (Vendedor)")
+    if not col_supervisor:
+        faltando_filtros.append("EqvS (Supervisor)")
+
     if faltando:
         st.error("Colunas obrigatórias não encontradas no FATURADO: " + ", ".join(faltando))
         st.stop()
+
+    if faltando_filtros:
+        st.info(
+            "Filtros não disponíveis (colunas não encontradas no FATURADO): "
+            + ", ".join(faltando_filtros)
+        )
 
     # ============================
     # 3) Limpeza/normalização
@@ -1767,6 +1790,16 @@ elif menu_interna == "📚 Perfil do Cliente":
     df_fat[col_cliente] = df_fat[col_cliente].apply(limpar_cod)
     df_fat[col_pedido] = df_fat[col_pedido].apply(limpar_cod)
 
+    # normaliza também as colunas dos filtros (se existirem)
+    if col_analista and col_analista in df_fat.columns:
+        df_fat[col_analista] = df_fat[col_analista].astype(str).str.strip().str.upper()
+    if col_estado and col_estado in df_fat.columns:
+        df_fat[col_estado] = df_fat[col_estado].astype(str).str.strip().str.upper()
+    if col_vendedor and col_vendedor in df_fat.columns:
+        df_fat[col_vendedor] = df_fat[col_vendedor].astype(str).str.strip().str.upper()
+    if col_supervisor and col_supervisor in df_fat.columns:
+        df_fat[col_supervisor] = df_fat[col_supervisor].apply(limpar_cod).upper()
+
     df_fat[col_qtd] = pd.to_numeric(df_fat[col_qtd], errors="coerce").fillna(0)
     df_fat[col_rec] = pd.to_numeric(df_fat[col_rec], errors="coerce").fillna(0)
 
@@ -1774,91 +1807,76 @@ elif menu_interna == "📚 Perfil do Cliente":
     df_fat = df_fat[df_fat[col_data].notna()].copy()
 
     # ============================
-    # ✅ 4) FILTROS "CADASTRAIS" (Estado / Analista / Supervisor / Vendedor)
+    # ✅ 4) FILTROS (Estado / Analista / Supervisor / Vendedor) - DIRETO DO FATURADO
     #    - Não muda nada do resto, só filtra a lista de clientes
-    #    - Puxa tudo da BASE (df_base) e cruza pelo código do cliente
     # ============================
     st.markdown("### 🧭 Filtros (Estado / Analista / Supervisor / Vendedor)")
 
-    # tenta achar a coluna de código do cliente na BASE
-    col_cli_base = next(
-        (
-            c
-            for c in (df_base.columns if (df_base is not None and not df_base.empty) else [])
-            if str(c).strip().upper() in ["CLIENTE", "CÓDIGO CLIENTE", "COD CLIENTE", "CÓDIGO", "CODIGO CLIENTE"]
-        ),
-        None,
-    )
-
-    # cria um DF de mapeamento cliente -> atributos (se BASE existir)
-    df_map = None
-    if df_base is not None and (not df_base.empty) and col_cli_base:
-        df_map = df_base.copy()
-
-        # normaliza colunas de texto
-        for c in ["Estado", "ANALISTA", "SUPERVISOR", "VENDEDOR"]:
-            if c in df_map.columns:
-                df_map[c] = df_map[c].astype(str).str.strip().str.upper()
-
-        # normaliza código do cliente
-        df_map[col_cli_base] = df_map[col_cli_base].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
-
-        cols_keep = [col_cli_base]
-        for c in ["Estado", "ANALISTA", "SUPERVISOR", "VENDEDOR"]:
-            if c in df_map.columns:
-                cols_keep.append(c)
-
-        df_map = df_map[cols_keep].drop_duplicates(subset=[col_cli_base]).copy()
-
-        # só mantém clientes que existem no FATURADO (pra não poluir filtro)
-        clientes_fat = set(df_fat[col_cliente].dropna().astype(str).str.strip().str.replace(r"\.0$", "", regex=True).tolist())
-        df_map = df_map[df_map[col_cli_base].isin(clientes_fat)].copy()
-
-    # UI dos filtros (alinhado em cima)
     f1, f2, f3, f4 = st.columns(4)
 
-    if df_map is None or df_map.empty:
-        with f1:
-            st.selectbox("Estado", ["(Base não disponível)"], disabled=True, key="f_estado_cli")
-        with f2:
-            st.selectbox("Analista", ["(Base não disponível)"], disabled=True, key="f_analista_cli")
-        with f3:
-            st.selectbox("Supervisor", ["(Base não disponível)"], disabled=True, key="f_supervisor_cli")
-        with f4:
-            st.selectbox("Vendedor", ["(Base não disponível)"], disabled=True, key="f_vendedor_cli")
+    # base para filtros (começa pelo df_fat)
+    df_fat_filtrado = df_fat.copy()
 
-        df_fat_filtrado = df_fat.copy()
+    # opções
+    estados = ["(Todos)"]
+    analistas = ["(Todos)"]
+    supervisores = ["(Todos)"]
+    vendedores = ["(Todos)"]
 
-    else:
-        estados = ["(Todos)"] + sorted([x for x in df_map["Estado"].dropna().unique().tolist()]) if "Estado" in df_map.columns else ["(Todos)"]
-        analistas = ["(Todos)"] + sorted([x for x in df_map["ANALISTA"].dropna().unique().tolist()]) if "ANALISTA" in df_map.columns else ["(Todos)"]
-        supervisores = ["(Todos)"] + sorted([x for x in df_map["SUPERVISOR"].dropna().unique().tolist()]) if "SUPERVISOR" in df_map.columns else ["(Todos)"]
-        vendedores = ["(Todos)"] + sorted([x for x in df_map["VENDEDOR"].dropna().unique().tolist()]) if "VENDEDOR" in df_map.columns else ["(Todos)"]
+    if col_estado and col_estado in df_fat.columns:
+        estados += sorted([x for x in df_fat[col_estado].dropna().unique().tolist() if str(x).strip() != ""])
+    if col_analista and col_analista in df_fat.columns:
+        analistas += sorted([x for x in df_fat[col_analista].dropna().unique().tolist() if str(x).strip() != ""])
+    if col_supervisor and col_supervisor in df_fat.columns:
+        supervisores += sorted([x for x in df_fat[col_supervisor].dropna().unique().tolist() if str(x).strip() != ""])
+    if col_vendedor and col_vendedor in df_fat.columns:
+        vendedores += sorted([x for x in df_fat[col_vendedor].dropna().unique().tolist() if str(x).strip() != ""])
 
-        with f1:
-            estado_sel = st.selectbox("Estado", estados, index=0, key="f_estado_cli")
-        with f2:
-            analista_sel = st.selectbox("Analista", analistas, index=0, key="f_analista_cli")
-        with f3:
-            supervisor_sel = st.selectbox("Supervisor", supervisores, index=0, key="f_supervisor_cli")
-        with f4:
-            vendedor_sel = st.selectbox("Vendedor", vendedores, index=0, key="f_vendedor_cli")
+    with f1:
+        estado_sel = st.selectbox(
+            "Estado",
+            estados,
+            index=0,
+            disabled=(len(estados) == 1),
+            key="f_estado_cli",
+        )
+    with f2:
+        analista_sel = st.selectbox(
+            "Analista",
+            analistas,
+            index=0,
+            disabled=(len(analistas) == 1),
+            key="f_analista_cli",
+        )
+    with f3:
+        supervisor_sel = st.selectbox(
+            "Supervisor",
+            supervisores,
+            index=0,
+            disabled=(len(supervisores) == 1),
+            key="f_supervisor_cli",
+        )
+    with f4:
+        vendedor_sel = st.selectbox(
+            "Vendedor",
+            vendedores,
+            index=0,
+            disabled=(len(vendedores) == 1),
+            key="f_vendedor_cli",
+        )
 
-        df_map_f = df_map.copy()
+    # aplica filtros no FATURADO (só afeta a lista de clientes e seleção)
+    if col_estado and col_estado in df_fat_filtrado.columns and estado_sel != "(Todos)":
+        df_fat_filtrado = df_fat_filtrado[df_fat_filtrado[col_estado] == estado_sel].copy()
 
-        if "Estado" in df_map_f.columns and estado_sel != "(Todos)":
-            df_map_f = df_map_f[df_map_f["Estado"] == estado_sel]
-        if "ANALISTA" in df_map_f.columns and analista_sel != "(Todos)":
-            df_map_f = df_map_f[df_map_f["ANALISTA"] == analista_sel]
-        if "SUPERVISOR" in df_map_f.columns and supervisor_sel != "(Todos)":
-            df_map_f = df_map_f[df_map_f["SUPERVISOR"] == supervisor_sel]
-        if "VENDEDOR" in df_map_f.columns and vendedor_sel != "(Todos)":
-            df_map_f = df_map_f[df_map_f["VENDEDOR"] == vendedor_sel]
+    if col_analista and col_analista in df_fat_filtrado.columns and analista_sel != "(Todos)":
+        df_fat_filtrado = df_fat_filtrado[df_fat_filtrado[col_analista] == analista_sel].copy()
 
-        clientes_permitidos = set(df_map_f[col_cli_base].dropna().astype(str).tolist())
+    if col_supervisor and col_supervisor in df_fat_filtrado.columns and supervisor_sel != "(Todos)":
+        df_fat_filtrado = df_fat_filtrado[df_fat_filtrado[col_supervisor] == supervisor_sel].copy()
 
-        # filtra o FATURADO só pra formar a lista de clientes e a seleção
-        df_fat_filtrado = df_fat[df_fat[col_cliente].isin(clientes_permitidos)].copy()
+    if col_vendedor and col_vendedor in df_fat_filtrado.columns and vendedor_sel != "(Todos)":
+        df_fat_filtrado = df_fat_filtrado[df_fat_filtrado[col_vendedor] == vendedor_sel].copy()
 
     st.markdown("---")
 
@@ -1869,7 +1887,9 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     c1, c2 = st.columns([2, 1])
 
-    lista_clientes = sorted([x for x in df_fat_filtrado[col_cliente].dropna().unique().tolist() if str(x).strip() != ""])
+    lista_clientes = sorted(
+        [x for x in df_fat_filtrado[col_cliente].dropna().unique().tolist() if str(x).strip() != ""]
+    )
     if not lista_clientes:
         st.warning("Não encontrei clientes no FATURADO com os filtros selecionados.")
         st.stop()
@@ -1885,23 +1905,37 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.warning("Esse cliente não tem faturamento.")
         st.stop()
 
-    # ✅ Mostra os atributos do cliente (sem mudar nada do resto)
-    if df_map is not None and not df_map.empty and col_cli_base:
-        info_cli = df_map[df_map[col_cli_base] == str(cli_sel)].head(1)
-        if not info_cli.empty:
-            i1, i2, i3, i4 = st.columns(4)
-            with i1:
-                st.caption("Estado")
-                st.write(info_cli["Estado"].iloc[0] if "Estado" in info_cli.columns else "-")
-            with i2:
-                st.caption("Analista")
-                st.write(info_cli["ANALISTA"].iloc[0] if "ANALISTA" in info_cli.columns else "-")
-            with i3:
-                st.caption("Supervisor")
-                st.write(info_cli["SUPERVISOR"].iloc[0] if "SUPERVISOR" in info_cli.columns else "-")
-            with i4:
-                st.caption("Vendedor")
-                st.write(info_cli["VENDEDOR"].iloc[0] if "VENDEDOR" in info_cli.columns else "-")
+    # ✅ Mostra os atributos do cliente (vindos do próprio FATURADO filtrado)
+    info_cli = df_cli_full.head(1)
+    i1, i2, i3, i4 = st.columns(4)
+
+    with i1:
+        st.caption("Estado")
+        if col_estado and col_estado in info_cli.columns:
+            st.write(info_cli[col_estado].iloc[0] if str(info_cli[col_estado].iloc[0]).strip() else "-")
+        else:
+            st.write("-")
+
+    with i2:
+        st.caption("Analista")
+        if col_analista and col_analista in info_cli.columns:
+            st.write(info_cli[col_analista].iloc[0] if str(info_cli[col_analista].iloc[0]).strip() else "-")
+        else:
+            st.write("-")
+
+    with i3:
+        st.caption("Supervisor")
+        if col_supervisor and col_supervisor in info_cli.columns:
+            st.write(info_cli[col_supervisor].iloc[0] if str(info_cli[col_supervisor].iloc[0]).strip() else "-")
+        else:
+            st.write("-")
+
+    with i4:
+        st.caption("Vendedor")
+        if col_vendedor and col_vendedor in info_cli.columns:
+            st.write(info_cli[col_vendedor].iloc[0] if str(info_cli[col_vendedor].iloc[0]).strip() else "-")
+        else:
+            st.write("-")
 
     # aplica filtro principal de período (o resto da tela)
     df_cli = df_cli_full.copy()
@@ -1941,13 +1975,11 @@ elif menu_interna == "📚 Perfil do Cliente":
         freq_media = 0
 
     # ✅ NOVO (1/3): RISCO DE ATRASO (FOCO FREQUÊNCIA)
-    # score = dias sem comprar / frequência média
     if freq_media and freq_media > 0:
         risco_atraso = dias_sem / freq_media
     else:
         risco_atraso = None
 
-    # label do risco
     if risco_atraso is None:
         risco_txt = "Sem base"
         risco_delta = None
@@ -1955,10 +1987,9 @@ elif menu_interna == "📚 Perfil do Cliente":
     else:
         risco_txt = f"{risco_atraso:.2f}x"
         risco_help = "Dias sem comprar dividido pela frequência média (dias) entre pedidos."
-        # delta “pra cima” se > 1 (atrasando)
         risco_delta = f"{(risco_atraso - 1):+.2f}" if risco_atraso >= 1 else f"{(risco_atraso - 1):+.2f}"
 
-    # Cards (ajustado pro comercial de volume)
+    # Cards
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Última compra", ultima_compra.strftime("%d/%m/%Y"))
     m2.metric("Dias sem comprar", dias_sem)
@@ -1967,7 +1998,6 @@ elif menu_interna == "📚 Perfil do Cliente":
     m5.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
     m6.metric("Risco de atraso", risco_txt, delta=risco_delta, help=risco_help)
 
-    # Alert visual simples
     if risco_atraso is not None:
         if risco_atraso > 1.5:
             st.warning("⚠️ Cliente acima do padrão de compra (alto risco de estar atrasado).")
@@ -2032,7 +2062,6 @@ elif menu_interna == "📚 Perfil do Cliente":
             df_abc["% Volume"] = (df_abc["Volume"] / vol_total_abc * 100)
             df_abc["% Acum."] = df_abc["% Volume"].cumsum()
 
-            # Classificação ABC (80/95)
             def class_abc(p):
                 if p <= 80:
                     return "A"
@@ -2042,7 +2071,6 @@ elif menu_interna == "📚 Perfil do Cliente":
 
             df_abc["Classe"] = df_abc["% Acum."].apply(class_abc)
 
-            # Resumo por classe
             resumo_abc = (
                 df_abc.groupby("Classe")
                 .agg(
@@ -2061,8 +2089,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             with cB:
                 st.caption("A = até 80% do volume acumulado | B = 80–95% | C = 95–100%")
                 st.dataframe(
-                    df_abc[[col_sku, "Classe", "Volume", "% Volume", "% Acum.", "Pedidos"]]
-                    .head(30),
+                    df_abc[[col_sku, "Classe", "Volume", "% Volume", "% Acum.", "Pedidos"]].head(30),
                     use_container_width=True,
                     hide_index=True,
                 )
