@@ -1143,8 +1143,8 @@ if menu == "📅 Agendamentos do Dia":
                 st.subheader(f"⚙️ Detalhes: {sel_row.get('CLIENTE','')}")
 
                 # ✅ Status
-                status_list = ["Planejado", "Realizado", "Reagendado"]
-                status_atual = sel_row["STATUS"] if sel_row.get("STATUS") in status_list else "Planejado"
+                status_list = ["Agendado", "Realizado", "Reagendado"]
+                status_atual = sel_row["STATUS"] if sel_row.get("STATUS") in status_list else "Agendado"
                 novo_status = st.selectbox("Status:", status_list, index=status_list.index(status_atual))
 
                 # ✅ Auditoria
@@ -1648,261 +1648,189 @@ elif menu == "📊 Dashboard de Controle":
         df_dash['% Conclusão'] = df_dash.apply(lambda r: f"{(r['Já Agendados']/r['Total na Base']*100):.1f}%" if r['Total na Base'] > 0 else "0.0%", axis=1)
         st.dataframe(df_dash.drop(columns=['VENDEDOR_y'], errors='ignore'), use_container_width=True, hide_index=True)
 
-               # --- CONVERSÃO E GAPS COM AGRUPAMENTO EXATO ---
+        # --- CONVERSÃO E GAPS COM AGRUPAMENTO EXATO ---
         st.markdown("---")
         st.subheader("🎯 Conversão e Gap de Mix (SKUS)")
-
+        
         try:
             df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
             df_skus_ref = conn.read(spreadsheet=url_planilha, worksheet="SKUS")
-
             df_fat.columns = [str(c).strip() for c in df_fat.columns]
             df_skus_ref.columns = [str(c).strip() for c in df_skus_ref.columns]
 
-            # =========================
-            # FUNÇÕES / PADRONIZAÇÃO
-            # =========================
-            def limpar_cod(val):
-                if pd.isnull(val):
-                    return ""
-                s = str(val).strip()
-                # remove ".0" quando vem do excel
-                if s.endswith(".0"):
-                    s = s[:-2]
-                # pega só antes do ponto se vier "123.45"
-                s = s.split(".")[0].strip()
-                return s
-
-            # =========================
-            # ACHAR COLUNAS DO FATURADO (SEM POSIÇÃO FIXA)
-            # =========================
-            # tenta achar coluna de código do cliente
-            col_cod_fat = next(
-                (
-                    c for c in df_fat.columns
-                    if ("CLIENT" in c.upper() and "COD" in c.upper())
-                    or ("CÓD" in c.upper() and "CLIENT" in c.upper())
-                    or ("ORDCLIENTE" in c.upper())
-                    or (c.upper() in ["CLIENTE", "CODCLIENTE", "CÓDIGO CLIENTE", "COD_CLIENTE"])
-                ),
-                None
-            )
-
-            # tenta achar coluna de data faturamento
-            col_data_fat = next(
-                (
-                    c for c in df_fat.columns
-                    if ("DATA" in c.upper() and ("FAT" in c.upper() or "FAT." in c.upper()))
-                    or (c.upper() in ["DATA FAT.", "DATA FAT", "DATA_FAT", "DATAFAT"])
-                ),
-                None
-            )
-
-            # hierarquia / sku no faturado (mantém sua lógica, mas mais segura)
-            col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), None)
-            col_s_fat = next((c for c in df_fat.columns if any(x in c.upper() for x in ["ARTIGO", "SKU"])), None)
-
-            # validações mínimas
-            if col_cod_fat is None:
-                st.error("Não encontrei no FATURADO a coluna de CÓDIGO DO CLIENTE (ex: OrdCliente / Cód Cliente).")
-                st.stop()
-            if col_h_fat is None or col_s_fat is None:
-                st.error("Não encontrei no FATURADO as colunas de HIERARQUIA e/ou SKU/ARTIGO.")
-                st.stop()
-
-            # =========================
-            # REFERÊNCIA SKUS (ALVO)
-            # =========================
+            # --- MAPEAMENTO INTELIGENTE (CORREÇÃO DO ERRO 'DESCRIÇÃO') ---
             col_h_ref = next((c for c in df_skus_ref.columns if "HIERARQUIA" in c.upper()), "Hierarquia de produtos")
             col_sku_ref = next((c for c in df_skus_ref.columns if any(x in c.upper() for x in ["SKU", "ARTIGO"])), "SKU")
+            # Busca dinâmica: Aceita DESCRIÇÃO, DESCRICAO, DESC. ou TEXTO
             col_desc_ref = next((c for c in df_skus_ref.columns if any(x in c.upper() for x in ["DESC", "TEXTO", "NOME"])), col_sku_ref)
 
             def agrupar_hierarquia(nome):
                 n = str(nome).upper().strip()
-                if n in ["DESCARTAVEIS COPOS", "DESCARTAVEIS POTES", "DESCARTAVEIS PRATOS", "DESCARTAVEIS TAMPAS"]:
-                    return "DESCARTAVEIS"
-                if n in ["MILHO", "MILHO CANJICA", "MILHO CANJIQUINHA", "MILHO CREME MILHO", "MILHO FUBA"]:
-                    return "MILHO"
-                if n in ["MOLHOS ALHO", "MOLHOS ALHO PICANTE"]:
-                    return "MOLHOS ALHO"
-                if n in ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]:
-                    return "PIMENTA CONSERVA"
+                if n in ["DESCARTAVEIS COPOS", "DESCARTAVEIS POTES", "DESCARTAVEIS PRATOS", "DESCARTAVEIS TAMPAS"]: return "DESCARTAVEIS"
+                if n in ["MILHO", "MILHO CANJICA", "MILHO CANJIQUINHA", "MILHO CREME MILHO", "MILHO FUBA"]: return "MILHO"
+                if n in ["MOLHOS ALHO", "MOLHOS ALHO PICANTE"]: return "MOLHOS ALHO"
+                if n in ["PIMENTA CONSERVA", "PIMENTA CONSERVA BIQUINHO", "PIMENTA CONSERVA PASTA"]: return "PIMENTA CONSERVA"
                 return n
 
-            df_skus_ref["H_AGRUPADA"] = df_skus_ref[col_h_ref].apply(agrupar_hierarquia)
-            total_h_alvo = df_skus_ref["H_AGRUPADA"].nunique()
+            df_skus_ref['H_AGRUPADA'] = df_skus_ref[col_h_ref].apply(agrupar_hierarquia)
+            total_h_alvo = df_skus_ref['H_AGRUPADA'].nunique()
             total_s_alvo = df_skus_ref[col_sku_ref].nunique()
 
-            # =========================
-            # BASE + AGENDA: DEFINIR QUEM É "AGENDADO"
-            # (aqui é onde mais dá erro se o código estiver diferente)
-            # =========================
-            # agenda do filtro atual
-            agenda_no_filtro = df_agenda[df_agenda["CÓDIGO CLIENTE"].isin(df_base_filtrada[col_cliente_base])].copy()
+            col_cod_fat = df_fat.columns[10] 
+            col_h_fat = next((c for c in df_fat.columns if "HIERARQUIA" in c.upper()), col_h_ref)
+            col_s_fat = next((c for c in df_fat.columns if any(x in c.upper() for x in ["ARTIGO", "SKU"])), col_sku_ref)
+            
+            df_fat['H_AGRUPADA'] = df_fat[col_h_fat].apply(agrupar_hierarquia)
+            def limpar_cod(val): return str(val).split('.')[0].strip() if pd.notnull(val) else ""
+            df_fat['Cod_Limpo'] = df_fat[col_cod_fat].apply(limpar_cod)
+            
+            df_fat_resumo = df_fat.groupby('Cod_Limpo').agg({
+                'OrdCliente': 'nunique', 'Data fat.': 'max', 'H_AGRUPADA': 'nunique', col_s_fat: 'nunique'
+            }).reset_index()
+            df_fat_resumo.columns = ['Cod_Cliente', 'Qtd_Pedidos', 'Ultima_Data_Fat', 'H_Vendidas', 'S_Vendidos']
 
-            # considera agendado se tem REGISTRO válido e não está reprovado
-            if "REGISTRO" in agenda_no_filtro.columns:
-                agenda_no_filtro["REG_LIMPO"] = agenda_no_filtro["REGISTRO"].astype(str).fillna("-").str.strip()
-                agenda_no_filtro["EH_AGENDADO"] = (agenda_no_filtro["REG_LIMPO"].ne("-")) & (agenda_no_filtro["REG_LIMPO"].ne(""))
-            else:
-                agenda_no_filtro["EH_AGENDADO"] = False
-
-            # tira reprovados se existir coluna APROVACAO/STATUS
-            if "APROVACAO" in agenda_no_filtro.columns:
-                agenda_no_filtro = agenda_no_filtro[agenda_no_filtro["APROVACAO"].astype(str).str.upper() != "REPROVADO"].copy()
-            if "STATUS" in agenda_no_filtro.columns:
-                agenda_no_filtro = agenda_no_filtro[agenda_no_filtro["STATUS"].astype(str).str.upper() != "REPROVADO"].copy()
-
-            # lista de clientes agendados
-            agenda_no_filtro["COD_LIMPO_AGENDA"] = agenda_no_filtro["CÓDIGO CLIENTE"].apply(limpar_cod)
-            clientes_agendados = (
-                agenda_no_filtro[agenda_no_filtro["EH_AGENDADO"] == True]["COD_LIMPO_AGENDA"]
-                .dropna().astype(str).unique().tolist()
-            )
-
-            # =========================
-            # FATURADO: RESUMO POR CLIENTE
-            # =========================
-            df_fat["Cod_Limpo"] = df_fat[col_cod_fat].apply(limpar_cod)
-            df_fat["H_AGRUPADA"] = df_fat[col_h_fat].apply(agrupar_hierarquia)
-
-            # data (se existir)
-            if col_data_fat is not None:
-                df_fat["_DATA_FAT_OK"] = pd.to_datetime(df_fat[col_data_fat], errors="coerce", dayfirst=True)
-            else:
-                df_fat["_DATA_FAT_OK"] = pd.NaT
-
-            df_fat_resumo = df_fat.groupby("Cod_Limpo").agg(
-                Qtd_Pedidos=("Cod_Limpo", "size"),
-                Ultima_Data_Fat=("_DATA_FAT_OK", "max"),
-                H_Vendidas=("H_AGRUPADA", "nunique"),
-                S_Vendidos=(col_s_fat, "nunique"),
-            ).reset_index()
-
-            df_fat_resumo = df_fat_resumo.rename(columns={"Cod_Limpo": "Cod_Cliente"})
-
-            # =========================
-            # BASE DETALHE (filtrada) + conversão
-            # =========================
-            df_base_detalhe = df_base_filtrada.copy()
-            df_base_detalhe["Cliente_Limpo"] = df_base_detalhe[col_cliente_base].apply(limpar_cod)
-
-            df_base_detalhe["STATUS AGENDAMENTO"] = df_base_detalhe["Cliente_Limpo"].apply(
-                lambda x: "AGENDADO" if x in clientes_agendados else "PENDENTE"
-            )
-
-            df_comp = pd.merge(
-                df_base_detalhe,
-                df_fat_resumo,
-                left_on="Cliente_Limpo",
-                right_on="Cod_Cliente",
-                how="left",
-            )
-
-            # quem é agendado de fato
-            df_agendados_ativos = df_comp[df_comp["STATUS AGENDAMENTO"] == "AGENDADO"].copy()
-
+            df_base_detalhe['Cliente_Limpo'] = df_base_detalhe[col_cliente_base].apply(limpar_cod)
+            df_comp = pd.merge(df_base_detalhe, df_fat_resumo, left_on='Cliente_Limpo', right_on='Cod_Cliente', how='left').fillna(0)
+            df_agendados_ativos = df_comp[df_comp['STATUS AGENDAMENTO'] == 'AGENDADO'].copy()
+            
             # Cards de Métricas
-            df_agendados_ativos["Qtd_Pedidos"] = pd.to_numeric(df_agendados_ativos["Qtd_Pedidos"], errors="coerce").fillna(0)
-            t_ag = len(df_agendados_ativos)
-            v_ag = len(df_agendados_ativos[df_agendados_ativos["Qtd_Pedidos"] > 0])
-
+            t_ag, v_ag = len(df_agendados_ativos), len(df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0])
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Clientes Agendados", t_ag)
             c2.metric("Agendados com Venda", v_ag)
-            c3.metric("Taxa de Conversão", f"{(v_ag / t_ag * 100 if t_ag > 0 else 0):.1f}%")
-            c4.metric("Total de Pedidos", int(df_agendados_ativos["Qtd_Pedidos"].sum()))
+            c3.metric("Taxa de Conversão", f"{(v_ag/t_ag*100 if t_ag > 0 else 0):.1f}%")
+            c4.metric("Total de Pedidos", int(df_agendados_ativos['Qtd_Pedidos'].sum()))
 
             with st.expander("🔍 Detalhes de GAPs e Exportação", expanded=True):
-                df_conv = df_agendados_ativos[df_agendados_ativos["Qtd_Pedidos"] > 0].copy()
-
-                df_conv["H_Vendidas"] = pd.to_numeric(df_conv["H_Vendidas"], errors="coerce").fillna(0)
-                df_conv["S_Vendidos"] = pd.to_numeric(df_conv["S_Vendidos"], errors="coerce").fillna(0)
-
-                df_conv["GAP FAMÍLIA"] = (total_h_alvo - df_conv["H_Vendidas"]).clip(lower=0).astype(int)
-                df_conv["GAP SKU"] = (total_s_alvo - df_conv["S_Vendidos"]).clip(lower=0).astype(int)
-
-                df_conv["ÚLT. FAT."] = pd.to_datetime(df_conv["Ultima_Data_Fat"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("-")
-
-                df_view = df_conv[[col_cliente_base, col_nome_base, "H_Vendidas", "GAP FAMÍLIA", "S_Vendidos", "GAP SKU", "ÚLT. FAT."]].copy()
-                df_view.columns = ["CÓDIGO", "NOME", "FAM. ATUAIS", "GAP FAM", "SKU ATUAIS", "GAP SKU", "ÚLT. FAT."]
+                df_conv = df_agendados_ativos[df_agendados_ativos['Qtd_Pedidos'] > 0].copy()
+                df_conv['GAP FAMÍLIA'] = (total_h_alvo - df_conv['H_Vendidas']).clip(lower=0).astype(int)
+                df_conv['GAP SKU'] = (total_s_alvo - df_conv['S_Vendidos']).clip(lower=0).astype(int)
+                df_conv['ÚLT. FAT.'] = pd.to_datetime(df_conv['Ultima_Data_Fat'], errors='coerce').dt.strftime('%d/%m/%Y').fillna("-")
+                
+                df_view = df_conv[[col_cliente_base, col_nome_base, 'H_Vendidas', 'GAP FAMÍLIA', 'S_Vendidos', 'GAP SKU', 'ÚLT. FAT.']].copy()
+                df_view.columns = ['CÓDIGO', 'NOME', 'FAM. ATUAIS', 'GAP FAM', 'SKU ATUAIS', 'GAP SKU', 'ÚLT. FAT.']
                 df_view.insert(0, "Selecionar", False)
 
                 edited_df = st.data_editor(df_view, use_container_width=True, hide_index=True, key="editor_gap")
-                sel_cods = [str(x) for x in edited_df[edited_df["Selecionar"] == True]["CÓDIGO"].tolist()]
+                sel_cods = [str(x) for x in edited_df[edited_df['Selecionar'] == True]['CÓDIGO'].tolist()]
 
+                # ... (dentro do if sel_cods:)
                 if sel_cods:
                     output_ex = io.BytesIO()
+                    
+                    # Lista para consolidar os dados de todos os clientes selecionados
                     dados_consolidados = []
 
                     for cod in sel_cods:
                         c_l = limpar_cod(cod)
-                        info_cli = df_base_detalhe[df_base_detalhe["Cliente_Limpo"] == c_l].iloc[0]
-
-                        ja_comprou_cods = df_fat[df_fat["Cod_Limpo"] == c_l][col_s_fat].unique()
-
+                        # Localiza info do cliente na base filtrada
+                        info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == c_l].iloc[0]
+                        
+                        # Identifica o que ele já comprou
+                        ja_comprou_cods = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
+                        
+                        # Itera sobre a referência total de SKUs para classificar cada um
                         for _, row_ref in df_skus_ref.iterrows():
                             sku_id = row_ref[col_sku_ref]
                             status = "COMPRADO" if sku_id in ja_comprou_cods else "FALTANTE"
-
+                            
                             dados_consolidados.append({
                                 "ANALISTA": info_cli[col_ana_base],
                                 "SUPERVISOR": info_cli[col_sup_base],
                                 "VENDEDOR": info_cli[col_vend_base],
                                 "CÓD. CLIENTE": cod,
                                 "CLIENTE": info_cli[col_nome_base],
-                                "HIERARQUIA": row_ref["H_AGRUPADA"],
+                                "HIERARQUIA": row_ref['H_AGRUPADA'],
                                 "SKU": sku_id,
                                 "DESCRIÇÃO": row_ref[col_desc_ref],
                                 "STATUS": status
                             })
 
+                    # Cria o DataFrame final para exportação
                     df_export = pd.DataFrame(dados_consolidados)
 
-                    with pd.ExcelWriter(output_ex, engine="xlsxwriter") as writer:
-                        df_export.to_excel(writer, sheet_name="Relatorio_Mix", index=False)
-                        worksheet = writer.sheets["Relatorio_Mix"]
+                    # Exportação para Excel
+                    with pd.ExcelWriter(output_ex, engine='xlsxwriter') as writer:
+                        df_export.to_excel(writer, sheet_name='Relatorio_Mix', index=False)
+                        # Ajuste automático de colunas
+                        worksheet = writer.sheets['Relatorio_Mix']
                         for i, col in enumerate(df_export.columns):
                             column_len = max(df_export[col].astype(str).map(len).max(), len(col)) + 2
                             worksheet.set_column(i, i, column_len)
 
+                    # --- GERAÇÃO DO PDF (Mantida como sugestão de compra rápido) ---
                     from fpdf import FPDF
                     pdf = FPDF()
                     for cod in sel_cods:
                         c_l = limpar_cod(cod)
-                        info_cli = df_base_detalhe[df_base_detalhe["Cliente_Limpo"] == c_l].iloc[0]
+                        info_cli = df_base_detalhe[df_base_detalhe['Cliente_Limpo'] == c_l].iloc[0]
                         pdf.add_page()
-                        pdf.set_font("Arial", "B", 12)
+                        pdf.set_font("Arial", 'B', 12)
                         pdf.cell(0, 10, f"Sugestão de Mix - {info_cli[col_nome_base]} ({cod})", ln=True)
-                        pdf.set_font("Arial", "", 8)
-
-                        ja_comprou = df_fat[df_fat["Cod_Limpo"] == c_l][col_s_fat].unique()
+                        pdf.set_font("Arial", '', 8)
+                        # Mostra apenas os faltantes no PDF para o vendedor focar no Gap
+                        ja_comprou = df_fat[df_fat['Cod_Limpo'] == c_l][col_s_fat].unique()
                         faltantes = df_skus_ref[~df_skus_ref[col_sku_ref].isin(ja_comprou)]
-
                         for _, r in faltantes.head(50).iterrows():
                             pdf.cell(0, 6, f"[GAP] {r['H_AGRUPADA']} - {r[col_sku_ref]} - {str(r[col_desc_ref])[:45]}", ln=True)
 
                     c_btn1, c_btn2 = st.columns(2)
                     with c_btn1:
-                        st.download_button(
-                            "📊 Baixar Excel Consolidado",
-                            output_ex.getvalue(),
-                            "Relatorio_Mix_Completo.xlsx",
-                            "application/vnd.ms-excel",
-                        )
+                        st.download_button("📊 Baixar Excel Consolidado", output_ex.getvalue(), "Relatorio_Mix_Completo.xlsx", "application/vnd.ms-excel")
                     with c_btn2:
-                        st.download_button(
-                            "📄 Baixar PDFs de Sugestão",
-                            pdf.output(dest="S").encode("latin-1", "replace"),
-                            "Sugestao_Mix_Clientes.pdf",
-                            "application/pdf",
-                        )
+                        st.download_button("📄 Baixar PDFs de Sugestão", pdf.output(dest='S').encode('latin-1', 'replace'), "Sugestao_Mix_Clientes.pdf", "application/pdf")
 
                 st.info(f"📊 Meta do Mix: {total_h_alvo} Famílias e {total_s_alvo} SKUs únicos.")
 
         except Exception as e:
-            st.error(f"Erro no processamento de SKUS / conversão: {e}")
+            st.error(f"Erro no processamento de SKUS: {e}")
 
+       # --- NOVO BLOCO: RANKING DE ENGAJAMENTO (ACIMA DO MAPA) ---
+        st.markdown("---")
+        st.subheader("🏆 Ranking de Engajamento por Vendedor")
+        
+        # 1. Preparar dados para o Ranking
+        if not df_agenda.empty:
+            # Agrupar agendamentos realizados (Status = Realizado)
+            ranking_realizado = df_agenda[df_agenda['STATUS'] == "Realizado"].groupby('VENDEDOR').size().reset_index(name='Realizados')
+            
+            # Agrupar total de agendamentos feitos
+            ranking_total = df_agenda.groupby('VENDEDOR').size().reset_index(name='Total Agendado')
+            
+            # Unir as métricas
+            df_ranking = pd.merge(ranking_total, ranking_realizado, on='VENDEDOR', how='left').fillna(0)
+            df_ranking['Realizados'] = df_ranking['Realizados'].astype(int)
+            
+            # Calcular % de Cumprimento
+            df_ranking['% Cumprimento'] = (df_ranking['Realizados'] / df_ranking['Total Agendado'] * 100).round(1)
+            
+            # Ordenar (quem realizou mais ganha)
+            df_ranking = df_ranking.sort_values(by=['Realizados', '% Cumprimento'], ascending=False).reset_index(drop=True)
+            
+            # 2. Criar a coluna de Posição com Troféus
+            def definir_posicao(idx):
+                if idx == 0: return "🥇 1º"
+                elif idx == 1: return "🥈 2º"
+                elif idx == 2: return "🥉 3º"
+                else: return f"{idx + 1}º"
+
+            df_ranking.insert(0, "POS", [definir_posicao(i) for i in range(len(df_ranking))])
+            
+            # Exibir a Tabela de Ranking
+            st.dataframe(
+                df_ranking, 
+                use_container_width=True, 
+                hide_index=True, # Escondemos o índice original (0,1,2...)
+                column_config={
+                    "POS": "Posição",
+                    "VENDEDOR": "Vendedor",
+                    "Total Agendado": st.column_config.NumberColumn("Agendamentos"),
+                    "Realizados": st.column_config.NumberColumn("Visitas Realizadas"),
+                    "% Cumprimento": st.column_config.ProgressColumn("Taxa de Sucesso", format="%.1f%%", min_value=0, max_value=100)
+                }
+            )
+        else:
+            st.info("Aguardando dados de agendamento para gerar o ranking.")
 
 # Seria útil eu gerar um resumo de quantos clientes faltam agendar por cidade agora?
 # --- PÁGINA: NOVO AGENDAMENTO ---
@@ -1957,7 +1885,7 @@ elif menu == "📋 Novo Agendamento":
                 df_verif['DT_OBJ'] = pd.to_datetime(df_verif['DATA'], format='%d/%m/%Y', errors='coerce').dt.date
                 pendencias_passadas = df_verif[
                     (df_verif['DT_OBJ'] < hoje_dt) & 
-                    (df_verif['STATUS'] == "Planejado")
+                    (df_verif['STATUS'] == "Agendado")
                 ]
 
                 if not pendencias_passadas.empty:
@@ -1981,7 +1909,7 @@ elif menu == "📋 Novo Agendamento":
             # Consideramos agendados os que estão Planejados, Realizados ou aguardando Aprovação (Pendente)
             codigos_agendados = df_agenda[
                 (df_agenda['VENDEDOR'] == ven_sel) & 
-                (df_agenda['STATUS'].isin(['Planejado', 'Realizado', 'Pendente']))
+                (df_agenda['STATUS'].isin(['Agendado', 'Realizado', 'Pendente']))
             ]['CÓDIGO CLIENTE'].unique()
             
             clientes_pendentes_ag = clientes_f[~clientes_f['Cliente'].isin(codigos_agendados)]
@@ -2234,7 +2162,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("📅 Total Agendado", len(df_user))
             # Ajustado para mostrar o que está planejado (já aprovado)
-            m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Planejado"]))
+            m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Agendado"]))
             m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
             m4.metric("📍 Fora do Raio (+50m)", fora_raio_50m, delta_color="inverse")
             st.markdown("---")
@@ -2256,7 +2184,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             df_agenda.loc[mask, 'STATUS'] = "Reprovado"
                         else:
                             # Se aprovado em massa, muda de Pendente para Planejado
-                            df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Planejado"
+                            df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Agendado"
 
                         df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
@@ -2307,7 +2235,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Reprovado"
                             else:
                                 # Se aprovado individualmente, muda de Pendente para Planejado
-                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Planejado"
+                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Agendado"
 
                             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
                             st.cache_data.clear(); st.success("Salvo!"); time.sleep(1); st.rerun()
@@ -2319,7 +2247,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     if st.button("Confirmar Reagendamento"):
                         # Reagendamento volta para Planejado ou Pendente?
                         # Aqui mantive Planejado como estava no seu código original
-                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Planejado", "Pendente"]
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Agendado", "Pendente"]
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
                         st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
 
@@ -3272,7 +3200,7 @@ elif menu_interna == "🔔 Aprovações":
                 df_agenda.loc[
                     df_agenda["ID"].astype(str).isin(ids_aprovar),
                     ["STATUS", "APROVACAO"]
-                ] = ["Planejado", "Aprovado"]
+                ] = ["Agendado", "Aprovado"]
 
                 conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
                 st.cache_data.clear()
@@ -3299,7 +3227,7 @@ elif menu_interna == "🔔 Aprovações":
                 # Botão para Aprovar
                 if col1.button("✅ Aprovar", key=f"aprov_{row['ID']}"):
                     # Atualiza no DataFrame principal usando o ID único
-                    df_agenda.loc[df_agenda["ID"] == row["ID"], ["STATUS", "APROVACAO"]] = ["Planejado", "Aprovado"]
+                    df_agenda.loc[df_agenda["ID"] == row["ID"], ["STATUS", "APROVACAO"]] = ["Agendado", "Aprovado"]
                     conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda)
                     st.success(f"Agendamento de {row['CLIENTE']} aprovado!")
                     st.cache_data.clear()
