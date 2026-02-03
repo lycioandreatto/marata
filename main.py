@@ -1746,6 +1746,38 @@ elif menu_interna == "🧪 TESTES":
         out = out.sort_values(["_year", "_w"]).drop(columns=["_year", "_w"]).reset_index(drop=True)
         return out
 
+    def _make_weekly_days(df: pd.DataFrame, date_col: str, group_cols=None) -> pd.DataFrame:
+        """
+        Conta quantos DIAS distintos existem por semana (para filtrar semanas incompletas).
+        Retorna:
+          - sem group_cols: [WEEK, DIAS]
+          - com group_cols: group_cols + [WEEK, DIAS]
+        """
+        dfx = df.copy()
+        dfx = dfx[dfx[date_col].notna()].copy()
+        dfx["WEEK"] = _week_key(dfx[date_col])
+        dfx["_DIA"] = dfx[date_col].dt.date
+
+        if group_cols:
+            out = (
+                dfx.groupby(group_cols + ["WEEK"])["_DIA"]
+                .nunique()
+                .reset_index()
+                .rename(columns={"_DIA": "DIAS"})
+            )
+        else:
+            out = (
+                dfx.groupby(["WEEK"])["_DIA"]
+                .nunique()
+                .reset_index()
+                .rename(columns={"_DIA": "DIAS"})
+            )
+
+        out["_year"] = out["WEEK"].str.slice(0, 4).astype(int)
+        out["_w"] = out["WEEK"].str.slice(6, 8).astype(int)
+        out = out.sort_values(["_year", "_w"]).drop(columns=["_year", "_w"]).reset_index(drop=True)
+        return out
+
     def _predict_one_step(hist: list, model: str) -> float:
         """
         hist: lista de Y anteriores (semanas anteriores)
@@ -1753,6 +1785,7 @@ elif menu_interna == "🧪 TESTES":
           - "baseline_last": última semana
           - "baseline_mean4": média 4 semanas
           - "model_wma4": média ponderada 4 semanas (40/30/20/10)
+          - "model_wma4_trend": wma4 + tendência simples
         """
         if not hist:
             return 0.0
@@ -1768,13 +1801,36 @@ elif menu_interna == "🧪 TESTES":
             window = hist[-4:] if len(hist) >= 4 else hist
             if not window:
                 return 0.0
-            # pesos do mais recente pro mais antigo
             weights = [0.40, 0.30, 0.20, 0.10]
             weights = weights[:len(window)]
             weights = np.array(weights, dtype=float)
             weights = weights / weights.sum()
             window_arr = np.array(window[::-1], dtype=float)  # [t-1, t-2, ...]
             return float(np.sum(window_arr * weights))
+
+        if model == "model_wma4_trend":
+            # wma4 + tendência (Y[-1] - Y[-4]) / 3
+            window = hist[-4:] if len(hist) >= 4 else hist
+            if not window:
+                return float(hist[-1])
+
+            weights = [0.40, 0.30, 0.20, 0.10]
+            weights = weights[:len(window)]
+            weights = np.array(weights, dtype=float)
+            weights = weights / weights.sum()
+
+            window_arr = np.array(window[::-1], dtype=float)  # [t-1, t-2, ...]
+            wma = float(np.sum(window_arr * weights))
+
+            if len(hist) >= 4:
+                trend = (float(hist[-1]) - float(hist[-4])) / 3.0
+            elif len(hist) >= 2:
+                trend = float(hist[-1]) - float(hist[-2])
+            else:
+                trend = 0.0
+
+            pred = wma + trend
+            return float(max(0.0, pred))
 
         # fallback
         return float(hist[-1])
@@ -1788,6 +1844,15 @@ elif menu_interna == "🧪 TESTES":
             return 0.0
         return float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100)
 
+    def _wape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        # WAPE = sum(|erro|) / sum(real)
+        y_true = np.array(y_true, dtype=float)
+        y_pred = np.array(y_pred, dtype=float)
+        denom = np.sum(np.abs(y_true))
+        if denom == 0:
+            return 0.0
+        return float(np.sum(np.abs(y_true - y_pred)) / denom * 100)
+
     def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         y_true = np.array(y_true, dtype=float)
         y_pred = np.array(y_pred, dtype=float)
@@ -1796,29 +1861,25 @@ elif menu_interna == "🧪 TESTES":
         return float(np.mean(np.abs(y_true - y_pred)))
 
     def _walk_forward_backtest(df_week: pd.DataFrame, window_train: int, n_test: int,
-                               model_name: str, baseline_name: str) -> dict:
+                               model_name: str, baseline_name: str, metric_mode: str = "MAPE") -> dict:
         """
         df_week: colunas [WEEK, Y] ordenado
+        metric_mode: "MAPE" ou "WAPE"
         retorna dict com:
           - table: df com weeks test + real + prev_model + prev_base + erros
-          - metrics: MAE/MAPE model/baseline + win_rate
+          - metrics: MAE + (MAPE/WAPE) model/baseline + win_rate
         """
         if df_week is None or df_week.empty or df_week["Y"].sum() == 0:
             return {"table": pd.DataFrame(), "metrics": {}}
 
-        # garante apenas semanas com Y (pode ter 0, mas mantém)
         weeks = df_week["WEEK"].tolist()
         y = df_week["Y"].astype(float).tolist()
 
-        # define recorte de teste (últimas n_test semanas, mas precisa ter treino antes)
-        # índice do primeiro teste
         start_test_idx = max(len(y) - n_test, 1)
-        # precisa ter pelo menos window_train semanas antes de start_test_idx
         start_test_idx = max(start_test_idx, window_train)
 
         rows = []
         for i in range(start_test_idx, len(y)):
-            # treino: últimas window_train semanas antes de i
             train_hist = y[max(0, i - window_train): i]
             real = y[i]
             wk = weeks[i]
@@ -1851,18 +1912,25 @@ elif menu_interna == "🧪 TESTES":
         mae_model = _mae(df_bt["REAL"].values, df_bt["PREV_MODELO"].values)
         mae_base = _mae(df_bt["REAL"].values, df_bt["PREV_BASELINE"].values)
 
-        mape_model = _safe_mape(df_bt["REAL"].values, df_bt["PREV_MODELO"].values)
-        mape_base = _safe_mape(df_bt["REAL"].values, df_bt["PREV_BASELINE"].values)
+        if metric_mode == "WAPE":
+            err_model = _wape(df_bt["REAL"].values, df_bt["PREV_MODELO"].values)
+            err_base = _wape(df_bt["REAL"].values, df_bt["PREV_BASELINE"].values)
+            metric_label = "WAPE"
+        else:
+            err_model = _safe_mape(df_bt["REAL"].values, df_bt["PREV_MODELO"].values)
+            err_base = _safe_mape(df_bt["REAL"].values, df_bt["PREV_BASELINE"].values)
+            metric_label = "MAPE"
 
         win_rate = float(df_bt["MODELO_VENCEU"].mean() * 100)
 
         metrics = {
             "MAE_MODELO": mae_model,
             "MAE_BASELINE": mae_base,
-            "MAPE_MODELO": mape_model,
-            "MAPE_BASELINE": mape_base,
-            "ACURACIA_MODELO": max(0.0, 100.0 - mape_model),
-            "WIN_RATE": win_rate
+            "ERR_MODELO": err_model,
+            "ERR_BASELINE": err_base,
+            "ACURACIA_MODELO": max(0.0, 100.0 - err_model),
+            "WIN_RATE": win_rate,
+            "METRIC_LABEL": metric_label
         }
         return {"table": df_bt, "metrics": metrics}
 
@@ -1881,6 +1949,7 @@ elif menu_interna == "🧪 TESTES":
         model_choice = st.selectbox(
             "Modelo",
             [
+                "WMA 4 semanas + tendência",
                 "Média ponderada 4 semanas (40/30/20/10)",
                 "Média 4 semanas",
                 "Última semana"
@@ -1888,20 +1957,28 @@ elif menu_interna == "🧪 TESTES":
             index=0
         )
 
-    # baseline fixo (pra comparar)
     baseline_choice = st.selectbox(
         "Baseline para comparação",
-        ["Última semana", "Média 4 semanas"],
+        ["Média 4 semanas", "Última semana"],
         index=0
     )
+
+    c4, c5 = st.columns([1, 1])
+    with c4:
+        metric_choice = st.selectbox("Métrica do TOTAL", ["WAPE (recomendado)", "MAPE"], index=0)
+    with c5:
+        min_days_week_total = st.selectbox("Semanas completas (TOTAL) — mín. dias", [4, 5, 6, 7], index=2)
 
     model_map = {
         "Última semana": "baseline_last",
         "Média 4 semanas": "baseline_mean4",
-        "Média ponderada 4 semanas (40/30/20/10)": "model_wma4"
+        "Média ponderada 4 semanas (40/30/20/10)": "model_wma4",
+        "WMA 4 semanas + tendência": "model_wma4_trend"
     }
-    model_name = model_map.get(model_choice, "model_wma4")
-    baseline_name = model_map.get(baseline_choice, "baseline_last")
+    model_name = model_map.get(model_choice, "model_wma4_trend")
+    baseline_name = model_map.get(baseline_choice, "baseline_mean4")
+
+    metric_mode_total = "WAPE" if metric_choice.startswith("WAPE") else "MAPE"
 
     st.markdown("---")
 
@@ -1921,7 +1998,6 @@ elif menu_interna == "🧪 TESTES":
     df_faturado = df_faturado.dropna(how="all").copy()
     df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
 
-    # renomes padrão do seu projeto
     df_faturado.rename(columns={
         "Região de vendas": "VENDEDOR_NOME",
         "RG": "VENDEDOR_COD",
@@ -1978,11 +2054,9 @@ elif menu_interna == "🧪 TESTES":
     d_ini = pd.Timestamp(d_ini).normalize()
     d_fim = pd.Timestamp(d_fim).normalize()
 
-    # força o fim no último mês fechado
     if d_fim > fim_mes_fechado:
         d_fim = fim_mes_fechado
 
-    # se o usuário escolher só mês atual, corrige e pode ficar vazio
     if d_ini > d_fim:
         st.warning("O intervalo selecionado ficou inválido após ignorar o mês atual. Ajuste o período.")
         st.stop()
@@ -1998,18 +2072,40 @@ elif menu_interna == "🧪 TESTES":
         st.stop()
 
     # ============================
+    # ✅ REMOVER A SEMANA ATUAL (ISO week)
+    # ============================
+    week_atual = _week_key(pd.Series([hoje]))[0]
+    df_base_hist = df_base_hist.copy()
+    df_base_hist["WEEK"] = _week_key(df_base_hist[col_data_fat])
+    df_base_hist = df_base_hist[df_base_hist["WEEK"] != week_atual].copy()
+    df_base_hist.drop(columns=["WEEK"], inplace=True, errors="ignore")
+
+    if df_base_hist.empty:
+        st.warning("Após ignorar mês atual e semana atual, não restaram dados. Ajuste o período.")
+        st.stop()
+
+    # ============================
     # ✅ TOTAL GERAL — backtest
     # ============================
     st.markdown("## 📌 TOTAL GERAL (QTD)")
 
+    # Série semanal
     df_week_total = _make_weekly_series(df_base_hist, date_col=col_data_fat, qty_col="QTD_VENDAS", group_cols=None)
+
+    # Filtrar semanas incompletas (TOTAL)
+    df_days_total = _make_weekly_days(df_base_hist, date_col=col_data_fat, group_cols=None)
+    df_week_total = df_week_total.merge(df_days_total, on="WEEK", how="left")
+    df_week_total["DIAS"] = pd.to_numeric(df_week_total["DIAS"], errors="coerce").fillna(0).astype(int)
+    df_week_total = df_week_total[df_week_total["DIAS"] >= int(min_days_week_total)].copy()
+    df_week_total.drop(columns=["DIAS"], inplace=True, errors="ignore")
 
     bt_total = _walk_forward_backtest(
         df_week_total,
         window_train=window_train,
         n_test=n_test,
         model_name=model_name,
-        baseline_name=baseline_name
+        baseline_name=baseline_name,
+        metric_mode=metric_mode_total
     )
 
     df_bt_total = bt_total["table"]
@@ -2018,18 +2114,22 @@ elif menu_interna == "🧪 TESTES":
     if df_bt_total.empty or not met_total:
         st.info("Ainda não dá pra testar: precisa de mais semanas (treino + teste). Ajuste a janela ou o período.")
     else:
+        metric_label = met_total.get("METRIC_LABEL", "MAPE")
         # CARDS
         cA, cB, cC, cD = st.columns(4)
 
         with cA:
-            st.metric("Acurácia (100 - MAPE)", f"{met_total['ACURACIA_MODELO']:.1f}%")
+            st.metric(f"Acurácia (100 - {metric_label})", f"{met_total['ACURACIA_MODELO']:.1f}%")
         with cB:
             st.metric("MAE (un/sem)", fmt_pt_int(met_total["MAE_MODELO"]))
         with cC:
-            diff = met_total["MAPE_BASELINE"] - met_total["MAPE_MODELO"]
-            st.metric("Ganho vs Baseline (MAPE)", f"{diff:.1f} p.p")
+            diff = met_total["ERR_BASELINE"] - met_total["ERR_MODELO"]
+            st.metric(f"Ganho vs Baseline ({metric_label})", f"{diff:.1f} p.p")
         with cD:
-            selo = "✅ Confiável" if met_total["MAPE_MODELO"] < 10 else ("⚠️ Moderado" if met_total["MAPE_MODELO"] < 20 else "❌ Baixo")
+            # limites diferentes p/ WAPE x MAPE (mas mantém simples)
+            lim1 = 10 if metric_label == "WAPE" else 10
+            lim2 = 20 if metric_label == "WAPE" else 20
+            selo = "✅ Confiável" if met_total["ERR_MODELO"] < lim1 else ("⚠️ Moderado" if met_total["ERR_MODELO"] < lim2 else "❌ Baixo")
             st.metric("Selo", selo)
 
         # Gráfico
@@ -2065,8 +2165,8 @@ elif menu_interna == "🧪 TESTES":
         st.markdown("### 🧠 Resumo automático (TOTAL)")
         st.write(
             f"- Modelo venceu o baseline em **{met_total['WIN_RATE']:.0f}%** das semanas de teste.\n"
-            f"- MAE: **{fmt_pt_int(met_total['MAE_MODELO'])}** un/sem | MAPE: **{met_total['MAPE_MODELO']:.1f}%**.\n"
-            f"- Baseline MAPE: **{met_total['MAPE_BASELINE']:.1f}%** → ganho **{(met_total['MAPE_BASELINE']-met_total['MAPE_MODELO']):.1f} p.p**."
+            f"- MAE: **{fmt_pt_int(met_total['MAE_MODELO'])}** un/sem | {metric_label}: **{met_total['ERR_MODELO']:.1f}%**.\n"
+            f"- Baseline {metric_label}: **{met_total['ERR_BASELINE']:.1f}%** → ganho **{(met_total['ERR_BASELINE']-met_total['ERR_MODELO']):.1f} p.p**."
         )
 
     st.markdown("---")
@@ -2087,6 +2187,20 @@ elif menu_interna == "🧪 TESTES":
     # filtro mínimo de semanas com dados (evita ranking lixo)
     min_weeks = st.slider("Mínimo de semanas com dados (por vendedor)", 6, 20, 10, 1)
 
+    # (recomendado) semanas completas por vendedor também (evita lixo por falta de dias)
+    min_days_week_vendedor = st.selectbox("Semanas completas (VENDEDOR) — mín. dias", [3, 4, 5, 6], index=1)
+
+    df_days_v = _make_weekly_days(
+        df_base_hist,
+        date_col=col_data_fat,
+        group_cols=["VENDEDOR_NOME"]
+    )
+
+    df_week_v = df_week_v.merge(df_days_v, on=["VENDEDOR_NOME", "WEEK"], how="left")
+    df_week_v["DIAS"] = pd.to_numeric(df_week_v["DIAS"], errors="coerce").fillna(0).astype(int)
+    df_week_v = df_week_v[df_week_v["DIAS"] >= int(min_days_week_vendedor)].copy()
+    df_week_v.drop(columns=["DIAS"], inplace=True, errors="ignore")
+
     vendedores = df_week_v["VENDEDOR_NOME"].dropna().unique().tolist()
     vendedores = sorted([str(v) for v in vendedores])
 
@@ -2102,7 +2216,8 @@ elif menu_interna == "🧪 TESTES":
             window_train=window_train,
             n_test=n_test,
             model_name=model_name,
-            baseline_name=baseline_name
+            baseline_name=baseline_name,
+            metric_mode="MAPE"  # por vendedor mantém MAPE (comparável), com filtro de semanas completas
         )
 
         if bt_v["table"].empty or not bt_v["metrics"]:
@@ -2113,7 +2228,7 @@ elif menu_interna == "🧪 TESTES":
 
         rank_rows.append({
             "VENDEDOR": vnd,
-            "MAPE_MODELO": met["MAPE_MODELO"],
+            "MAPE_MODELO": met["ERR_MODELO"],
             "MAE_MODELO": met["MAE_MODELO"],
             "WIN_RATE_%": met["WIN_RATE"],
             "VOL_MÉDIO_SEM": vol_med
@@ -2145,14 +2260,14 @@ elif menu_interna == "🧪 TESTES":
         st.markdown("### 🔎 Detalhe do vendedor")
         vendedor_sel = st.selectbox("Selecione um vendedor", df_rank["VENDEDOR"].tolist(), index=0)
 
-        # rodar backtest do selecionado
         df_vsel = df_week_v[df_week_v["VENDEDOR_NOME"] == vendedor_sel].copy()
         bt_sel = _walk_forward_backtest(
             df_vsel[["WEEK", "Y"]].rename(columns={"WEEK": "WEEK", "Y": "Y"}),
             window_train=window_train,
             n_test=n_test,
             model_name=model_name,
-            baseline_name=baseline_name
+            baseline_name=baseline_name,
+            metric_mode="MAPE"
         )
         df_bt_sel = bt_sel["table"]
         met_sel = bt_sel["metrics"]
