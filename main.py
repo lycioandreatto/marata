@@ -1798,7 +1798,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     if col_vendedor and col_vendedor in df_fat.columns:
         df_fat[col_vendedor] = df_fat[col_vendedor].astype(str).str.strip().str.upper()
     if col_supervisor and col_supervisor in df_fat.columns:
-        df_fat[col_supervisor] = df_fat[col_supervisor].apply(limpar_cod).upper()
+        df_fat[col_supervisor] = df_fat[col_supervisor].apply(limpar_cod).astype(str).str.upper()
 
     df_fat[col_qtd] = pd.to_numeric(df_fat[col_qtd], errors="coerce").fillna(0)
     df_fat[col_rec] = pd.to_numeric(df_fat[col_rec], errors="coerce").fillna(0)
