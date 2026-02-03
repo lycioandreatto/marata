@@ -377,181 +377,114 @@ st.markdown("""
         font-size: 1.5em;
     }
 
-/* ==========================================
-   SIDEBAR ICON-ONLY + TOOLTIP (sem JS)
-   Ordem fixa:
-   1) Agendamentos do Dia
-   2) Novo Agendamento
-   3) Agenda Geral
-   4) ACOMP. DIÁRIO
-   5) Dashboard de Controle
-   6) KPI Aprovação Analistas
-   ========================================== */
+/* ===============================
+   SIDEBAR PREMIUM NAV (APP STYLE)
+   =============================== */
 
-/* Sidebar mais estreita */
-section[data-testid="stSidebar"]{
-  width: 92px !important;
-  min-width: 92px !important;
+section[data-testid="stSidebar"] {
   background: linear-gradient(180deg, #f6f7fb 0%, #f3f4f8 100%);
-  border-right: 1px solid rgba(0,0,0,0.06);
 }
 
-/* padding interno menor */
-section[data-testid="stSidebar"] .stSidebarContent{
-  padding: 16px 10px !important;
-}
-
-/* esconde label do widget (Menu Principal) */
-section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
-  display:none !important;
-}
-
-/* remove bolinha do radio */
+/* tira bolinha do radio */
 section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"]{
   display:none !important;
 }
 
 /* wrapper do grupo */
 section[data-testid="stSidebar"] div[role="radiogroup"]{
-  gap: 12px;
+  gap: 10px;
 }
 
-/* cada item vira botão ícone */
+/* cada item vira "card-button" */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label{
   position: relative;
   display:flex;
   align-items:center;
-  justify-content:center;
-  width: 64px;
-  height: 56px;
-  margin: 10px auto;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.82);
+  background: rgba(255,255,255,0.75);
   border: 1px solid rgba(17,17,17,0.08);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 6px 18px rgba(0,0,0,0.06);
   transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-  overflow: visible; /* tooltip fora */
-  cursor: pointer;
+  overflow:hidden;
 }
 
-/* hover */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
-  transform: translateY(-1px) scale(1.02);
-  border-color: rgba(255,75,75,0.35);
-  box-shadow: 0 10px 26px rgba(255,75,75,0.12);
-}
-
-/* pega o emoji do começo e vira ícone (bolha) */
+/* bolha do ícone (pega o emoji do texto e dá “cara de app”) */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label p::first-letter{
   display:inline-block;
-  width: 40px;
-  height: 40px;
-  line-height: 40px;
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
   text-align:center;
-  border-radius: 14px;
-  font-size: 18px;
+  border-radius: 12px;
+  margin-right: 10px;
   background: rgba(255,75,75,0.12);
   box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
 }
 
-/* esconde o texto (mas mantém no DOM) */
+/* texto */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label p{
-  font-size: 0 !important;
-  margin:0 !important;
+  margin:0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color:#1c1c1c;
+  letter-spacing: .2px;
 }
 
-/* ===== ITEM ATIVO ===== */
+/* hover */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,75,75,0.35);
+  box-shadow: 0 10px 26px rgba(255,75,75,0.10);
+}
+
+/* ===== ITEM ATIVO (bem destaque) ===== */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
   background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
   border-color: rgba(255,75,75,0.85);
   box-shadow: 0 16px 34px rgba(255,75,75,0.22);
 }
 
+/* texto branco no ativo */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p{
+  color: #ffffff !important;
+}
+
+/* bolha do ícone no ativo vira branca */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p::first-letter{
-  background: rgba(255,255,255,0.20);
+  background: rgba(255,255,255,0.18);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
 }
 
-/* ==========================================
-   TOOLTIP por ORDEM (nth-child)
-   ========================================== */
-
-/* setinha */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label::before{
+/* barra lateral do ativo */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::before{
   content:"";
   position:absolute;
-  left: 66px;
-  top: 50%;
-  transform: translateY(-50%);
-  border-width: 7px;
-  border-style: solid;
-  border-color: transparent rgba(20,20,20,0.92) transparent transparent;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .12s ease;
-  z-index: 99999;
+  left: 10px;
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.85);
 }
 
-/* caixa */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label::after{
-  content: "";
-  position: absolute;
-  left: 74px;
-  top: 50%;
-  transform: translateY(-50%);
-  white-space: nowrap;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(20,20,20,0.92);
-  color: #fff;
-  font-size: 0.90rem;
-  font-weight: 750;
-  letter-spacing: .2px;
-  box-shadow: 0 14px 30px rgba(0,0,0,0.18);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .12s ease, transform .12s ease;
-  z-index: 99999;
+/* brilho suave atrás do ativo */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::after{
+  content:"";
+  position:absolute;
+  inset:-40px;
+  background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.25), rgba(255,255,255,0) 60%);
+  pointer-events:none;
 }
 
-/* aparece no hover */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover::after{
-  opacity: 1;
-  transform: translateY(-50%) translateX(0);
-}
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover::before{
-  opacity: 1;
+/* some label do widget */
+section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"]{
+  display:none;
 }
 
-/* textos dos tooltips por ordem */
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(1)::after{ content:"Agendamentos do Dia"; }
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(2)::after{ content:"Novo Agendamento"; }
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(3)::after{ content:"Agenda Geral"; }
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(4)::after{ content:"Acomp. Diário"; }
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(5)::after{ content:"Dashboard de Controle"; }
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(6)::after{ content:"KPI Aprovação Analistas"; }
-
-/* ==========================================
-   USER CARD (nome completo bonito)
-   ========================================== */
-.user-card{
-  width: 100%;
-  padding: 12px 12px;
-  border-radius: 18px;
-  box-shadow: 0 10px 26px rgba(0,0,0,0.15);
-}
-
-.user-card-text{
-  font-size: 0.92rem;
-  line-height: 1.1;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.user-card-icon{
-  font-size: 1.25rem;
 }
 
     </style>
