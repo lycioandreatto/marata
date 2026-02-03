@@ -2904,7 +2904,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             unsafe_allow_html=True,
         )
 
-       st.markdown("### 📈 Desempenho por Hierarquia")
+    st.markdown("### 📈 Desempenho por Hierarquia")
 
     df_view = df_final.copy()
     df_view[" "] = ""
