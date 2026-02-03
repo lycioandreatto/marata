@@ -2293,7 +2293,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     df_antes = df_total[df_total[col_data] < dt_ini_agora].copy()
 
     if df_antes.empty or df_agora.empty:
-        st.info("Sem histórico suficiente para comparar 'antes' vs 'agora'.")
+        st.info("Sem histórico suficiente para comparar.")
     else:
         vol_antes = (
             df_antes.groupby(col_sku)
