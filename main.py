@@ -2054,10 +2054,17 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     st.markdown("---")
 
-    # ============================
+       # ============================
     # 7) Top Hierarquias e Top SKUs (ordena por VOLUME)
     # ============================
     colA, colB = st.columns(2)
+
+    # ✅ formatação BRL (R$) só para exibição
+    def fmt_brl(v):
+        try:
+            return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return "R$ 0,00"
 
     with colA:
         st.subheader("🏷️ Top Hierarquias (por Volume)")
@@ -2069,7 +2076,11 @@ elif menu_interna == "📚 Perfil do Cliente":
                 .head(10)
                 .reset_index()
             )
-            st.dataframe(top_h, use_container_width=True, hide_index=True)
+
+            top_h_show = top_h.copy()
+            top_h_show["Receita"] = top_h_show["Receita"].apply(fmt_brl)
+
+            st.dataframe(top_h_show, use_container_width=True, hide_index=True)
         else:
             st.info("Coluna de hierarquia não encontrada no FATURADO.")
 
@@ -2082,7 +2093,11 @@ elif menu_interna == "📚 Perfil do Cliente":
             .head(15)
             .reset_index()
         )
-        st.dataframe(top_sku, use_container_width=True, hide_index=True)
+
+        top_sku_show = top_sku.copy()
+        top_sku_show["Receita"] = top_sku_show["Receita"].apply(fmt_brl)
+
+        st.dataframe(top_sku_show, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
