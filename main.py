@@ -467,6 +467,11 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
   box-shadow: 0 10px 26px rgba(255,75,75,0.10);
 }
 
+/* ✅ AJUSTE: manter o contorno do hover no item selecionado (SEM mudar cor) */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
+  border-color: rgba(255,75,75,0.35) !important;
+}
+
 /* item ativo */
 section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]{
   background: linear-gradient(90deg, #ff4b4b 0%, #ff2f68 100%);
