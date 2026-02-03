@@ -2086,7 +2086,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     st.markdown("---")
 
-    # ============================
+       # ============================
     # ✅ NOVO (2/3): ABC DO CLIENTE (FOCO VOLUME)
     # ============================
     st.subheader("📌 Curva ABC do Cliente (por Volume)")
@@ -2105,6 +2105,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         if vol_total_abc <= 0:
             st.info("Volume total zerado no período.")
         else:
+            # ⚙️ cálculos (mantém numérico)
             df_abc["% Volume"] = (df_abc["Volume"] / vol_total_abc * 100)
             df_abc["% Acum."] = df_abc["% Volume"].cumsum()
 
@@ -2127,18 +2128,32 @@ elif menu_interna == "📚 Perfil do Cliente":
                 .reset_index()
                 .sort_values("Classe")
             )
-            resumo_abc["Perc_Vol"] = resumo_abc["Perc_Vol"].round(1)
+
+            # ✅ formatação de porcentagem (somente exibição)
+            def fmt_pct(v, casas=1):
+                try:
+                    return f"{float(v):.{casas}f}%".replace(".", ",")
+                except Exception:
+                    return "-"
+
+            resumo_show = resumo_abc.copy()
+            resumo_show["Perc_Vol"] = resumo_show["Perc_Vol"].apply(lambda x: fmt_pct(x, 1))
+
+            detalhe_show = df_abc.copy()
+            detalhe_show["% Volume"] = detalhe_show["% Volume"].apply(lambda x: fmt_pct(x, 1))
+            detalhe_show["% Acum."] = detalhe_show["% Acum."].apply(lambda x: fmt_pct(x, 1))
 
             cA, cB = st.columns([1, 2])
             with cA:
-                st.dataframe(resumo_abc, use_container_width=True, hide_index=True)
+                st.dataframe(resumo_show, use_container_width=True, hide_index=True)
             with cB:
                 st.caption("A = até 80% do volume acumulado | B = 80–95% | C = 95–100%")
                 st.dataframe(
-                    df_abc[[col_sku, "Classe", "Volume", "% Volume", "% Acum.", "Pedidos"]].head(30),
+                    detalhe_show[[col_sku, "Classe", "Volume", "% Volume", "% Acum.", "Pedidos"]].head(30),
                     use_container_width=True,
                     hide_index=True,
                 )
+
 
         # ============================
     # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
