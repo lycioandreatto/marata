@@ -2155,17 +2155,31 @@ elif menu_interna == "📚 Perfil do Cliente":
             )
             resumo_abc_rec["Perc_Rec"] = resumo_abc_rec["Perc_Rec"].round(1)
 
+            # ✅ formatação BRL (R$) para exibição (sem alterar os cálculos)
+            def fmt_brl(v):
+                try:
+                    return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except Exception:
+                    return "R$ 0,00"
+
+            resumo_show = resumo_abc_rec.copy()
+            resumo_show["Receita"] = resumo_show["Receita"].apply(fmt_brl)
+
+            detalhe_show = df_abc_rec.copy()
+            detalhe_show["Receita"] = detalhe_show["Receita"].apply(fmt_brl)
+
             cA2, cB2 = st.columns([1, 2])
             with cA2:
-                st.dataframe(resumo_abc_rec, use_container_width=True, hide_index=True)
+                st.dataframe(resumo_show, use_container_width=True, hide_index=True)
             with cB2:
                 st.caption("A = até 80% do faturamento acumulado | B = 80–95% | C = 95–100%")
                 st.dataframe(
-                    df_abc_rec[["Cliente", "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
+                    detalhe_show[["Cliente", "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
                     use_container_width=True,
                     hide_index=True,
                 )
 
+    
    
 
     st.markdown("---")
