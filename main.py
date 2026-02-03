@@ -546,7 +546,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="
   border-bottom-right-radius: 0px !important;
 
   /* puxa o card pra “encostar” na área principal */
-  margin-right: -18px !important;
+  margin-right: -40px !important;
 
   /* dá espaço pra não cortar o conector */
   padding-right: 30px !important;
@@ -560,8 +560,8 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input[type="
   content: "";
   position: absolute;
   top: 0;
-  right: -22px;      /* joga pra fora do sidebar */
-  width: 26px;       /* “ponte” até a tela */
+  right: -60px;      /* joga pra fora do sidebar */
+  width: 70px;       /* “ponte” até a tela */
   height: 100%;
   background: inherit;   /* usa a MESMA cor/gradiente do item selecionado */
   border-top-right-radius: 16px;
