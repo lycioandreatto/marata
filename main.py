@@ -3653,7 +3653,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 # --- PÁGINA: DESEMPENHO DE VENDAS (FATURADO)
 elif menu_interna == "📊 ACOMP. DIÁRIO":
     st.header("📊 ACOMPANHAMENTO DIÁRIO")
-    st.caption("versão: ACOMP_DIARIO | filtro mês atual + pacing + tendência (v1.1)")
 
     # ============================
     # ✅ CONTROLE DE ESTADO (Streamlit rerun)
