@@ -377,35 +377,64 @@ st.markdown("""
         font-size: 1.5em;
     }
 
-    /* ===== MENU MODERNO (radio estilizado como sidebar nav) ===== */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-        background: transparent;
-        border-radius: 12px;
-        padding: 10px 12px;
-        margin: 6px 0;
-        border: 1px solid rgba(0,0,0,0.08);
-        transition: all .15s ease-in-out;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
-        background: rgba(255, 75, 75, 0.08);
-        border-color: rgba(255, 75, 75, 0.35);
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] {
-        background: rgba(255, 75, 75, 0.14);
-        border-color: rgba(255, 75, 75, 0.60);
-        font-weight: 700;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] svg {
-        display: none;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] p {
-        margin: 0;
-        font-size: 0.95rem;
-    }
-    /* esconde o label do widget do menu */
-    section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"] {
-        display: none;
-    }
+    /* ===== MENU MODERNO (radio estilizado como botões) ===== */
+
+/* remove bolinha (radio) */
+section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"] {
+    display: none !important;
+}
+
+/* card do item */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin: 10px 0;
+    border: 1px solid rgba(0,0,0,0.10);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    transition: all .15s ease-in-out;
+}
+
+/* hover bonito */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 75, 75, 0.45);
+    box-shadow: 0 6px 18px rgba(255, 75, 75, 0.12);
+}
+
+/* item selecionado (destaque forte) */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] {
+    background: linear-gradient(90deg, rgba(255, 75, 75, 0.18), rgba(255, 75, 75, 0.06));
+    border: 1px solid rgba(255, 75, 75, 0.70);
+    box-shadow: 0 10px 22px rgba(255, 75, 75, 0.18);
+    position: relative;
+}
+
+/* barrinha de destaque no selecionado */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"]::before {
+    content: "";
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    bottom: 10px;
+    width: 6px;
+    border-radius: 8px;
+    background: #ff4b4b;
+}
+
+/* texto do item */
+section[data-testid="stSidebar"] div[role="radiogroup"] p {
+    margin: 0;
+    padding-left: 18px; /* espaço pra barrinha */
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: #111;
+}
+
+/* esconde o label do widget do menu */
+section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"] {
+    display: none;
+}
 
     </style>
     """, unsafe_allow_html=True)
