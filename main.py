@@ -2039,7 +2039,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     m3.metric("Pedidos no período", int(pedidos_unicos))
     m4.metric("Volume total", f"{volume_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
     m5.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
-    m6.metric("Atraso vs padrão", risco_txt, delta=risco_delta, help=risco_help)
+    m6.metric("Regularidade", risco_txt, delta=risco_delta, help=risco_help)
 
     if msg_status is not None:
         tipo, texto = msg_status
