@@ -706,108 +706,119 @@ if not st.session_state.logado:
     # ============================
     # ✅ LOGIN - UI PROFISSIONAL (CARD CENTRAL)
     # ============================
-    st.markdown("""
-    <style>
-    /* Fundo da página de login */
-    div[data-testid="stAppViewContainer"]{
-      background: radial-gradient(circle at 20% 20%, #f7f9ff 0%, #f3f4f8 45%, #f6f7fb 100%);
-    }
+    st.markdown(
+        """
+        <style>
+        /* Fundo da página de login */
+        div[data-testid="stAppViewContainer"]{
+          background: radial-gradient(circle at 20% 20%, #f7f9ff 0%, #f3f4f8 45%, #f6f7fb 100%);
+        }
 
-    /* padding superior */
-    .block-container{
-      padding-top: 28px !important;
-    }
+        /* ✅ remove a "barra branca" / espaço extra no topo e entre blocos */
+        .block-container{
+          padding-top: 18px !important;   /* antes estava 28 */
+          padding-bottom: 12px !important;
+        }
+        div[data-testid="stVerticalBlock"] > div{
+          margin-top: 0px !important;
+          margin-bottom: 0px !important;
+          padding-top: 0px !important;
+          padding-bottom: 0px !important;
+        }
 
-    /* container central */
-    .login-shell{
-      max-width: 980px;
-      margin: 0 auto;
-    }
+        /* container central */
+        .login-shell{
+          max-width: 980px;
+          margin: 0 auto;
+        }
 
-    /* header */
-    .login-title{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap: 14px;
-      margin: 10px 0 6px 0;
-    }
-    .login-title h1{
-      font-size: 44px;
-      font-weight: 900;
-      letter-spacing: .5px;
-      color: #000C75;
-      margin: 0;
-    }
-    .login-sub{
-      text-align:center;
-      color: rgba(17,17,17,.65);
-      font-size: 14px;
-      margin: 0 0 18px 0;
-    }
+        /* header */
+        .login-title{
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap: 14px;
+          margin: 10px 0 6px 0;
+        }
+        .login-title h1{
+          font-size: 44px;
+          font-weight: 900;
+          letter-spacing: .5px;
+          color: #000C75;
+          margin: 0;
+        }
+        .login-sub{
+          text-align:center;
+          color: rgba(17,17,17,.65);
+          font-size: 14px;
+          margin: 0 0 12px 0 !important;  /* ✅ menor para não criar espaço */
+        }
 
-    /* card */
-    .login-card{
-      background: rgba(255,255,255,0.78);
-      border: 1px solid rgba(17,17,17,0.08);
-      border-radius: 18px;
-      padding: 22px 22px 18px 22px;
-      box-shadow: 0 18px 42px rgba(0,0,0,0.07);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    }
+        /* card */
+        .login-card{
+          background: rgba(255,255,255,0.78);
+          border: 1px solid rgba(17,17,17,0.08);
+          border-radius: 18px;
+          padding: 22px 22px 18px 22px;
+          box-shadow: 0 18px 42px rgba(0,0,0,0.07);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          margin-top: 0px !important;      /* ✅ evita “faixa” acima do card */
+        }
 
-    /* Tabs mais bonitas */
-    div[role="tablist"]{
-      gap: 8px;
-    }
-    button[role="tab"]{
-      border-radius: 999px !important;
-      padding: 8px 14px !important;
-      font-weight: 800 !important;
-    }
-    button[role="tab"][aria-selected="true"]{
-      border: 1px solid rgba(255,75,75,0.35) !important;
-      box-shadow: 0 10px 26px rgba(255,75,75,0.08) !important;
-    }
+        /* Tabs mais bonitas */
+        div[role="tablist"]{
+          gap: 8px;
+        }
+        button[role="tab"]{
+          border-radius: 999px !important;
+          padding: 8px 14px !important;
+          font-weight: 800 !important;
+        }
+        button[role="tab"][aria-selected="true"]{
+          border: 1px solid rgba(255,75,75,0.35) !important;
+          box-shadow: 0 10px 26px rgba(255,75,75,0.08) !important;
+        }
 
-    /* Inputs */
-    div[data-testid="stTextInput"] input{
-      border-radius: 12px !important;
-      padding: 12px 12px !important;
-      border: 1px solid rgba(17,17,17,0.10) !important;
-    }
-    div[data-testid="stTextInput"] input:focus{
-      border: 1px solid rgba(0,12,117,0.45) !important;
-      box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
-    }
+        /* Inputs */
+        div[data-testid="stTextInput"] input{
+          border-radius: 12px !important;
+          padding: 12px 12px !important;
+          border: 1px solid rgba(17,17,17,0.10) !important;
+        }
+        div[data-testid="stTextInput"] input:focus{
+          border: 1px solid rgba(0,12,117,0.45) !important;
+          box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
+        }
 
-    /* Checkbox */
-    div[data-testid="stCheckbox"] label{
-      font-weight: 700;
-      color: rgba(17,17,17,0.75);
-    }
+        /* Checkbox */
+        div[data-testid="stCheckbox"] label{
+          font-weight: 700;
+          color: rgba(17,17,17,0.75);
+        }
 
-    /* Botões do form */
-    div[data-testid="stForm"] button{
-      width: 100%;
-      border-radius: 14px !important;
-      padding: 12px 14px !important;
-      font-weight: 900 !important;
-      border: 1px solid rgba(17,17,17,0.08) !important;
-      box-shadow: 0 10px 28px rgba(0,0,0,0.08) !important;
-    }
-    div[data-testid="stForm"] button:hover{
-      transform: translateY(-1px);
-      box-shadow: 0 16px 34px rgba(0,0,0,0.12) !important;
-    }
+        /* Botões do form */
+        div[data-testid="stForm"] button{
+          width: 100%;
+          border-radius: 14px !important;
+          padding: 12px 14px !important;
+          font-weight: 900 !important;
+          border: 1px solid rgba(17,17,17,0.08) !important;
+          box-shadow: 0 10px 28px rgba(0,0,0,0.08) !important;
+        }
+        div[data-testid="stForm"] button:hover{
+          transform: translateY(-1px);
+          box-shadow: 0 16px 34px rgba(0,0,0,0.12) !important;
+        }
 
-    /* Alerts */
-    div[data-testid="stAlert"]{
-      border-radius: 14px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+        /* Alerts */
+        div[data-testid="stAlert"]{
+          border-radius: 14px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     st.markdown('<div class="login-shell">', unsafe_allow_html=True)
 
@@ -830,7 +841,7 @@ if not st.session_state.logado:
     st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
     # ============================
-    # ✅ TABS (mantido)
+    # ✅ TABS
     # ============================
     tab_login, tab_cadastro = st.tabs(["Login", "Novo Cadastro"])
 
@@ -888,9 +899,10 @@ if not st.session_state.logado:
                 else:
                     st.warning("Preencha todos os campos.")
 
-    # fecha card + shell
+    # ✅ fecha card + shell (2 divs abertas)
     st.markdown("</div></div>", unsafe_allow_html=True)
     st.stop()
+
 
 
 # --- DEFINIÇÃO DE PERFIS E HIERARQUIA ---
