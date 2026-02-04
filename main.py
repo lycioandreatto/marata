@@ -4607,6 +4607,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- 4. FILTROS DINÂMICOS ---
             with st.expander("🎯 Filtros de Visualização", expanded=False):
                 f_col1, f_col2, f_col3 = st.columns(3)
+
                 def get_options(df, col):
                     return ["Todos"] + sorted([str(x) for x in df[col].unique() if x and str(x).lower() != 'nan'])
 
@@ -4618,9 +4619,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                 vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, 'VENDEDOR'))
 
-                if ana_f != "Todos": df_user = df_user[df_user['ANALISTA'] == ana_f]
-                if sup_f != "Todos": df_user = df_user[df_user['SUPERVISOR'] == sup_f]
-                if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
+                if ana_f != "Todos":
+                    df_user = df_user[df_user['ANALISTA'] == ana_f]
+                if sup_f != "Todos":
+                    df_user = df_user[df_user['SUPERVISOR'] == sup_f]
+                if vend_f != "Todos":
+                    df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
             # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR EM VENDEDOR / TROCA DE MODO / STATE VELHO
@@ -4670,9 +4674,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         a, b = dt_min, dt_max
 
                     # clamp
-                    if a < dt_min: a = dt_min
-                    if b > dt_max: b = dt_max
-                    if a > b: a, b = dt_min, dt_max
+                    if a < dt_min:
+                        a = dt_min
+                    if b > dt_max:
+                        b = dt_max
+                    if a > b:
+                        a, b = dt_min, dt_max
 
                     with c_dt1:
                         dt_ini, dt_fim = st.slider(
@@ -4691,20 +4698,35 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     st.info("Sem datas válidas para filtrar no modo selecionado.")
 
             # --- 5. MÉTRICAS ---
-            # ✅ (NOVO) Card de "fora do raio" > 50 metros
-            fora_raio_50m = int((df_user['DISTANCIA_LOG'] > 50).sum()) if 'DISTANCIA_LOG' in df_user.columns else 0
+            # ✅ Gestão: Admin / Diretoria / Analista (somente eles veem distância e card fora do raio)
+            is_gestao = (is_admin or is_diretoria or is_analista)
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("📅 Total Agendado", len(df_user))
-            # Ajustado para mostrar o que está planejado (já aprovado)
-            m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Agendado"]))
-            m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
-            m4.metric("📍 Fora do Raio (+50m)", fora_raio_50m, delta_color="inverse")
+            # ✅ (NOVO) Card de "fora do raio" > 50 metros (SÓ GESTÃO)
+            fora_raio_50m = int((df_user['DISTANCIA_LOG'] > 50).sum()) if ('DISTANCIA_LOG' in df_user.columns) else 0
+
+            if is_gestao:
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("📅 Total Agendado", len(df_user))
+                # Ajustado para mostrar o que está planejado (já aprovado)
+                m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Agendado"]))
+                m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
+                m4.metric("📍 Fora do Raio (+50m)", fora_raio_50m, delta_color="inverse")
+            else:
+                m1, m2, m3 = st.columns(3)
+                m1.metric("📅 Total Agendado", len(df_user))
+                # Ajustado para mostrar o que está planejado (já aprovado)
+                m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Agendado"]))
+                m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"))
             st.markdown("---")
 
             # --- 6. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
-            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
+            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
+
+            # ✅ Só gestão vê/exporta a coluna de distância
+            if not is_gestao and ('DISTANCIA_LOG' in cols_display):
+                cols_display.remove('DISTANCIA_LOG')
+
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             # ============================
@@ -4802,17 +4824,21 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 st.warning(f"Não foi possível exportar (Excel/PDF): {e}")
             # ============================
 
+            # ✅ column_config dinâmico (pra não referenciar DISTANCIA_LOG quando ela não existe)
+            column_config = {
+                "AÇÃO": st.column_config.CheckboxColumn("📌"),
+                "DATA": st.column_config.TextColumn("Data"),
+                "ANALISTA": st.column_config.TextColumn("Analista")
+            }
+            if is_gestao and ("DISTANCIA_LOG" in df_display.columns):
+                column_config["DISTANCIA_LOG"] = st.column_config.NumberColumn("Distância (m)", format="%d m")
+
             edicao_user = st.data_editor(
                 df_display,
                 key="edit_agenda_final_v3",
                 hide_index=True,
                 use_container_width=True,
-                column_config={
-                    "AÇÃO": st.column_config.CheckboxColumn("📌"),
-                    "DISTANCIA_LOG": st.column_config.NumberColumn("Distância (m)", format="%d m"),
-                    "DATA": st.column_config.TextColumn("Data"),
-                    "ANALISTA": st.column_config.TextColumn("Analista")
-                },
+                column_config=column_config,
                 disabled=[c for c in df_display.columns if c != "AÇÃO"]
             )
 
@@ -4983,6 +5009,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
+
 
 
 
