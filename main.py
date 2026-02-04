@@ -3356,11 +3356,22 @@ elif menu_interna == "📚 Perfil do Cliente":
         else:
             hoje_ref_alerta = pd.Timestamp(hoje_ref_alerta.date())
 
-        # base de dias sem comprar (para clientes da BASE)
-        df_last_base = df_last[df_last["Cliente"].astype(str).isin(set_base)].copy()
+                # base de dias sem comprar (para clientes da BASE)
+        # df_last agora usa "ClienteRef" (código se existir, senão nome)
+        set_base_ref = set_base_cod if set_base_cod else set_base_nome
+
+        df_last_base = df_last[df_last["ClienteRef"].astype(str).isin(set_base_ref)].copy()
 
         df_last_base["DiasSemCompra"] = (hoje_ref_alerta - df_last_base["UltimaCompra"].dt.floor("D")).dt.days
-        df_last_base["DiasSemCompra"] = pd.to_numeric(df_last_base["DiasSemCompra"], errors="coerce").fillna(0).astype(int)
+        df_last_base["DiasSemCompra"] = (
+            pd.to_numeric(df_last_base["DiasSemCompra"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+
+        # padroniza coluna para o resto do seu código não precisar mudar
+        df_last_base = df_last_base.rename(columns={"ClienteRef": "Cliente"})
+
 
         # buckets
         df_30 = df_last_base[df_last_base["DiasSemCompra"] > 30].copy()
