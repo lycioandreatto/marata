@@ -5584,109 +5584,189 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 st.info("Sem sugestões agora: histórico vazio para o vendedor selecionado (desde novembro).")
             else:
                 # ============================
-                # 1) Sugestão: RECOMPRA de itens críticos (abaixo da meta)
+                # ✅ NOVA LÓGICA: "VENDE X PRA FECHAR O GAP" (META É SEMPRE VOLUME)
+                # - Itens críticos = itens abaixo da meta (df_abaixo_meta)
+                # - GAP por item = FALTA_P_BATER (meta ref - volume atual)
+                # - Sugere QTD SUGERIDA por cliente/itens críticos:
+                #   QTD ≈ % do volume histórico (desde novembro), limitado pelo GAP do item
                 # ============================
-                itens_criticos = set(df_abaixo_meta["HIERARQUIA DE PRODUTOS"].dropna().astype(str).tolist())
+                itens_criticos = set(df_abaixo_meta["HIERARQUIA DE PRODUTOS"].dropna().astype(str).str.strip().tolist())
 
                 if len(itens_criticos) == 0:
-                    st.info("Sem sugestão de recompra agora: não há itens abaixo da meta no período selecionado.")
+                    st.info("Sem sugestões agora: não há itens abaixo da meta no período selecionado.")
                 else:
-                    if col_nome_cliente and (col_nome_cliente in df_hist.columns):
-                        keys = ["VENDEDOR_NOME", col_nome_cliente, col_cod_cliente, "HIERARQUIA"]
+                    # GAP por hierarquia (aqui, já calculado no df_abaixo_meta)
+                    df_gap = df_abaixo_meta[["HIERARQUIA DE PRODUTOS", "META_REF", "VOLUME", "FALTA_P_BATER"]].copy()
+                    df_gap["HIERARQUIA DE PRODUTOS"] = df_gap["HIERARQUIA DE PRODUTOS"].astype(str).str.strip()
+                    df_gap["FALTA_P_BATER"] = pd.to_numeric(df_gap["FALTA_P_BATER"], errors="coerce").fillna(0).clip(lower=0)
+                    df_gap.rename(columns={"HIERARQUIA DE PRODUTOS": "HIERARQUIA"}, inplace=True)
+
+                    gap_total = float(df_gap["FALTA_P_BATER"].sum())
+
+                    if gap_total <= 0:
+                        st.info("Sem sugestões agora: GAP total dos itens críticos está zerado.")
                     else:
-                        keys = ["VENDEDOR_NOME", col_cod_cliente, "HIERARQUIA"]
+                        if col_nome_cliente and (col_nome_cliente in df_hist.columns):
+                            keys = ["VENDEDOR_NOME", col_nome_cliente, col_cod_cliente, "HIERARQUIA"]
+                        else:
+                            keys = ["VENDEDOR_NOME", col_cod_cliente, "HIERARQUIA"]
 
-                    df_hist_grp = (
-                        df_hist.groupby(keys)
-                        .agg(
-                            VOL_HIST=("QTD_VENDAS", "sum"),
-                            ULT_COMPRA=(col_data_fat, "max")
-                        )
-                        .reset_index()
-                    )
-
-                    df_atual_grp = (
-                        df_f.groupby(keys)["QTD_VENDAS"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"QTD_VENDAS": "VOL_ATUAL"})
-                    )
-
-                    df_sug = df_hist_grp.merge(df_atual_grp, on=keys, how="left")
-                    df_sug["VOL_ATUAL"] = pd.to_numeric(df_sug["VOL_ATUAL"], errors="coerce").fillna(0)
-                    df_sug["VOL_HIST"] = pd.to_numeric(df_sug["VOL_HIST"], errors="coerce").fillna(0)
-
-                    # só oportunidades: histórico > 0 e no período atual ainda não comprou
-                    df_sug = df_sug[(df_sug["VOL_HIST"] > 0) & (df_sug["VOL_ATUAL"] <= 0)].copy()
-
-                    # foca em itens críticos (abaixo da meta)
-                    df_sug = df_sug[df_sug["HIERARQUIA"].astype(str).isin(itens_criticos)].copy()
-
-                    if df_sug.empty:
-                        st.info("Sem recompra clara: nos itens abaixo da meta, não encontrei clientes que compravam no histórico e ainda não compraram no período atual.")
-                    else:
-                        # dias sem comprar (referência: último dia do filtro OU hoje, o menor)
-                        ref_sug = min(pd.Timestamp(d2).normalize(), pd.Timestamp.now().normalize())
-                        df_sug["ULT_COMPRA"] = pd.to_datetime(df_sug["ULT_COMPRA"], errors="coerce")
-                        df_sug["DIAS_SEM_COMPRAR"] = df_sug["ULT_COMPRA"].apply(
-                            lambda x: int((ref_sug - pd.Timestamp(x).normalize()).days) if pd.notna(x) else None
+                        df_hist_grp = (
+                            df_hist.groupby(keys)
+                            .agg(
+                                VOL_HIST=("QTD_VENDAS", "sum"),
+                                ULT_COMPRA=(col_data_fat, "max")
+                            )
+                            .reset_index()
                         )
 
-                        # score simples: mais volume histórico e mais dias sem comprar = mais prioridade
-                        df_sug["SCORE"] = df_sug["VOL_HIST"].fillna(0) * 0.7 + df_sug["DIAS_SEM_COMPRAR"].fillna(0) * 0.3
+                        df_atual_grp = (
+                            df_f.groupby(keys)["QTD_VENDAS"]
+                            .sum()
+                            .reset_index()
+                            .rename(columns={"QTD_VENDAS": "VOL_ATUAL"})
+                        )
 
-                        df_sug = df_sug.sort_values(by=["SCORE", "VOL_HIST"], ascending=False)
+                        df_sug = df_hist_grp.merge(df_atual_grp, on=keys, how="left")
+                        df_sug["VOL_ATUAL"] = pd.to_numeric(df_sug["VOL_ATUAL"], errors="coerce").fillna(0)
+                        df_sug["VOL_HIST"] = pd.to_numeric(df_sug["VOL_HIST"], errors="coerce").fillna(0)
 
-                        st.markdown("### 🎯 Recompra de itens críticos (abaixo da meta)")
-                        st.caption("Regra: cliente comprou no histórico (desde novembro) e ainda não comprou no período atual, filtrado só para hierarquias abaixo da meta.")
+                        # só itens críticos
+                        df_sug["HIERARQUIA"] = df_sug["HIERARQUIA"].astype(str).str.strip()
+                        df_sug = df_sug[df_sug["HIERARQUIA"].isin(itens_criticos)].copy()
 
-                        vendedores_list = df_sug["VENDEDOR_NOME"].dropna().unique().tolist()
-                        vendedores_list = sorted([str(v) for v in vendedores_list])
+                        # oportunidade: histórico > 0 e no período atual ainda não comprou
+                        df_sug = df_sug[(df_sug["VOL_HIST"] > 0) & (df_sug["VOL_ATUAL"] <= 0)].copy()
 
-                        for vnd in vendedores_list:
-                            df_v = df_sug[df_sug["VENDEDOR_NOME"] == vnd].copy()
-                            df_v = df_v.head(12)
+                        if df_sug.empty:
+                            st.info("Sem plano claro agora: nos itens críticos, não encontrei clientes que compravam no histórico e ainda não compraram no período atual.")
+                        else:
+                            # junta GAP do item
+                            df_sug = df_sug.merge(df_gap, on="HIERARQUIA", how="left")
+                            df_sug["FALTA_P_BATER"] = pd.to_numeric(df_sug["FALTA_P_BATER"], errors="coerce").fillna(0).clip(lower=0)
 
-                            with st.expander(f"📌 Sugestões para: {vnd}  (top {len(df_v)})", expanded=False):
-                                if col_nome_cliente and (col_nome_cliente in df_v.columns):
-                                    df_show = df_v[["HIERARQUIA", col_nome_cliente, col_cod_cliente, "VOL_HIST", "ULT_COMPRA", "DIAS_SEM_COMPRAR"]].copy()
-                                    df_show.rename(columns={
-                                        "HIERARQUIA": "HIERARQUIA (item)",
-                                        col_nome_cliente: "CLIENTE (nome)",
-                                        col_cod_cliente: "CLIENTE (cód.)",
-                                        "VOL_HIST": "VOLUME HIST.",
-                                        "ULT_COMPRA": "ÚLT. COMPRA",
-                                        "DIAS_SEM_COMPRAR": "DIAS S/ COMPRA"
-                                    }, inplace=True)
-                                else:
-                                    df_show = df_v[["HIERARQUIA", col_cod_cliente, "VOL_HIST", "ULT_COMPRA", "DIAS_SEM_COMPRAR"]].copy()
-                                    df_show.rename(columns={
-                                        "HIERARQUIA": "HIERARQUIA (item)",
-                                        col_cod_cliente: "CLIENTE (cód.)",
-                                        "VOL_HIST": "VOLUME HIST.",
-                                        "ULT_COMPRA": "ÚLT. COMPRA",
-                                        "DIAS_SEM_COMPRAR": "DIAS S/ COMPRA"
-                                    }, inplace=True)
+                            # dias sem comprar (referência: último dia do filtro OU hoje, o menor)
+                            ref_sug = min(pd.Timestamp(d2).normalize(), pd.Timestamp.now().normalize())
+                            df_sug["ULT_COMPRA"] = pd.to_datetime(df_sug["ULT_COMPRA"], errors="coerce")
+                            df_sug["DIAS_SEM_COMPRAR"] = df_sug["ULT_COMPRA"].apply(
+                                lambda x: int((ref_sug - pd.Timestamp(x).normalize()).days) if pd.notna(x) else None
+                            )
 
-                                st.dataframe(
-                                    df_show.style.format({
-                                        "VOLUME HIST.": lambda x: fmt_pt_int(x),
-                                        "ÚLT. COMPRA": lambda x: x.strftime("%d/%m/%Y") if pd.notna(x) else "",
-                                    }),
-                                    use_container_width=True,
-                                    hide_index=True,
-                                    height=320
-                                )
+                            # QTD SUGERIDA (X): % do histórico, limitado pelo GAP do item
+                            pct_hist = 0.50  # 50% do volume histórico (desde novembro) - ajuste se quiser
+                            df_sug["QTD_SUGERIDA"] = (df_sug["VOL_HIST"].fillna(0) * float(pct_hist)).round().clip(lower=1)
+                            df_sug["QTD_SUGERIDA"] = df_sug[["QTD_SUGERIDA", "FALTA_P_BATER"]].min(axis=1)
+                            df_sug = df_sug[df_sug["QTD_SUGERIDA"] > 0].copy()
 
-                                st.markdown(
-                                    """
-                                    **Como usar isso na prática (rápido):**
-                                    - Priorize as linhas com **mais VOLUME HIST.** e **mais DIAS S/ COMPRA**.
-                                    - Aborde o cliente com foco no item da hierarquia (ex.: “reposição / ponto extra / promoção / mix completo”).
-                                    """
-                                )
+                            df_sug["IMPACTO_%_GAP"] = df_sug["QTD_SUGERIDA"].apply(
+                                lambda x: (float(x) / gap_total * 100) if gap_total > 0 else 0.0
+                            )
 
-                
+                            # score: impacto + histórico + dias sem comprar
+                            df_sug["SCORE"] = (
+                                df_sug["QTD_SUGERIDA"].fillna(0) * 0.6
+                                + df_sug["VOL_HIST"].fillna(0) * 0.2
+                                + df_sug["DIAS_SEM_COMPRAR"].fillna(0) * 0.2
+                            )
+
+                            df_sug = df_sug.sort_values(by=["SCORE", "QTD_SUGERIDA", "VOL_HIST"], ascending=False)
+
+                            st.markdown("### 🎯 Plano inteligente para bater a meta (VOLUME) — itens críticos")
+                            st.caption(
+                                f"Regra: sugere 'vende X' por cliente + item crítico para fechar o GAP do período. "
+                                f"X ≈ {int(pct_hist * 100)}% do volume histórico (desde novembro), limitado pelo GAP do item. "
+                                f"GAP total (itens críticos): {fmt_pt_int(gap_total)}."
+                            )
+
+                            vendedores_list = df_sug["VENDEDOR_NOME"].dropna().unique().tolist()
+                            vendedores_list = sorted([str(v) for v in vendedores_list])
+
+                            for vnd in vendedores_list:
+                                df_v_all = df_sug[df_sug["VENDEDOR_NOME"] == vnd].copy()
+
+                                top_n = 15
+                                df_v_plan = df_v_all.head(top_n).copy()
+
+                                fecha = float(df_v_plan["QTD_SUGERIDA"].sum()) if not df_v_plan.empty else 0.0
+                                pct_fecha = (fecha / gap_total * 100) if gap_total > 0 else 0.0
+
+                                with st.expander(
+                                    f"📌 Sugestões para: {vnd}  | Falta p/ bater (itens críticos): {fmt_pt_int(gap_total)}  "
+                                    f"| Plano (top {len(df_v_plan)}): {fmt_pt_int(fecha)} ({pct_fecha:.0f}%)",
+                                    expanded=False
+                                ):
+                                    st.caption("📌 GAP por hierarquia (itens críticos): meta ref. - volume atual")
+                                    df_gap_show = df_gap.rename(columns={
+                                        "META_REF": "META (ref.)",
+                                        "VOLUME": "VOLUME ATUAL",
+                                        "FALTA_P_BATER": "FALTA (GAP)"
+                                    }).copy()
+
+                                    df_gap_show = df_gap_show.sort_values("FALTA (GAP)", ascending=False).head(10)
+
+                                    st.dataframe(
+                                        df_gap_show.style.format({
+                                            "META (ref.)": lambda v: fmt_pt_int(v),
+                                            "VOLUME ATUAL": lambda v: fmt_pt_int(v),
+                                            "FALTA (GAP)": lambda v: fmt_pt_int(v),
+                                        }),
+                                        use_container_width=True,
+                                        hide_index=True,
+                                        height=220
+                                    )
+
+                                    st.caption("✅ Ações sugeridas (vende X e fecha o GAP):")
+
+                                    if col_nome_cliente and (col_nome_cliente in df_v_plan.columns):
+                                        df_show = df_v_plan[
+                                            ["HIERARQUIA", col_nome_cliente, col_cod_cliente, "VOL_HIST", "ULT_COMPRA", "DIAS_SEM_COMPRAR", "QTD_SUGERIDA", "IMPACTO_%_GAP"]
+                                        ].copy()
+
+                                        df_show.rename(columns={
+                                            "HIERARQUIA": "HIERARQUIA (item)",
+                                            col_nome_cliente: "CLIENTE (nome)",
+                                            col_cod_cliente: "CLIENTE (cód.)",
+                                            "VOL_HIST": "VOLUME HIST.",
+                                            "ULT_COMPRA": "ÚLT. COMPRA",
+                                            "DIAS_SEM_COMPRAR": "DIAS S/ COMPRA",
+                                            "QTD_SUGERIDA": "QTD SUGERIDA (p/ meta)",
+                                            "IMPACTO_%_GAP": "% do GAP fechado",
+                                        }, inplace=True)
+                                    else:
+                                        df_show = df_v_plan[
+                                            ["HIERARQUIA", col_cod_cliente, "VOL_HIST", "ULT_COMPRA", "DIAS_SEM_COMPRAR", "QTD_SUGERIDA", "IMPACTO_%_GAP"]
+                                        ].copy()
+
+                                        df_show.rename(columns={
+                                            "HIERARQUIA": "HIERARQUIA (item)",
+                                            col_cod_cliente: "CLIENTE (cód.)",
+                                            "VOL_HIST": "VOLUME HIST.",
+                                            "ULT_COMPRA": "ÚLT. COMPRA",
+                                            "DIAS_SEM_COMPRAR": "DIAS S/ COMPRA",
+                                            "QTD_SUGERIDA": "QTD SUGERIDA (p/ meta)",
+                                            "IMPACTO_%_GAP": "% do GAP fechado",
+                                        }, inplace=True)
+
+                                    st.dataframe(
+                                        df_show.style.format({
+                                            "VOLUME HIST.": lambda x: fmt_pt_int(x),
+                                            "QTD SUGERIDA (p/ meta)": lambda x: fmt_pt_int(x),
+                                            "ÚLT. COMPRA": lambda x: x.strftime("%d/%m/%Y") if pd.notna(x) else "",
+                                            "% do GAP fechado": lambda x: f"{float(x):.1f}%".replace(".", ","),
+                                        }),
+                                        use_container_width=True,
+                                        hide_index=True,
+                                        height=320
+                                    )
+
+                                    st.markdown(
+                                        """
+                                        **Como usar isso na prática (rápido):**
+                                        - O objetivo é **fechar o GAP** dos itens críticos (abaixo da meta).
+                                        - Comece pelas linhas com **maior QTD SUGERIDA** e **maior % do GAP fechado**.
+                                        - Abordagem pronta: “Se fecharmos **X unidades** agora nessa hierarquia, ajuda a bater a meta de volume do período.”
+                                        """
+                                    )
 
     except Exception as e:
         st.warning(f"Não foi possível gerar o resumo/sugestões: {e}")
@@ -6089,7 +6169,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
         df_final.to_excel(writer, index=False, sheet_name="Dashboard")
     st.download_button("📥 Baixar Excel", buffer.getvalue(), "relatorio.xlsx", "application/vnd.ms-excel")
     st.markdown("---")
-
 
 
 
