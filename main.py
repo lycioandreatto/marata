@@ -5418,7 +5418,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 
     df_final.rename(columns={"HIERARQUIA":"HIERARQUIA DE PRODUTOS"}, inplace=True)
 
-    # ============================
+        # ============================
     # ✅ ADIÇÕES FODAS (RESUMO + ITENS ABAIXO + SUGESTÕES)  ✅
     # ============================
     try:
@@ -5588,7 +5588,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                 # - Itens críticos = itens abaixo da meta (df_abaixo_meta)
                 # - GAP por item = FALTA_P_BATER (meta ref - volume atual)
                 # - Sugere QTD SUGERIDA por cliente/itens críticos:
-                #   QTD ≈ % do volume histórico (desde novembro), limitado pelo GAP do item
+                #   Divide o GAP do item em ATÉ 3 clientes (se tiver)
                 # ============================
                 itens_criticos = set(df_abaixo_meta["HIERARQUIA DE PRODUTOS"].dropna().astype(str).str.strip().tolist())
 
@@ -5652,17 +5652,73 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                                 lambda x: int((ref_sug - pd.Timestamp(x).normalize()).days) if pd.notna(x) else None
                             )
 
-                            # QTD SUGERIDA (X): % do histórico, limitado pelo GAP do item
-                            pct_hist = 0.50  # 50% do volume histórico (desde novembro) - ajuste se quiser
-                            df_sug["QTD_SUGERIDA"] = (df_sug["VOL_HIST"].fillna(0) * float(pct_hist)).round().clip(lower=1)
-                            df_sug["QTD_SUGERIDA"] = df_sug[["QTD_SUGERIDA", "FALTA_P_BATER"]].min(axis=1)
+                            # ---------------------------------------------------------
+                            # ✅ NOVO: dividir o GAP do item em ATÉ 3 clientes (por item)
+                            # - Para cada (VENDEDOR_NOME + HIERARQUIA), pega top 3 clientes
+                            # - Divide o GAP proporcional ao VOL_HIST
+                            # - Soma das sugestões = GAP do item (arredondado)
+                            # ---------------------------------------------------------
+                            df_sug["_RANK_BASE"] = (
+                                df_sug["VOL_HIST"].fillna(0) * 0.7
+                                + df_sug["DIAS_SEM_COMPRAR"].fillna(0) * 0.3
+                            )
+
+                            def _alocar_gap_top3(grp):
+                                grp = grp.copy()
+
+                                gap_item = float(grp["FALTA_P_BATER"].iloc[0]) if "FALTA_P_BATER" in grp.columns else 0.0
+                                gap_item = max(gap_item, 0.0)
+
+                                if gap_item <= 0:
+                                    grp["QTD_SUGERIDA"] = 0
+                                    return grp
+
+                                grp = grp.sort_values("_RANK_BASE", ascending=False).head(3)
+
+                                pesos = grp["VOL_HIST"].fillna(0).astype(float).values
+                                if pesos.sum() <= 0:
+                                    pesos = np.ones(len(grp), dtype=float)
+
+                                aloc = (gap_item * (pesos / pesos.sum()))
+                                aloc_int = np.floor(aloc).astype(int)
+
+                                # garante pelo menos 1 para cada (se GAP permitir)
+                                if len(aloc_int) > 0 and gap_item >= len(aloc_int):
+                                    aloc_int = np.maximum(aloc_int, 1)
+
+                                diff = int(round(gap_item)) - int(aloc_int.sum())
+
+                                frac = (aloc - np.floor(aloc))
+                                ordem = np.argsort(-frac)
+
+                                i = 0
+                                while diff != 0 and len(ordem) > 0:
+                                    idx = ordem[i % len(ordem)]
+                                    if diff > 0:
+                                        aloc_int[idx] += 1
+                                        diff -= 1
+                                    else:
+                                        if aloc_int[idx] > 1:
+                                            aloc_int[idx] -= 1
+                                            diff += 1
+                                    i += 1
+
+                                grp["QTD_SUGERIDA"] = aloc_int
+                                return grp
+
+                            df_sug = (
+                                df_sug.groupby(["VENDEDOR_NOME", "HIERARQUIA"], group_keys=False)
+                                .apply(_alocar_gap_top3)
+                                .reset_index(drop=True)
+                            )
+
+                            df_sug["QTD_SUGERIDA"] = pd.to_numeric(df_sug["QTD_SUGERIDA"], errors="coerce").fillna(0)
                             df_sug = df_sug[df_sug["QTD_SUGERIDA"] > 0].copy()
 
                             df_sug["IMPACTO_%_GAP"] = df_sug["QTD_SUGERIDA"].apply(
                                 lambda x: (float(x) / gap_total * 100) if gap_total > 0 else 0.0
                             )
 
-                            # score: impacto + histórico + dias sem comprar
                             df_sug["SCORE"] = (
                                 df_sug["QTD_SUGERIDA"].fillna(0) * 0.6
                                 + df_sug["VOL_HIST"].fillna(0) * 0.2
@@ -5674,7 +5730,7 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
                             st.markdown("### 🎯 Plano inteligente para bater a meta (VOLUME) — itens críticos")
                             st.caption(
                                 f"Regra: sugere 'vende X' por cliente + item crítico para fechar o GAP do período. "
-                                f"X ≈ {int(pct_hist * 100)}% do volume histórico (desde novembro), limitado pelo GAP do item. "
+                                f"Divide o GAP do item em até 3 clientes (se houver). "
                                 f"GAP total (itens críticos): {fmt_pt_int(gap_total)}."
                             )
 
