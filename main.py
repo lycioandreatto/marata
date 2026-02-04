@@ -2467,7 +2467,7 @@ import plotly.express as px
 # =========================
 # 📊 PÁGINA: DASH RESUMO — FATURADO
 # =========================
-elif menu == "📊 DASH RESUMO":
+ elif menu == "📊 DASH RESUMO":
 
     import requests
     import plotly.express as px
