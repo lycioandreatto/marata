@@ -6190,7 +6190,7 @@ except Exception as e:
 
 
 # --- PÁGINA: APROVAÇÕES ---
-elif menu_interna == "🔔 Aprovações":
+ elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
     
     # SEGURANÇA: Se por algum erro de estado um vendedor/supervisor cair aqui, bloqueia.
