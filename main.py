@@ -263,6 +263,46 @@ MAPA_EMAILS = {
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
 
+def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, qtd_aprovadas):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    try:
+        email_origem = st.secrets["email"]["sender_email"]
+        senha_origem = st.secrets["email"]["sender_password"]
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
+
+        msg = MIMEMultipart()
+        msg["From"] = f"MARATÁ-GVP <{email_origem}>"
+        msg["To"] = destinatarios_lista
+        msg["Subject"] = f"✅ Validação diária concluída - {analista} ({data_str})"
+
+        corpo = f"""
+Olá,
+
+O analista {analista} confirmou a validação das agendas do dia {data_str}.
+
+Total de visitas realizadas aprovadas em massa: {qtd_aprovadas}
+
+E-mail gerado automaticamente pelo Sistema Maratá GVP.
+"""
+        msg.attach(MIMEText(corpo, "plain"))
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(email_origem, senha_origem)
+        server.sendmail(email_origem, destinatarios_lista.split(","), msg.as_string())
+        server.quit()
+
+        return True
+
+    except Exception as e:
+        st.error(f"Erro no envio do e-mail de validação: {e}")
+        return False
+
+
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
     import smtplib
     from email.mime.text import MIMEText
@@ -1201,66 +1241,20 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-                # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
-                # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+        # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
-
-            # ✅ trava para não reenviar e-mail no rerun (por analista + dia)
-            if "validacao_dia_email" not in st.session_state:
-                st.session_state["validacao_dia_email"] = {}
-
-            chave_envio = f"{user_atual.upper()}_{hoje_str}"
-
             if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
-
                 ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
-
-                if not ids:
-                    st.info("Não há visitas com status REALIZADO para aprovar.")
-                else:
-                    # 1) Aprova em massa
+                if ids:
                     df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
-
-                    # 2) Salva na planilha
                     conn.update(
                         spreadsheet=url_planilha,
                         worksheet="AGENDA",
                         data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
                     )
-
-                    # 3) Envia e-mail (SÓ SE for analista) e só 1x por dia
-                    if is_analista and not st.session_state["validacao_dia_email"].get(chave_envio, False):
-
-                        # ✅ Quem vai receber (diretoria/gestão)
-                        # Se você tiver lista de diretoria, coloque aqui:
-                        # EMAILS_DIRETORIA = ["aldo@marata.com.br", ...]
-                        destinatarios = EMAILS_GESTAO.copy()
-
-                        # Se quiser mandar pra alguém fixo também:
-                        # destinatarios += ["marciajanaina@marata.com.br"]
-
-                        destinatarios_str = ", ".join(destinatarios)
-
-                        ok_envio = enviar_email_validacao_agendas(
-                            destinatarios_lista=destinatarios_str,
-                            analista=user_atual.upper(),
-                            data_str=hoje_str,
-                            qtd_aprovadas=len(ids),
-                        )
-
-                        if ok_envio:
-                            st.session_state["validacao_dia_email"][chave_envio] = True
-                            st.success("Todas as visitas realizadas foram aprovadas e a diretoria foi notificada ✅")
-                        else:
-                            st.warning("Aprovação feita, mas falhou ao enviar o e-mail de notificação.")
-
-                    else:
-                        st.success("Todas as visitas realizadas foram aprovadas ✅")
-
+                    st.success("Todas as visitas realizadas foram aprovadas!")
                     time.sleep(1)
                     st.rerun()
-
-
 
         # --- TABELA ---
         if not df_dia.empty:
@@ -1743,52 +1737,10 @@ if menu == "📅 Agendamentos do Dia":
     else:
         st.info("Nenhum agendamento para hoje.")
 
-def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, qtd_aprovadas):
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-
-    try:
-        email_origem = st.secrets["email"]["sender_email"]
-        senha_origem = st.secrets["email"]["sender_password"]
-        smtp_server = st.secrets["email"]["smtp_server"]
-        smtp_port = st.secrets["email"]["smtp_port"]
-
-        msg = MIMEMultipart()
-        msg["From"] = f"MARATÁ-GVP <{email_origem}>"
-        msg["To"] = destinatarios_lista
-        msg["Subject"] = f"✅ Validação diária concluída - {analista} ({data_str})"
-
-        corpo = f"""
-Olá,
-
-O analista {analista} confirmou a validação das agendas do dia {data_str}.
-
-Total de visitas realizadas aprovadas em massa: {qtd_aprovadas}
-
-E-mail gerado automaticamente pelo Sistema Maratá GVP.
-"""
-        msg.attach(MIMEText(corpo, "plain"))
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(email_origem, senha_origem)
-        server.sendmail(email_origem, destinatarios_lista.split(","), msg.as_string())
-        server.quit()
-
-        return True
-
-    except Exception as e:
-        st.error(f"Erro no envio do e-mail de validação: {e}")
-        return False
-
-
 # ==========================================
 # ✅ NOVA PÁGINA: LOGÍSTICA (SIMULAÇÃO) — + FECHAMENTO DE CARGA + MAPA FUNCIONANDO
 # ==========================================
-
-
-#elif menu == "🚚 Logística":
+elif menu == "🚚 Logística":
     st.header("🚚 Logística — Simulação Inteligente (SLA / Rota / Risco / Carga)")
 
     # ---------------------------------------------------------
