@@ -261,9 +261,9 @@ MAPA_EMAILS = {
 }
 
 # E-mails que sempre recebem
-EMAILS_GESTAO = ["aldo@marata.com.br"]
+EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
 
-def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, total, aprovadas, reprovadas):
+def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, qtd_aprovadas):
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -284,10 +284,7 @@ Olá,
 
 O analista {analista} confirmou a validação das agendas do dia {data_str}.
 
-📊 RESUMO DA VALIDAÇÃO:
-- Total de visitas do dia (no recorte atual): {total}
-- Aprovadas (OK): {aprovadas}
-- Reprovadas: {reprovadas}
+Total de visitas realizadas aprovadas em massa: {qtd_aprovadas}
 
 E-mail gerado automaticamente pelo Sistema Maratá GVP.
 """
@@ -304,7 +301,6 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
     except Exception as e:
         st.error(f"Erro no envio do e-mail de validação: {e}")
         return False
-
 
 
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
@@ -1245,62 +1241,20 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-              # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
-if pode_validar and not df_dia.empty:
-    if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
-
-        # IDs que serão aprovados (somente status Realizado)
-        ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
-
-        if ids:
-            # 1) Aprova no df_agenda (base geral)
-            df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
-
-            # 2) Salva na planilha
-            conn.update(
-                spreadsheet=url_planilha,
-                worksheet="AGENDA",
-                data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
-            )
-
-            # 3) Calcula números pro e-mail (no recorte atual do df_dia)
-            data_str = hoje_str
-            analista_nome = user_atual.strip().upper()
-
-            total_dia = int(df_dia.shape[0])
-
-            # aprovadas = quantas foram aprovadas em massa agora (ids)
-            aprovadas = int(len(ids))
-
-            # reprovadas = quantas já estavam marcadas como REPROVADO no recorte do dia
-            reprovadas = int((df_dia[col_aprov_exec].astype(str).str.upper() == "REPROVADO").sum())
-
-            # 4) Lista de e-mails da diretoria/gestão (ajuste aqui se quiser outro destino fixo)
-            # Se você tiver um EMAILS_DIRETORIA, use ele. Senão, reaproveita EMAILS_GESTAO.
-            lista_dest = EMAILS_GESTAO.copy()
-            string_dest = ", ".join(lista_dest)
-
-            # 5) Envia o e-mail
-            with st.spinner("Enviando e-mail para diretoria..."):
-                enviar_email_validacao_agendas(
-                    destinatarios_lista=string_dest,
-                    analista=analista_nome,
-                    data_str=data_str,
-                    total=total_dia,
-                    aprovadas=aprovadas,
-                    reprovadas=reprovadas,
-                )
-
-            st.success("✅ Todas as visitas realizadas foram aprovadas e a diretoria foi notificada!")
-            time.sleep(1)
-            st.rerun()
-        else:
-            st.info("Não há visitas com STATUS = Realizado para aprovar.")
-
-
-        time.sleep(1)
-        st.rerun()
-
+        # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+        if pode_validar and not df_dia.empty:
+            if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
+                ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
+                if ids:
+                    df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
+                    conn.update(
+                        spreadsheet=url_planilha,
+                        worksheet="AGENDA",
+                        data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+                    )
+                    st.success("Todas as visitas realizadas foram aprovadas!")
+                    time.sleep(1)
+                    st.rerun()
 
         # --- TABELA ---
         if not df_dia.empty:
