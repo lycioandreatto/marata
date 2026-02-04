@@ -1900,22 +1900,21 @@ elif menu == "🚚 Logística":
 
                     # ---------------------------------------------------------
                     # 7) SIMULAÇÃO DE FECHAMENTO DE CARGA (NOVO)
-                    # - CARGA_MIN_CXS: mínimo de caixas para "fechar carga"
-                    # - CXS_CONFIRMADAS: caixas já confirmadas (simulado)
-                    # - FALTA_P_FECHAR: quanto falta para fechar a carga
+                    # ✅ FIX: clip em numpy array estava quebrando (python 3.13 / numpy)
                     # ---------------------------------------------------------
-                    # regra: distribui um "minimo" por rota (ex.: caminhão pequeno / médio)
                     carga_min_por_rota = df_view[["ROTA_ID"]].drop_duplicates().copy()
                     carga_min_por_rota["CARGA_MIN_CXS"] = rs.choice([600, 800, 1000, 1200], size=len(carga_min_por_rota), p=[0.20, 0.35, 0.30, 0.15])
 
-                    # volume confirmado por cliente (simulado)
-                    df_view["CXS_CONFIRMADAS"] = rs.gamma(shape=2.0, scale=120.0, size=len(df_view)).round().astype(int).clip(lower=0)
+                    # ✅ gera e converte para pandas Series antes de clip
+                    cxs_raw = rs.gamma(shape=2.0, scale=120.0, size=len(df_view))
+                    cxs_raw = np.round(cxs_raw).astype(int)
+                    df_view["CXS_CONFIRMADAS"] = pd.Series(cxs_raw, index=df_view.index)
+                    df_view["CXS_CONFIRMADAS"] = pd.to_numeric(df_view["CXS_CONFIRMADAS"], errors="coerce").fillna(0).astype(int)
+                    df_view["CXS_CONFIRMADAS"] = df_view["CXS_CONFIRMADAS"].clip(lower=0)
 
-                    # junta mínimo da rota
                     df_view = df_view.merge(carga_min_por_rota, on="ROTA_ID", how="left")
                     df_view["CARGA_MIN_CXS"] = pd.to_numeric(df_view["CARGA_MIN_CXS"], errors="coerce").fillna(800).astype(int)
 
-                    # agrega por rota: total confirmado
                     df_rota_carga = (
                         df_view.groupby("ROTA_ID", dropna=False)
                         .agg(
@@ -1937,7 +1936,8 @@ elif menu == "🚚 Logística":
 
                     df_rota_carga["FALTA_P_FECHAR"] = (
                         df_rota_carga["CARGA_MIN_CXS"].astype(int) - df_rota_carga["CXS_CONFIRMADAS_ROTA"].astype(int)
-                    ).clip(lower=0)
+                    )
+                    df_rota_carga["FALTA_P_FECHAR"] = df_rota_carga["FALTA_P_FECHAR"].clip(lower=0)
 
                     df_rota_carga["CARGA_FECHADA"] = df_rota_carga["FALTA_P_FECHAR"].apply(lambda x: "SIM" if int(x) == 0 else "NAO")
 
@@ -2015,7 +2015,7 @@ elif menu == "🚚 Logística":
                             )
 
                     with a2:
-                        st.caption("⚠️ Rotas com maior risco operacional (simulado)")
+                        st.caption("⚠️ Rotas com maior risco operacional + fechamento de carga (simulado)")
                         df_rota_alert = df_rota_carga.sort_values(
                             by=["CARGA_FECHADA", "FALTA_P_FECHAR", "ATRASO_ROTA", "PROB_MEDIA"],
                             ascending=[True, False, False, True]
@@ -2077,7 +2077,6 @@ elif menu == "🚚 Logística":
                         st.markdown("### ➕ Simular entrada de novo pedido para fechar carga")
                         s1, s2, s3 = st.columns([0.34, 0.33, 0.33])
 
-                        # simula sugestão automática de pedido para fechar
                         sugestao_auto = falta if falta > 0 else 0
                         pedido_novo = s1.number_input(
                             "Novo pedido (caixas):",
@@ -2122,7 +2121,7 @@ elif menu == "🚚 Logística":
                             )
 
                     # ---------------------------------------------------------
-                    # 11) TABELA DETALHADA (o que o usuário vê)
+                    # 11) TABELA DETALHADA
                     # ---------------------------------------------------------
                     st.markdown("## 📄 Detalhamento (simulado)")
 
@@ -2158,30 +2157,26 @@ elif menu == "🚚 Logística":
 
                     # ---------------------------------------------------------
                     # 12) MAPA (FUNCIONANDO) ✅
-                    # - Como sua aba LOGISTICA ainda não tem coordenadas, eu simulo coords por UF/CIDADE.
-                    # - Se você depois adicionar colunas LAT/LON reais, é só trocar o gerador.
                     # ---------------------------------------------------------
                     st.markdown("## 🗺️ Mapa (simulado) — Rotas e risco")
 
                     try:
                         import pydeck as pdk
 
-                        # centros aproximados por UF (para simular) - se não achar, cai num default
                         centros_uf = {
-                            "SE": (-10.9162, -37.0617),  # Aracaju
-                            "AL": (-9.6658, -35.7353),   # Maceió
-                            "BA": (-12.9714, -38.5014),  # Salvador
-                            "PE": (-8.0476, -34.8770),   # Recife
-                            "PB": (-7.1153, -34.8610),   # João Pessoa
-                            "RN": (-5.7945, -35.2110),   # Natal
-                            "CE": (-3.7319, -38.5267),   # Fortaleza
-                            "PI": (-5.0919, -42.8034),   # Teresina
-                            "MA": (-2.5307, -44.3068),   # São Luís
+                            "SE": (-10.9162, -37.0617),
+                            "AL": (-9.6658, -35.7353),
+                            "BA": (-12.9714, -38.5014),
+                            "PE": (-8.0476, -34.8770),
+                            "PB": (-7.1153, -34.8610),
+                            "RN": (-5.7945, -35.2110),
+                            "CE": (-3.7319, -38.5267),
+                            "PI": (-5.0919, -42.8034),
+                            "MA": (-2.5307, -44.3068),
                         }
 
                         def _uf_to_sigla(uf_raw):
                             uf = str(uf_raw).strip().upper()
-                            # seus dados podem vir como "SE1" etc -> pega duas primeiras letras
                             if len(uf) >= 2:
                                 return uf[:2]
                             return uf
@@ -2189,7 +2184,6 @@ elif menu == "🚚 Logística":
                         df_map = df_view.copy()
                         df_map["UF_SIGLA"] = df_map["Estado"].apply(_uf_to_sigla)
 
-                        # gera lat/lon por rota, para não ficar tudo em cima
                         rotas = df_map["ROTA_ID"].dropna().unique().tolist()
                         rota_to_center = {}
 
@@ -2197,12 +2191,10 @@ elif menu == "🚚 Logística":
                             df_rid = df_map[df_map["ROTA_ID"] == rid].head(1)
                             uf_sig = str(df_rid["UF_SIGLA"].iloc[0]) if not df_rid.empty else "SE"
                             lat0, lon0 = centros_uf.get(uf_sig, (-10.0, -37.0))
-                            # jitter por rota (fixo no seed do dia)
                             jlat = rs.normal(0, 0.12)
                             jlon = rs.normal(0, 0.12)
                             rota_to_center[rid] = (lat0 + jlat, lon0 + jlon)
 
-                        # aplica um jitter leve por cliente (para espalhar pontos)
                         lats = []
                         lons = []
                         for _, r in df_map.iterrows():
@@ -2213,14 +2205,13 @@ elif menu == "🚚 Logística":
                         df_map["LAT"] = lats
                         df_map["LON"] = lons
 
-                        # cor por risco (ALTA/MEDIA/BAIXA) mas sem “tirar nada”: só adiciona
                         def _color(risco_txt):
                             s = str(risco_txt).upper().strip()
                             if s == "ALTA":
-                                return [0, 160, 0, 180]      # verde (alta prob)
+                                return [0, 160, 0, 180]
                             if s == "MEDIA":
-                                return [255, 165, 0, 180]    # laranja
-                            return [200, 0, 0, 180]         # vermelho (baixa prob)
+                                return [255, 165, 0, 180]
+                            return [200, 0, 0, 180]
 
                         df_map["COR"] = df_map["RISCO"].apply(_color)
 
@@ -2233,7 +2224,7 @@ elif menu == "🚚 Logística":
                             axis=1
                         )
 
-                        dados_mapa = df_map[["LON", "LAT", "COR", "TOOLTIP", "ROTA_ID", "RISCO"]].to_dict(orient="records")
+                        dados_mapa = df_map[["LON", "LAT", "COR", "TOOLTIP"]].to_dict(orient="records")
 
                         lat_center = float(df_map["LAT"].mean())
                         lon_center = float(df_map["LON"].mean())
@@ -2275,6 +2266,7 @@ elif menu == "🚚 Logística":
 
                     except Exception as e:
                         st.warning(f"Não foi possível renderizar o mapa da logística: {e}")
+
 
 
 
