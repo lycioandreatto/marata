@@ -2155,8 +2155,10 @@ elif menu == "🚚 Logística":
 
                     st.markdown("---")
 
-                    # ---------------------------------------------------------
-                    # 12) MAPA (FUNCIONANDO) ✅
+                                       # ---------------------------------------------------------
+                    # 12) MAPA (FUNCIONANDO) ✅ AJUSTADO
+                    # - Força provider CARTO (evita tela verde quando o deck não “pega” o basemap)
+                    # - Tenta GL style (positron). Se falhar, cai num raster simples.
                     # ---------------------------------------------------------
                     st.markdown("## 🗺️ Mapa (simulado) — Rotas e risco")
 
@@ -2177,9 +2179,7 @@ elif menu == "🚚 Logística":
 
                         def _uf_to_sigla(uf_raw):
                             uf = str(uf_raw).strip().upper()
-                            if len(uf) >= 2:
-                                return uf[:2]
-                            return uf
+                            return uf[:2] if len(uf) >= 2 else uf
 
                         df_map = df_view.copy()
                         df_map["UF_SIGLA"] = df_map["Estado"].apply(_uf_to_sigla)
@@ -2224,48 +2224,87 @@ elif menu == "🚚 Logística":
                             axis=1
                         )
 
-                        dados_mapa = df_map[["LON", "LAT", "COR", "TOOLTIP"]].to_dict(orient="records")
+                        # ✅ garante que não tem NaN
+                        df_map["LAT"] = pd.to_numeric(df_map["LAT"], errors="coerce")
+                        df_map["LON"] = pd.to_numeric(df_map["LON"], errors="coerce")
+                        df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
 
-                        lat_center = float(df_map["LAT"].mean())
-                        lon_center = float(df_map["LON"].mean())
+                        if df_map.empty:
+                            st.info("Sem pontos válidos para o mapa.")
+                        else:
+                            dados_mapa = df_map[["LON", "LAT", "COR", "TOOLTIP"]].to_dict(orient="records")
 
-                        layer_pontos = pdk.Layer(
-                            "ScatterplotLayer",
-                            data=dados_mapa,
-                            get_position="[LON, LAT]",
-                            get_radius=2500,
-                            radius_units="meters",
-                            get_fill_color="COR",
-                            pickable=True,
-                            opacity=0.8,
-                            stroked=True,
-                            get_line_color=[40, 40, 40, 120],
-                            line_width_min_pixels=1,
-                        )
+                            lat_center = float(df_map["LAT"].mean())
+                            lon_center = float(df_map["LON"].mean())
 
-                        view_state = pdk.ViewState(
-                            latitude=lat_center,
-                            longitude=lon_center,
-                            zoom=7.5,
-                            pitch=0
-                        )
+                            layer_pontos = pdk.Layer(
+                                "ScatterplotLayer",
+                                data=dados_mapa,
+                                get_position="[LON, LAT]",
+                                get_radius=2500,
+                                radius_units="meters",
+                                get_fill_color="COR",
+                                pickable=True,
+                                opacity=0.85,
+                                stroked=True,
+                                get_line_color=[40, 40, 40, 120],
+                                line_width_min_pixels=1,
+                            )
 
-                        st.pydeck_chart(
-                            pdk.Deck(
-                                layers=[layer_pontos],
-                                initial_view_state=view_state,
-                                tooltip={"text": "{TOOLTIP}"},
-                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                            ),
-                            use_container_width=True
-                        )
+                            view_state = pdk.ViewState(
+                                latitude=lat_center,
+                                longitude=lon_center,
+                                zoom=7.5,
+                                pitch=0
+                            )
 
-                        st.caption(
-                            "Mapa simulado (sem coordenadas reais na aba LOGISTICA): pontos são espalhados por UF/rota para demonstrar a ideia."
-                        )
+                            # ✅ estilo principal (CARTO GL)
+                            carto_gl = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+
+                            # ✅ fallback raster (quando GL não carrega no ambiente)
+                            # (deck aceita map_style=None e mostra “fundo” sem tiles;
+                            # aqui forçamos um TileLayer raster pra garantir mapa)
+                            use_fallback = st.toggle("Usar mapa alternativo (raster)", value=False, key="log_map_fallback")
+
+                            if not use_fallback:
+                                st.pydeck_chart(
+                                    pdk.Deck(
+                                        layers=[layer_pontos],
+                                        initial_view_state=view_state,
+                                        tooltip={"text": "{TOOLTIP}"},
+                                        map_style=carto_gl,
+                                        map_provider="carto",
+                                    ),
+                                    use_container_width=True
+                                )
+                            else:
+                                layer_tiles = pdk.Layer(
+                                    "TileLayer",
+                                    data=None,
+                                    min_zoom=0,
+                                    max_zoom=19,
+                                    tile_size=256,
+                                    get_tile_url="https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+                                )
+
+                                st.pydeck_chart(
+                                    pdk.Deck(
+                                        layers=[layer_tiles, layer_pontos],
+                                        initial_view_state=view_state,
+                                        tooltip={"text": "{TOOLTIP}"},
+                                        map_style=None,
+                                        map_provider="carto",
+                                    ),
+                                    use_container_width=True
+                                )
+
+                            st.caption(
+                                "Mapa simulado (sem coordenadas reais na aba LOGISTICA): pontos são espalhados por UF/rota para demonstrar a ideia."
+                            )
 
                     except Exception as e:
                         st.warning(f"Não foi possível renderizar o mapa da logística: {e}")
+
 
 
 
