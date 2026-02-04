@@ -3532,40 +3532,73 @@ elif menu_interna == "📚 Perfil do Cliente":
             st.markdown("---")
             st.markdown("### 📋 Detalhamento do alerta selecionado")
 
-            if alerta_sel == "SEM_FAT":
+                        if alerta_sel == "SEM_FAT":
                 st.write("Clientes na BASE que **nunca apareceram** no FATURADO (sem faturamento).")
+
+                # ✅ monta lista com colunas completas (Analista/Estado/Código/Vendedor)
+                df_lista = pd.DataFrame()
 
                 if not sem_faturamento:
                     df_lista = pd.DataFrame()
                 else:
+                    # sempre normaliza os códigos pra bater 100%
+                    sem_fat_norm = [limpar_cod(x) for x in sem_faturamento]
+
                     if col_base_cod and col_base_cod in df_base_filtrada.columns:
-                        df_sf = df_base_filtrada[df_base_filtrada[col_base_cod].astype(str).isin([str(x) for x in sem_faturamento])].copy()
+                        # garante BASE normalizada no código
+                        df_base_filtrada[col_base_cod] = df_base_filtrada[col_base_cod].apply(limpar_cod)
+
+                        df_keys = pd.DataFrame({"_COD": sem_fat_norm})
+                        df_base_tmp = df_base_filtrada.copy()
+                        df_base_tmp["_COD"] = df_base_tmp[col_base_cod].astype(str).apply(limpar_cod)
+
+                        df_sf = df_keys.merge(df_base_tmp, on="_COD", how="left")
+
+                        # renomeia colunas pra saída final
+                        df_lista = pd.DataFrame()
+                        df_lista["Código Cliente"] = df_sf["_COD"].astype(str)
+
+                        if col_base_nome and col_base_nome in df_sf.columns:
+                            df_lista["Cliente"] = df_sf[col_base_nome].astype(str)
+                        elif col_base_nome1 and col_base_nome1 in df_sf.columns:
+                            df_lista["Cliente"] = df_sf[col_base_nome1].astype(str)
+                        else:
+                            df_lista["Cliente"] = ""
+
+                        df_lista["Estado"] = df_sf[col_base_estado].astype(str) if (col_base_estado and col_base_estado in df_sf.columns) else ""
+                        df_lista["Analista"] = df_sf[col_base_analista].astype(str) if (col_base_analista and col_base_analista in df_sf.columns) else ""
+                        df_lista["Vendedor"] = df_sf[col_base_vendedor].astype(str) if (col_base_vendedor and col_base_vendedor in df_sf.columns) else ""
+                        df_lista["Código Vendedor"] = df_sf[col_base_cod_vendedor].astype(str) if (col_base_cod_vendedor and col_base_cod_vendedor in df_sf.columns) else ""
+                        df_lista["Cidade"] = df_sf[col_base_cidade].astype(str) if (col_base_cidade and col_base_cidade in df_sf.columns) else ""
+
+                        # ✅ se não casou, mostra como "NÃO ENCONTRADO NA BASE"
+                        df_lista["Cliente"] = df_lista["Cliente"].replace("nan", "").fillna("")
+                        df_lista.loc[df_lista["Cliente"].astype(str).str.strip() == "", "Cliente"] = "NÃO ENCONTRADO NA BASE"
+
                     else:
-                        # fallback por nome (se não tiver código)
-                        df_sf = df_base_filtrada[df_base_filtrada[col_base_nome].astype(str).isin([str(x) for x in sem_faturamento])].copy()
+                        # fallback: se não tiver código na BASE, mostra só o código mesmo
+                        df_lista = pd.DataFrame({"Código Cliente": sem_fat_norm})
+                        df_lista["Cliente"] = ""
+                        df_lista["Estado"] = ""
+                        df_lista["Analista"] = ""
+                        df_lista["Vendedor"] = ""
+                        df_lista["Código Vendedor"] = ""
+                        df_lista["Cidade"] = ""
 
-                    df_lista = _base_cols_df(df_sf)
-                    # ordena pra ficar consistente
-                    if "Código Cliente" in df_lista.columns:
-                        df_lista = df_lista.sort_values("Código Cliente")
-
-                if df_lista is None or df_lista.empty:
+                if df_lista.empty:
                     st.success("✅ Nenhum cliente sem faturamento (BASE x FATURADO) no recorte atual da BASE.")
                 else:
-                    # garante colunas mínimas pedidas (se alguma não existir, cria vazia)
-                    for c in ["Código Cliente", "Cliente", "Estado", "Analista", "Vendedor", "Código Vendedor", "Cidade"]:
-                        if c not in df_lista.columns:
-                            df_lista[c] = ""
-
                     st.dataframe(
-                        df_lista[["Código Cliente", "Cliente", "Estado", "Analista", "Vendedor", "Código Vendedor", "Cidade"]],
+                        df_lista[
+                            ["Código Cliente", "Cliente", "Estado", "Analista", "Vendedor", "Código Vendedor", "Cidade"]
+                        ],
                         use_container_width=True,
                         hide_index=True,
                     )
 
                 pdf_bytes = _make_pdf_bytes(
                     f"Sem faturamento (BASE x FATURADO) | Ref: {hoje_ref_alerta.strftime('%d/%m/%Y')}",
-                    (df_lista[["Código Cliente", "Cliente", "Estado", "Analista", "Vendedor", "Código Vendedor", "Cidade"]] if df_lista is not None and not df_lista.empty else df_lista),
+                    (df_lista[["Código Cliente", "Cliente", "Estado", "Analista", "Vendedor", "Código Vendedor", "Cidade"]] if not df_lista.empty else df_lista),
                 )
                 if pdf_bytes:
                     st.download_button(
@@ -3576,11 +3609,12 @@ elif menu_interna == "📚 Perfil do Cliente":
                         key="dl_pdf_sem_fat",
                     )
 
-                if df_lista is not None and not df_lista.empty:
+                # justificativa
+                if not df_lista.empty:
                     st.markdown("#### 📝 Justificativa (controle)")
                     cli_j = st.selectbox(
                         "Código do cliente (sem faturamento):",
-                        df_lista["Código Cliente"].astype(str).tolist() if "Código Cliente" in df_lista.columns else [],
+                        df_lista["Código Cliente"].astype(str).tolist(),
                         key="cli_j_semfat",
                     )
                     just = st.text_area(
@@ -3607,6 +3641,7 @@ elif menu_interna == "📚 Perfil do Cliente":
                             st.success("✅ Justificativa salva na aba JUSTIFICATIVAS.")
                         else:
                             st.warning(f"Não consegui salvar na aba JUSTIFICATIVAS. Erro: {err}")
+
 
             elif alerta_sel in ["30", "60", "90"]:
                 lim = int(alerta_sel)
