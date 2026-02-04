@@ -1015,6 +1015,8 @@ with st.sidebar:
     if is_admin: 
         opcoes_menu.append("🧪 TESTES")
         opcoes_menu.append("📊 KPI Aprovação Analistas")
+        opcoes_menu.append("🚚 Logística")
+
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
@@ -1694,6 +1696,532 @@ if menu == "📅 Agendamentos do Dia":
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
+# ==========================================
+# ✅ NOVA PÁGINA: LOGÍSTICA (SIMULAÇÃO)
+# ==========================================
+elif menu == "🚚 Logística":
+    st.header("🚚 Logística — Simulação Inteligente (SLA / Rota / Risco)")
+
+    # ---------------------------------------------------------
+    # 1) LÊ A ABA "LOGISTICA" (sua nova aba de teste)
+    #    Colunas esperadas (mínimo): ANALISTA, SUPERVISOR, VENDEDOR, Estado, CIDADE, CLIENTE, COD CLIENTE, DATA
+    # ---------------------------------------------------------
+    try:
+        df_log = conn.read(spreadsheet=url_planilha, worksheet="LOGISTICA")
+    except Exception as e:
+        st.warning(f"Não consegui ler a aba LOGISTICA: {e}")
+        df_log = None
+
+    if df_log is None or df_log.empty:
+        st.info("A aba LOGISTICA está vazia. Preencha alguns registros para simular.")
+    else:
+        df_log = df_log.copy()
+
+        # ---------------------------------------------------------
+        # 2) LIMPEZA / PADRONIZAÇÃO
+        # ---------------------------------------------------------
+        for c in ["ANALISTA", "SUPERVISOR", "VENDEDOR", "Estado", "CIDADE", "CLIENTE", "COD CLIENTE", "DATA"]:
+            if c not in df_log.columns:
+                df_log[c] = ""
+
+        df_log["ANALISTA"] = df_log["ANALISTA"].astype(str).str.strip().str.upper()
+        df_log["SUPERVISOR"] = df_log["SUPERVISOR"].astype(str).str.strip().str.upper()
+        df_log["VENDEDOR"] = df_log["VENDEDOR"].astype(str).str.strip().str.upper()
+        df_log["Estado"] = df_log["Estado"].astype(str).str.strip().str.upper()
+        df_log["CIDADE"] = df_log["CIDADE"].astype(str).str.strip().str.upper()
+        df_log["CLIENTE"] = df_log["CLIENTE"].astype(str).str.strip()
+        df_log["COD CLIENTE"] = df_log["COD CLIENTE"].astype(str).str.strip()
+
+        df_log["DT"] = pd.to_datetime(df_log["DATA"], dayfirst=True, errors="coerce")
+        df_log = df_log[df_log["DT"].notna()].copy()
+
+        if df_log.empty:
+            st.info("Sem datas válidas na coluna DATA (verifique o formato dd/mm/aaaa).")
+        else:
+            # ---------------------------------------------------------
+            # 3) PERMISSÕES (mesma ideia do resto do sistema)
+            # ---------------------------------------------------------
+            if is_admin or is_diretoria:
+                df_view = df_log.copy()
+                st.info("Visão Gestão: vendo todos os registros de logística.")
+            elif is_analista:
+                df_view = df_log[df_log["ANALISTA"] == str(user_atual).upper()].copy()
+            elif is_supervisor:
+                df_view = df_log[df_log["SUPERVISOR"] == str(user_atual).upper()].copy()
+            else:
+                df_view = df_log[df_log["VENDEDOR"] == str(user_atual).upper()].copy()
+
+            if df_view.empty:
+                st.info("Não há registros de logística para seu perfil/filtros.")
+            else:
+                # ---------------------------------------------------------
+                # 4) FILTROS (rápidos e corporativos)
+                # ---------------------------------------------------------
+                with st.expander("🎯 Filtros", expanded=False):
+                    f1, f2, f3, f4 = st.columns(4)
+
+                    def _opt(df, col):
+                        vals = sorted([str(x) for x in df[col].dropna().unique().tolist() if str(x).strip() != ""])
+                        return ["Todos"] + vals
+
+                    sel_estado = f1.selectbox("Estado:", _opt(df_view, "Estado"), key="log_sel_estado")
+                    df_tmp = df_view if sel_estado == "Todos" else df_view[df_view["Estado"] == sel_estado]
+
+                    sel_cidade = f2.selectbox("Cidade:", _opt(df_tmp, "CIDADE"), key="log_sel_cidade")
+                    df_tmp = df_tmp if sel_cidade == "Todos" else df_tmp[df_tmp["CIDADE"] == sel_cidade]
+
+                    sel_vend = f3.selectbox("Vendedor:", _opt(df_tmp, "VENDEDOR"), key="log_sel_vend")
+                    df_tmp = df_tmp if sel_vend == "Todos" else df_tmp[df_tmp["VENDEDOR"] == sel_vend]
+
+                    # Período
+                    dt_min = df_tmp["DT"].min().date()
+                    dt_max = df_tmp["DT"].max().date()
+
+                    if dt_min == dt_max:
+                        f4.caption(f"Período disponível: {dt_min.strftime('%d/%m/%Y')}")
+                        dt_ini, dt_fim = dt_min, dt_max
+                    else:
+                        dt_ini, dt_fim = f4.slider(
+                            "Período:",
+                            min_value=dt_min,
+                            max_value=dt_max,
+                            value=(dt_min, dt_max),
+                            key="log_periodo"
+                        )
+
+                    mask = df_tmp["DT"].dt.date.between(dt_ini, dt_fim)
+                    df_view = df_tmp[mask].reset_index(drop=True)
+
+                if df_view.empty:
+                    st.info("Sem dados para os filtros selecionados.")
+                else:
+                    # ---------------------------------------------------------
+                    # 5) SIMULAÇÃO COMPLETA (inventando dados de logística)
+                    #    - Cria indicadores realistas: rota, SLA, atraso, tentativa, etc.
+                    # ---------------------------------------------------------
+                    rng_seed = int(pd.Timestamp.now().strftime("%Y%m%d"))  # muda por dia (simulação "viva")
+                    rs = np.random.RandomState(rng_seed)
+
+                    # ROTA (simulada) - cria uma rota por cidade/vendedor
+                    df_view["ROTA_ID"] = (
+                        df_view["Estado"].astype(str) + "-" +
+                        df_view["CIDADE"].astype(str) + "-" +
+                        df_view["VENDEDOR"].astype(str)
+                    )
+
+                    # Transportadora / Modal (simulado)
+                    transportadoras = ["FROTA PRÓPRIA", "TERCEIRO A", "TERCEIRO B", "CORREIOS"]
+                    df_view["TRANSPORTADORA"] = rs.choice(transportadoras, size=len(df_view), p=[0.45, 0.25, 0.20, 0.10])
+
+                    # JANELA (simulado)
+                    janelas = ["MANHÃ", "TARDE", "COMERCIAL"]
+                    df_view["JANELA"] = rs.choice(janelas, size=len(df_view), p=[0.35, 0.40, 0.25])
+
+                    # Tentativas e status (simulado)
+                    df_view["TENTATIVAS"] = rs.choice([1, 2, 3], size=len(df_view), p=[0.78, 0.18, 0.04])
+
+                    # Histórico de atraso do cliente (simulado: 0 a 1)
+                    df_view["ATRASO_FREQ_CLIENTE"] = (rs.beta(2, 6, size=len(df_view)) * 100).round(1)  # %
+                    # Risco de rota (simulado)
+                    df_view["ATRASO_FREQ_ROTA"] = (rs.beta(2.2, 5.5, size=len(df_view)) * 100).round(1)  # %
+
+                    # SLA planejado vs realizado (simulado)
+                    df_view["SLA_PLANEJADO_DIAS"] = rs.choice([1, 2, 3, 4, 5], size=len(df_view), p=[0.18, 0.32, 0.27, 0.15, 0.08])
+                    # atraso realizado (pode ser negativo ou positivo)
+                    delta = rs.normal(loc=0.6, scale=1.2, size=len(df_view))  # média de +0.6 dia
+                    delta = np.clip(delta, -2.0, 6.0)
+                    df_view["ATRASO_DIAS"] = np.round(delta, 1)
+
+                    df_view["SLA_REAL_DIAS"] = (df_view["SLA_PLANEJADO_DIAS"].astype(float) + df_view["ATRASO_DIAS"].astype(float)).round(1)
+                    df_view["NO_PRAZO"] = df_view["ATRASO_DIAS"].apply(lambda x: "SIM" if float(x) <= 0 else "NÃO")
+
+                    motivos = ["TRÂNSITO", "CLIENTE FECHADO", "ENDEREÇO DIFÍCIL", "CHUVA", "ATRASO NA SEPARAÇÃO", "SEM OCORRÊNCIA"]
+                    df_view["MOTIVO"] = rs.choice(motivos, size=len(df_view), p=[0.20, 0.15, 0.12, 0.08, 0.15, 0.30])
+
+                    # ---------------------------------------------------------
+                    # 6) PROBABILIDADE DE "ATENDER/ENTREGAR SEM PROBLEMA" (0–100%)
+                    #    Sem ML pesado: score corporativo (simples e explicável)
+                    # ---------------------------------------------------------
+                    def _clip01(x):
+                        return max(min(float(x), 1.0), 0.0)
+
+                    # Normalizações
+                    n_atraso_cliente = df_view["ATRASO_FREQ_CLIENTE"].astype(float) / 100.0
+                    n_atraso_rota = df_view["ATRASO_FREQ_ROTA"].astype(float) / 100.0
+                    n_tentativas = df_view["TENTATIVAS"].astype(float).clip(lower=1, upper=3)  # 1..3
+                    n_tentativas = (n_tentativas - 1) / 2  # 0..1
+                    n_sla = df_view["SLA_PLANEJADO_DIAS"].astype(float).clip(lower=1, upper=5)
+                    n_sla = (n_sla - 1) / 4  # 0..1 (quanto maior, pior para "atender rápido")
+
+                    # Peso de transportadora (simulado)
+                    map_transp = {
+                        "FROTA PRÓPRIA": 0.10,
+                        "TERCEIRO A": 0.18,
+                        "TERCEIRO B": 0.22,
+                        "CORREIOS": 0.30,
+                    }
+                    n_transp = df_view["TRANSPORTADORA"].map(map_transp).fillna(0.20).astype(float)  # 0..0.30
+
+                    # Score (quanto maior, pior)
+                    risco = (
+                        n_atraso_cliente * 0.40
+                        + n_atraso_rota * 0.30
+                        + n_tentativas * 0.15
+                        + n_sla * 0.10
+                        + n_transp * 0.05
+                    )
+
+                    # Probabilidade final (0..100)
+                    df_view["PROB_ATENDER_%"] = (1.0 - risco).apply(_clip01) * 100.0
+                    df_view["PROB_ATENDER_%"] = df_view["PROB_ATENDER_%"].round(1)
+
+                    # Classificação (explicável)
+                    def _faixa(p):
+                        p = float(p)
+                        if p >= 80:
+                            return "ALTA"
+                        if p >= 60:
+                            return "MÉDIA"
+                        return "BAIXA"
+
+                    df_view["RISCO"] = df_view["PROB_ATENDER_%"].apply(_faixa)
+
+                    # Sugestão de ação (texto corporativo)
+                    def _acao(r):
+                        p = float(r.get("PROB_ATENDER_%", 0))
+                        mot = str(r.get("MOTIVO", "")).upper()
+                        if p < 60:
+                            if "CLIENTE FECHADO" in mot:
+                                return "Confirmar janela com cliente antes de sair; ajustar horário/rota."
+                            if "ATRASO NA SEPARAÇÃO" in mot:
+                                return "Priorizar separação no CD; liberar picking/expedição mais cedo."
+                            if "ENDEREÇO DIFÍCIL" in mot:
+                                return "Validar endereço/rota no mapa; incluir ponto de referência."
+                            return "Replanejar rota (priorizar cedo) e acompanhar via checklist de entrega."
+                        if p < 80:
+                            return "Monitorar execução; manter janela e revisar rota se ocorrer novo atraso."
+                        return "Rota saudável; manter padrão de atendimento."
+                    df_view["AÇÃO_RECOMENDADA"] = df_view.apply(_acao, axis=1)
+
+                    # ---------------------------------------------------------
+                    # 7) CARDS EXECUTIVOS
+                    # ---------------------------------------------------------
+                    st.markdown("## 📌 Visão Executiva (Logística)")
+
+                    total = len(df_view)
+                    ot = int((df_view["NO_PRAZO"] == "SIM").sum())
+                    ot_pct = (ot / total * 100) if total > 0 else 0
+
+                    p_med = float(df_view["PROB_ATENDER_%"].mean()) if total > 0 else 0
+                    risco_baixo = int((df_view["RISCO"] == "BAIXA").sum())
+                    risco_baixo_pct = (risco_baixo / total * 100) if total > 0 else 0
+
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Registros (período)", total)
+                    c2.metric("On Time (%)", f"{ot_pct:.1f}%")
+                    c3.metric("Prob. média de atender", f"{p_med:.1f}%")
+                    c4.metric("Risco BAIXO (%)", f"{risco_baixo_pct:.1f}%")
+
+                    st.markdown("---")
+
+                    # ---------------------------------------------------------
+                    # 8) ALERTAS: clientes e rotas com atraso frequente
+                    # ---------------------------------------------------------
+                    st.markdown("## 🚨 Alertas (o que mais dói)")
+
+                    # Top clientes com atraso frequente
+                    df_cli = (
+                        df_view.groupby(["COD CLIENTE", "CLIENTE"], dropna=False)
+                        .agg(
+                            QTD=("COD CLIENTE", "count"),
+                            PROB_MEDIA=("PROB_ATENDER_%", "mean"),
+                            ATRASO_CLIENTE=("ATRASO_FREQ_CLIENTE", "mean"),
+                            ATRASO_REAL_MED=("ATRASO_DIAS", "mean"),
+                        )
+                        .reset_index()
+                    )
+                    df_cli["PROB_MEDIA"] = df_cli["PROB_MEDIA"].round(1)
+                    df_cli["ATRASO_CLIENTE"] = df_cli["ATRASO_CLIENTE"].round(1)
+                    df_cli["ATRASO_REAL_MED"] = df_cli["ATRASO_REAL_MED"].round(1)
+
+                    df_cli = df_cli.sort_values(by=["ATRASO_CLIENTE", "ATRASO_REAL_MED", "QTD"], ascending=[False, False, False]).head(10)
+
+                    # Top rotas com atraso frequente
+                    df_rota = (
+                        df_view.groupby(["ROTA_ID"], dropna=False)
+                        .agg(
+                            QTD=("ROTA_ID", "count"),
+                            PROB_MEDIA=("PROB_ATENDER_%", "mean"),
+                            ATRASO_ROTA=("ATRASO_FREQ_ROTA", "mean"),
+                            ATRASO_REAL_MED=("ATRASO_DIAS", "mean"),
+                            ONTIME=("NO_PRAZO", lambda s: (s == "SIM").mean() * 100),
+                        )
+                        .reset_index()
+                    )
+                    df_rota["PROB_MEDIA"] = df_rota["PROB_MEDIA"].round(1)
+                    df_rota["ATRASO_ROTA"] = df_rota["ATRASO_ROTA"].round(1)
+                    df_rota["ATRASO_REAL_MED"] = df_rota["ATRASO_REAL_MED"].round(1)
+                    df_rota["ONTIME"] = df_rota["ONTIME"].round(1)
+
+                    df_rota = df_rota.sort_values(by=["ATRASO_ROTA", "ATRASO_REAL_MED", "QTD"], ascending=[False, False, False]).head(10)
+
+                    a1, a2 = st.columns(2)
+                    with a1:
+                        st.caption("Top 10 clientes com maior recorrência de atraso (simulado)")
+                        st.dataframe(df_cli, use_container_width=True, hide_index=True, height=320)
+                    with a2:
+                        st.caption("Top 10 rotas com maior recorrência de atraso (simulado)")
+                        st.dataframe(df_rota, use_container_width=True, hide_index=True, height=320)
+
+                    st.markdown("---")
+
+                    # ---------------------------------------------------------
+                    # 9) TABELA PRINCIPAL (com probabilidade e ações)
+                    # ---------------------------------------------------------
+                    st.markdown("## 📋 Plano de ação (por atendimento)")
+
+                    # Ordena por risco (pior primeiro)
+                    df_show = df_view.copy()
+                    df_show = df_show.sort_values(by=["PROB_ATENDER_%", "ATRASO_DIAS"], ascending=[True, False]).reset_index(drop=True)
+
+                    cols_out = [
+                        "ANALISTA", "SUPERVISOR", "VENDEDOR",
+                        "Estado", "CIDADE", "CLIENTE", "COD CLIENTE",
+                        "DATA",
+                        "ROTA_ID", "TRANSPORTADORA", "JANELA",
+                        "SLA_PLANEJADO_DIAS", "ATRASO_DIAS", "NO_PRAZO",
+                        "PROB_ATENDER_%", "RISCO",
+                        "MOTIVO", "AÇÃO_RECOMENDADA"
+                    ]
+                    cols_out = [c for c in cols_out if c in df_show.columns]
+
+                    st.dataframe(
+                        df_show[cols_out],
+                        use_container_width=True,
+                        hide_index=True,
+                        height=420
+                    )
+
+                    # ---------------------------------------------------------
+                    # 10) MAPA DA ROTA (SIMULADO)
+                    #     - Se você já tem df_base com COORDENADAS por cliente,
+                    #       aproveita e plota a rota real.
+                    #     - Se não tiver, gera coordenadas falsas só para a demo.
+                    # ---------------------------------------------------------
+                    st.markdown("---")
+                    st.markdown("## 🗺️ Mapa da rota (demo)")
+
+                    # Seleciona uma rota para visualizar
+                    rotas = sorted(df_view["ROTA_ID"].dropna().unique().tolist())
+                    rota_sel = st.selectbox("Escolha uma rota para ver no mapa:", rotas, key="log_rota_mapa")
+
+                    df_map = df_view[df_view["ROTA_ID"] == rota_sel].copy()
+
+                    # tenta usar coordenadas reais da BASE, se existir
+                    coords_ok = False
+                    if "df_base" in globals() and df_base is not None and ("COORDENADAS" in df_base.columns) and ("Cliente" in df_base.columns):
+                        try:
+                            df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
+                            df_coords["Cliente"] = df_coords["Cliente"].astype(str).str.strip()
+                            df_map["COD CLIENTE"] = df_map["COD CLIENTE"].astype(str).str.strip()
+
+                            df_map = df_map.merge(
+                                df_coords,
+                                left_on="COD CLIENTE",
+                                right_on="Cliente",
+                                how="left"
+                            )
+
+                            def _parse_coord(x):
+                                try:
+                                    if isinstance(x, str) and "," in x:
+                                        lat, lon = x.split(",", 1)
+                                        return float(lat.strip()), float(lon.strip())
+                                except:
+                                    pass
+                                return None, None
+
+                            df_map["LAT"] = df_map["COORDENADAS"].apply(lambda v: _parse_coord(v)[0])
+                            df_map["LON"] = df_map["COORDENADAS"].apply(lambda v: _parse_coord(v)[1])
+
+                            df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
+                            coords_ok = not df_map.empty
+                        except:
+                            coords_ok = False
+
+                    # se não tiver coords reais, inventa só pro demo (centro baseado no Estado/Cidade)
+                    if not coords_ok:
+                        # Centro fictício (Aracaju/SE como fallback)
+                        lat0, lon0 = -10.9472, -37.0731
+                        n = len(df_map)
+
+                        # espalha pontos próximos
+                        df_map["LAT"] = lat0 + rs.normal(0, 0.03, size=n)
+                        df_map["LON"] = lon0 + rs.normal(0, 0.03, size=n)
+
+                    # cor por risco (alto=vermelho, médio=amarelo, baixo=verde)
+                    def _cor(risco_txt):
+                        t = str(risco_txt).upper()
+                        if t == "BAIXA":
+                            return [0, 160, 0, 200]
+                        if t == "MÉDIA":
+                            return [255, 165, 0, 200]
+                        return [200, 0, 0, 220]
+
+                    df_map["COR_PINO"] = df_map["RISCO"].apply(_cor)
+                    df_map["TOOLTIP"] = df_map.apply(
+                        lambda r: (
+                            f"Cliente: {r.get('CLIENTE','')} | "
+                            f"Prob.: {r.get('PROB_ATENDER_%','')}% | "
+                            f"Risco: {r.get('RISCO','')} | "
+                            f"Motivo: {r.get('MOTIVO','')}"
+                        ),
+                        axis=1
+                    )
+
+                    dados_mapa = df_map[["LON", "LAT", "COR_PINO", "TOOLTIP"]].to_dict(orient="records")
+                    lat_center = float(df_map["LAT"].mean())
+                    lon_center = float(df_map["LON"].mean())
+
+                    import pydeck as pdk
+
+                    layer_pontos = pdk.Layer(
+                        "ScatterplotLayer",
+                        data=dados_mapa,
+                        get_position="[LON, LAT]",
+                        get_fill_color="COR_PINO",
+                        get_radius=120,
+                        radius_units="meters",
+                        pickable=True
+                    )
+
+                    # Linha da rota (conecta os pontos na ordem da data)
+                    df_line = df_map.sort_values("DT").copy()
+                    path = df_line[["LON", "LAT"]].values.tolist()
+                    df_path = pd.DataFrame([{"path": path}])
+
+                    layer_rota = pdk.Layer(
+                        "PathLayer",
+                        data=df_path,
+                        get_path="path",
+                        get_width=4,
+                        width_scale=3,
+                        width_min_pixels=2,
+                        pickable=False,
+                    )
+
+                    view_state = pdk.ViewState(
+                        latitude=lat_center,
+                        longitude=lon_center,
+                        zoom=11,
+                        pitch=0
+                    )
+
+                    tooltip = {"text": "{TOOLTIP}"}
+
+                    st.pydeck_chart(
+                        pdk.Deck(
+                            layers=[layer_rota, layer_pontos],
+                            initial_view_state=view_state,
+                            tooltip=tooltip,
+                            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                        ),
+                        use_container_width=True
+                    )
+
+                    st.caption(
+                        "Legenda (pinos): Verde = risco baixo | Laranja = risco médio | Vermelho = risco alto. "
+                        "A linha é a sequência da rota (por DATA)."
+                    )
+
+                    st.markdown("---")
+
+                    # ---------------------------------------------------------
+                    # 11) EXPORT (para impressionar)
+                    #     exporta a tabela de plano de ação (com probabilidade/ação)
+                    # ---------------------------------------------------------
+                    st.markdown("### 📤 Exportar (Plano de ação da logística — demo)")
+
+                    col_exp1, col_exp2 = st.columns(2)
+                    df_export = df_show[cols_out].copy()
+
+                    # Excel
+                    with col_exp1:
+                        import io as _io
+                        buffer_xlsx = _io.BytesIO()
+                        with pd.ExcelWriter(buffer_xlsx, engine="xlsxwriter") as writer:
+                            df_export.to_excel(writer, index=False, sheet_name="LOGISTICA")
+
+                            worksheet = writer.sheets["LOGISTICA"]
+                            for i, col_name in enumerate(df_export.columns):
+                                try:
+                                    max_len = max([len(str(col_name))] + [len(str(v)) for v in df_export[col_name].astype(str).fillna("").tolist()])
+                                    worksheet.set_column(i, i, min(max_len + 2, 45))
+                                except:
+                                    pass
+
+                        st.download_button(
+                            "📥 Baixar Excel (Logística)",
+                            data=buffer_xlsx.getvalue(),
+                            file_name="logistica_simulacao.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="btn_export_excel_logistica"
+                        )
+
+                    # PDF
+                    with col_exp2:
+                        import io as _io
+                        from fpdf import FPDF as _FPDF
+
+                        def _pdf_table_bytes(df_pdf):
+                            pdf = _FPDF(orientation="L", unit="mm", format="A4")
+                            pdf.set_auto_page_break(auto=True, margin=10)
+                            pdf.add_page()
+
+                            pdf.set_font("Arial", "B", 10)
+                            pdf.cell(0, 8, "LOGISTICA — Plano de Acao (Simulacao)", ln=True)
+                            pdf.ln(1)
+
+                            pdf.set_font("Arial", size=7)
+
+                            page_w = 297 - 20
+                            n_cols = max(len(df_pdf.columns), 1)
+                            col_w = max(page_w / n_cols, 18)
+
+                            # Cabeçalho
+                            pdf.set_font("Arial", "B", 7)
+                            for c in df_pdf.columns:
+                                txt = str(c)[:25]
+                                pdf.cell(col_w, 6, txt, border=1)
+                            pdf.ln()
+
+                            # Linhas
+                            pdf.set_font("Arial", size=7)
+                            for _, row in df_pdf.iterrows():
+                                for c in df_pdf.columns:
+                                    v = row.get(c, "")
+                                    s = "" if pd.isna(v) else str(v)
+                                    s = s.replace("\n", " ").strip()
+                                    s = s[:35]
+                                    pdf.cell(col_w, 6, s, border=1)
+                                pdf.ln()
+
+                            out = _io.BytesIO(pdf.output(dest="S").encode("latin-1"))
+                            return out.getvalue()
+
+                        pdf_bytes = _pdf_table_bytes(df_export)
+
+                        st.download_button(
+                            "🧾 Baixar PDF (Logística)",
+                            data=pdf_bytes,
+                            file_name="logistica_simulacao.pdf",
+                            mime="application/pdf",
+                            key="btn_export_pdf_logistica"
+                        )
+
+    # fim da página Logística
+
 
 # --- PÁGINA: TESTES (ACURÁCIA) ---
 elif menu_interna == "🧪 TESTES":
