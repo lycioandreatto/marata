@@ -2548,7 +2548,6 @@ elif menu_interna == "📚 Perfil do Cliente":
     col_base_analista = None
     col_base_supervisor = None
     col_base_vendedor = None
-    col_base_nome = None
 
     if df_base is not None and not df_base.empty:
         col_base_cliente = pick_col(
@@ -2561,18 +2560,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         col_base_estado = pick_col(df_base, ["EscrV", "ESCRV", "Estado", "UF"], fallback=None)
         col_base_analista = pick_col(df_base, ["ANALISTA", "Analista"], fallback=None)
         col_base_supervisor = pick_col(df_base, ["EqvS", "EQVS", "Supervisor", "COD SUPERVISOR"], fallback=None)
-        col_base_vendedor = pick_col(
-            df_base,
-            ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS", "Vendedor"],
-            fallback=None,
-        )
-
-        # nome do cliente na BASE (pra exibir junto)
-        col_base_nome = pick_col(
-            df_base,
-            ["Nome 1", "NOME 1", "Nome", "NOME", "Razão Social", "RAZAO SOCIAL"],
-            fallback=None,
-        )
+        col_base_vendedor = pick_col(df_base, ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS", "Vendedor"], fallback=None)
 
         df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
 
@@ -2581,9 +2569,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         if col_base_analista and col_base_analista in df_base.columns:
             df_base[col_base_analista] = df_base[col_base_analista].astype(str).str.strip().str.upper()
         if col_base_supervisor and col_base_supervisor in df_base.columns:
-            df_base[col_base_supervisor] = (
-                df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
-            )
+            df_base[col_base_supervisor] = df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
         if col_base_vendedor and col_base_vendedor in df_base.columns:
             df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
 
@@ -2602,38 +2588,14 @@ elif menu_interna == "📚 Perfil do Cliente":
         if col_base_vendedor and col_base_vendedor in df_base_filtrada.columns and vendedor_sel != "(Todos)":
             df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_vendedor] == vendedor_sel].copy()
 
-        # ============================================================
-        # ✅ GARANTIR QUE NO FATURADO A COLUNA DE CLIENTE É O CÓDIGO
-        # (FATURADO tem 2 colunas "Cliente": 1ª nome, 2ª código -> geralmente "Cliente.1")
-        # ============================================================
-        col_fat_cliente_cod = pick_col(
-            df_fat,
-            ["Cliente.1", "CLIENTE.1", "CÓDIGO CLIENTE", "COD CLIENTE", "CODIGO CLIENTE", "CÓDIGO", "CODIGO"],
-            fallback=None,
+        # 3) Última compra por cliente (NO FATURADO COMPLETO, não só no recorte filtrado)
+        df_last = (
+            df_fat.groupby(col_cliente)[col_data]
+            .max()
+            .reset_index()
+            .rename(columns={col_cliente: "Cliente", col_data: "UltimaCompra"})
         )
-
-        if col_fat_cliente_cod is None and "Cliente.1" in df_fat.columns:
-            col_fat_cliente_cod = "Cliente.1"
-
-        if col_fat_cliente_cod is None:
-            cols_cli = [c for c in df_fat.columns if str(c).strip().upper() == "CLIENTE"]
-            if len(cols_cli) >= 2:
-                col_fat_cliente_cod = cols_cli[-1]
-
-        if col_fat_cliente_cod is None:
-            st.warning("Não consegui identificar a coluna de CÓDIGO do cliente no FATURADO (ex.: Cliente.1).")
-            df_last = pd.DataFrame(columns=["Cliente", "UltimaCompra"])
-        else:
-            df_fat[col_fat_cliente_cod] = df_fat[col_fat_cliente_cod].apply(limpar_cod)
-
-            # 3) Última compra por cliente (NO FATURADO COMPLETO, não só no recorte filtrado)
-            df_last = (
-                df_fat.groupby(col_fat_cliente_cod)[col_data]
-                .max()
-                .reset_index()
-                .rename(columns={col_fat_cliente_cod: "Cliente", col_data: "UltimaCompra"})
-            )
-            df_last["Cliente"] = df_last["Cliente"].apply(limpar_cod)
+        df_last["Cliente"] = df_last["Cliente"].apply(limpar_cod)
 
         # 4) Carteira (BASE) -> lista de clientes
         carteira_clientes = sorted(
@@ -2647,17 +2609,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
         # 5) Cruzamento BASE x FATURADO
         set_base = set([str(x) for x in carteira_clientes])
-
-        if col_fat_cliente_cod is not None:
-            set_fat = set(
-                [
-                    str(x)
-                    for x in df_fat[col_fat_cliente_cod].dropna().unique().tolist()
-                    if str(x).strip() != ""
-                ]
-            )
-        else:
-            set_fat = set()
+        set_fat = set([str(x) for x in df_fat[col_cliente].dropna().unique().tolist() if str(x).strip() != ""])
 
         sem_faturamento = sorted(list(set_base - set_fat))  # nunca apareceu no FATURADO
 
@@ -2671,13 +2623,8 @@ elif menu_interna == "📚 Perfil do Cliente":
         # base de dias sem comprar (para clientes da BASE)
         df_last_base = df_last[df_last["Cliente"].astype(str).isin(set_base)].copy()
 
-        if not df_last_base.empty:
-            df_last_base["DiasSemCompra"] = (hoje_ref_alerta - df_last_base["UltimaCompra"].dt.floor("D")).dt.days
-            df_last_base["DiasSemCompra"] = (
-                pd.to_numeric(df_last_base["DiasSemCompra"], errors="coerce").fillna(0).astype(int)
-            )
-        else:
-            df_last_base["DiasSemCompra"] = pd.Series(dtype="int")
+        df_last_base["DiasSemCompra"] = (hoje_ref_alerta - df_last_base["UltimaCompra"].dt.floor("D")).dt.days
+        df_last_base["DiasSemCompra"] = pd.to_numeric(df_last_base["DiasSemCompra"], errors="coerce").fillna(0).astype(int)
 
         # buckets
         df_30 = df_last_base[df_last_base["DiasSemCompra"] > 30].copy()
@@ -2727,12 +2674,14 @@ elif menu_interna == "📚 Perfil do Cliente":
                 if df_lista is None or df_lista.empty:
                     pdf.multi_cell(0, 6, "Sem registros para este filtro.")
                 else:
+                    # cabeçalho
                     cols = df_lista.columns.tolist()
                     line = " | ".join(cols)
                     pdf.set_font("Arial", "B", 8)
                     pdf.multi_cell(0, 5, line)
                     pdf.set_font("Arial", "", 8)
 
+                    # linhas (limite para não ficar gigante)
                     max_rows = min(500, df_lista.shape[0])
                     for i in range(max_rows):
                         row = df_lista.iloc[i].tolist()
@@ -2750,6 +2699,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             Não quebra a página se o método não existir.
             """
             try:
+                # tenta ler para descobrir a próxima linha
                 df_j = conn.read(spreadsheet=url_planilha, worksheet="JUSTIFICATIVAS")
                 if df_j is None or df_j.empty:
                     df_j = pd.DataFrame(columns=df_row.columns.tolist())
@@ -2758,6 +2708,8 @@ elif menu_interna == "📚 Perfil do Cliente":
 
             try:
                 df_out = pd.concat([df_j, df_row], ignore_index=True)
+
+                # streamlit_gsheets geralmente aceita update com DataFrame
                 conn.update(spreadsheet=url_planilha, worksheet="JUSTIFICATIVAS", data=df_out)
                 return True, None
             except Exception as e:
@@ -2769,23 +2721,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
             if alerta_sel == "SEM_FAT":
                 st.write("Clientes na BASE que **nunca apareceram** no FATURADO (sem faturamento).")
-
-                # ✅ Lista com código + nome (se existir na BASE)
-                if sem_faturamento:
-                    df_lista = df_base_filtrada[df_base_filtrada[col_base_cliente].astype(str).isin(sem_faturamento)].copy()
-                    cols_show = [col_base_cliente]
-                    if col_base_nome and col_base_nome in df_lista.columns:
-                        cols_show.append(col_base_nome)
-
-                    df_lista = df_lista[cols_show].drop_duplicates()
-
-                    if len(cols_show) == 2:
-                        df_lista.columns = ["Cliente", "Nome do cliente"]
-                    else:
-                        df_lista.columns = ["Cliente"]
-                else:
-                    df_lista = pd.DataFrame(columns=["Cliente", "Nome do cliente"] if col_base_nome else ["Cliente"])
-
+                df_lista = pd.DataFrame({"Cliente": sem_faturamento})
                 if df_lista.empty:
                     st.success("✅ Nenhum cliente sem faturamento (BASE x FATURADO) no recorte atual da BASE.")
                 else:
@@ -2807,34 +2743,22 @@ elif menu_interna == "📚 Perfil do Cliente":
                 # justificativa (para cliente da lista)
                 if not df_lista.empty:
                     st.markdown("#### 📝 Justificativa (controle)")
-                    cli_j = st.selectbox(
-                        "Cliente (sem faturamento):",
-                        df_lista["Cliente"].astype(str).tolist(),
-                        key="cli_j_semfat",
-                    )
-                    just = st.text_area(
-                        "Justificativa:",
-                        placeholder="Ex.: cliente inativo, fechamento, sem atendimento, troca de CNPJ, concorrência, etc.",
-                        key="txt_j_semfat",
-                    )
+                    cli_j = st.selectbox("Cliente (sem faturamento):", df_lista["Cliente"].astype(str).tolist(), key="cli_j_semfat")
+                    just = st.text_area("Justificativa:", placeholder="Ex.: cliente inativo, fechamento, sem atendimento, troca de CNPJ, concorrência, etc.", key="txt_j_semfat")
                     if st.button("Salvar justificativa", key="btn_save_j_semfat"):
                         now_ts = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
-                        df_row = pd.DataFrame(
-                            [
-                                {
-                                    "Timestamp": now_ts,
-                                    "Tipo": "SEM_FATURAMENTO",
-                                    "Cliente": str(cli_j),
-                                    "DiasSemCompra": "",
-                                    "UltimaCompra": "",
-                                    "Estado_Filtro": str(estado_sel),
-                                    "Analista_Filtro": str(analista_sel),
-                                    "Supervisor_Filtro": str(supervisor_sel),
-                                    "Vendedor_Filtro": str(vendedor_sel),
-                                    "Justificativa": str(just).strip(),
-                                }
-                            ]
-                        )
+                        df_row = pd.DataFrame([{
+                            "Timestamp": now_ts,
+                            "Tipo": "SEM_FATURAMENTO",
+                            "Cliente": str(cli_j),
+                            "DiasSemCompra": "",
+                            "UltimaCompra": "",
+                            "Estado_Filtro": str(estado_sel),
+                            "Analista_Filtro": str(analista_sel),
+                            "Supervisor_Filtro": str(supervisor_sel),
+                            "Vendedor_Filtro": str(vendedor_sel),
+                            "Justificativa": str(just).strip(),
+                        }])
                         ok, err = _append_justificativa(df_row)
                         if ok:
                             st.success("✅ Justificativa salva na aba JUSTIFICATIVAS.")
@@ -2847,21 +2771,14 @@ elif menu_interna == "📚 Perfil do Cliente":
 
                 df_bucket = df_last_base[df_last_base["DiasSemCompra"] > lim].copy()
                 df_bucket = df_bucket.sort_values("DiasSemCompra", ascending=False)
-
                 df_show = df_bucket.copy()
-                if not df_show.empty:
-                    df_show["UltimaCompra"] = df_show["UltimaCompra"].dt.strftime("%d/%m/%Y")
-
+                df_show["UltimaCompra"] = df_show["UltimaCompra"].dt.strftime("%d/%m/%Y")
                 df_show = df_show.rename(columns={"UltimaCompra": "Última compra", "DiasSemCompra": "Dias sem compra"})
 
                 if df_show.empty:
                     st.success(f"✅ Nenhum cliente acima de {lim} dias sem compra no recorte atual da BASE.")
                 else:
-                    st.dataframe(
-                        df_show[["Cliente", "Última compra", "Dias sem compra"]],
-                        use_container_width=True,
-                        hide_index=True,
-                    )
+                    st.dataframe(df_show[["Cliente", "Última compra", "Dias sem compra"]], use_container_width=True, hide_index=True)
 
                 pdf_bytes = _make_pdf_bytes(
                     f"Clientes > {lim} dias sem compra | Ref: {hoje_ref_alerta.strftime('%d/%m/%Y')}",
@@ -2880,34 +2797,27 @@ elif menu_interna == "📚 Perfil do Cliente":
                 if not df_show.empty:
                     st.markdown("#### 📝 Justificativa (controle)")
                     cli_j = st.selectbox("Cliente:", df_show["Cliente"].astype(str).tolist(), key=f"cli_j_{lim}")
-                    just = st.text_area(
-                        "Justificativa:",
-                        placeholder="Ex.: sem estoque, visitado e não fechou, cliente fechado, sem giro, problema de preço, etc.",
-                        key=f"txt_j_{lim}",
-                    )
+                    just = st.text_area("Justificativa:", placeholder="Ex.: sem estoque, visitado e não fechou, cliente fechado, sem giro, problema de preço, etc.", key=f"txt_j_{lim}")
                     if st.button("Salvar justificativa", key=f"btn_save_j_{lim}"):
                         now_ts = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
 
+                        # busca última compra e dias
                         row_ = df_bucket[df_bucket["Cliente"].astype(str) == str(cli_j)].head(1)
                         ult = row_["UltimaCompra"].iloc[0] if not row_.empty else None
                         dias_ = int(row_["DiasSemCompra"].iloc[0]) if not row_.empty else ""
 
-                        df_row = pd.DataFrame(
-                            [
-                                {
-                                    "Timestamp": now_ts,
-                                    "Tipo": f"{lim}D_SEM_COMPRA",
-                                    "Cliente": str(cli_j),
-                                    "DiasSemCompra": dias_,
-                                    "UltimaCompra": (_dt_pt(ult) if ult is not None else ""),
-                                    "Estado_Filtro": str(estado_sel),
-                                    "Analista_Filtro": str(analista_sel),
-                                    "Supervisor_Filtro": str(supervisor_sel),
-                                    "Vendedor_Filtro": str(vendedor_sel),
-                                    "Justificativa": str(just).strip(),
-                                }
-                            ]
-                        )
+                        df_row = pd.DataFrame([{
+                            "Timestamp": now_ts,
+                            "Tipo": f"{lim}D_SEM_COMPRA",
+                            "Cliente": str(cli_j),
+                            "DiasSemCompra": dias_,
+                            "UltimaCompra": (_dt_pt(ult) if ult is not None else ""),
+                            "Estado_Filtro": str(estado_sel),
+                            "Analista_Filtro": str(analista_sel),
+                            "Supervisor_Filtro": str(supervisor_sel),
+                            "Vendedor_Filtro": str(vendedor_sel),
+                            "Justificativa": str(just).strip(),
+                        }])
                         ok, err = _append_justificativa(df_row)
                         if ok:
                             st.success("✅ Justificativa salva na aba JUSTIFICATIVAS.")
