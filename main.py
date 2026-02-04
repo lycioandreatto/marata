@@ -2466,9 +2466,10 @@ import plotly.express as px
 
 # =========================
 # 📊 PÁGINA: DASH RESUMO — FATURADO
+# ✅ COLE ESTE BLOCO NO MESMO NÍVEL DOS OUTROS "elif menu == ..."
+# (ou seja: alinhado com os outros elif, sem espaços a mais)
 # =========================
- elif menu == "📊 DASH RESUMO":
-
+elif menu == "📊 DASH RESUMO":
     import requests
     import plotly.express as px
 
@@ -2623,7 +2624,6 @@ import plotly.express as px
 
     @st.cache_data(ttl=24 * 60 * 60)
     def _carregar_geojson_ufs():
-        # GeoJSON de UFs (IBGE 2021) via serviço ArcGIS
         url = "https://pamgia.ibama.gov.br/server/rest/services/SIGAGEO/bases/MapServer/31/query"
         params = {
             "where": "1=1",
@@ -2678,7 +2678,6 @@ import plotly.express as px
         i1.metric("UF #1 em Receita", f"{uf_r} — {_fmt_pt_num(top_uf_receita.iloc[0]['RECEITA_TOTAL'], 0)}")
         i2.metric("UF #1 em Quantidade", f"{uf_q} — {_fmt_pt_num(top_uf_qtd.iloc[0]['QTD_TOTAL'], 0)}")
 
-        # concentração: % receita da UF top
         pct_top = (float(top_uf_receita.iloc[0]["RECEITA_TOTAL"]) / total_receita * 100) if total_receita > 0 else 0
         i3.metric("Concentração (UF #1)", f"{_fmt_pt_num(pct_top, 1)}% da Receita")
 
@@ -2757,6 +2756,7 @@ import plotly.express as px
             use_container_width=True,
             hide_index=True,
         )
+
 
 
 
