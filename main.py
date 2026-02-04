@@ -2461,8 +2461,8 @@ elif menu == "🚚 Logística":
 
 
 
-import requests
-import plotly.express as px
+ import requests
+ import plotly.express as px
 
 # =========================
 # 📊 PÁGINA: DASH RESUMO — FATURADO
