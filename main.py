@@ -3134,7 +3134,7 @@ elif menu_interna == "📚 Perfil do Cliente":
 
     st.markdown("---")
 
-    # =========================================================
+        # =========================================================
     # ✅ NOVO BLOCO (ALERTAS + CONTROLE): BASE x FATURADO + 30/60/90 + LISTA + PDF + JUSTIFICATIVA
     # - Usa a aba "BASE" como carteira
     # - Cruza com FATURADO para:
@@ -3175,7 +3175,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.warning(f"Não consegui ler a aba BASE: {e}")
         df_base = None
 
-        # 2) Mapeia colunas na BASE (mínimo: cliente)
+    # 2) Mapeia colunas na BASE (mínimo: cliente)
     col_base_cliente = None
     col_base_nome1 = None
     col_base_estado = None
@@ -3208,6 +3208,16 @@ elif menu_interna == "📚 Perfil do Cliente":
             fallback=None,
         )
 
+        # ✅ BASE: Cidade/Local
+        col_base_local = pick_col(df_base, ["Local", "LOCAL", "Cidade", "CIDADE"], fallback=None)
+
+        # ✅ BASE: Código do vendedor (se existir)
+        col_base_cod_vend = pick_col(
+            df_base,
+            ["CODIGO VENDEDOR", "CÓDIGO VENDEDOR", "COD VENDEDOR", "CÓD VENDEDOR", "RG", "R.G"],
+            fallback=None,
+        )
+
         # normaliza base
         if col_base_cliente and col_base_cliente in df_base.columns:
             df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
@@ -3226,8 +3236,13 @@ elif menu_interna == "📚 Perfil do Cliente":
         if col_base_vendedor and col_base_vendedor in df_base.columns:
             df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
 
-        # aplica filtros do topo na BASE (se as colunas existirem)
-               # aplica os mesmos filtros do topo na BASE (SE as colunas existirem)
+        if col_base_local and col_base_local in df_base.columns:
+            df_base[col_base_local] = df_base[col_base_local].astype(str).str.strip().str.upper()
+
+        if col_base_cod_vend and col_base_cod_vend in df_base.columns:
+            df_base[col_base_cod_vend] = df_base[col_base_cod_vend].apply(limpar_cod)
+
+        # aplica os mesmos filtros do topo na BASE (SE as colunas existirem)
         df_base_filtrada = df_base.copy()
         _base_total = int(df_base_filtrada.shape[0])
 
@@ -3249,8 +3264,7 @@ elif menu_interna == "📚 Perfil do Cliente":
             df_base_filtrada = df_base.copy()
             st.info("⚠️ Os filtros do topo não bateram com os valores da BASE. Usando BASE completa para gerar os alertas.")
 
-
-                # 3) Descobre as colunas corretas para cruzamento (FATURADO e BASE)
+        # 3) Descobre as colunas corretas para cruzamento (FATURADO e BASE)
         # FATURADO: duas colunas "Cliente"
         idx_cli = [i for i, c in enumerate(df_fat.columns) if str(c).strip().upper() == "CLIENTE"]
 
@@ -3280,8 +3294,18 @@ elif menu_interna == "📚 Perfil do Cliente":
             col_fat_cod = col_cliente
 
         # BASE: código e nome
-        col_base_cod = pick_col(df_base, ["Cliente", "CLIENTE"], fallback=None)      # coluna G (código)
-        col_base_nome = pick_col(df_base, ["Nome 1", "NOME 1", "NOME1"], fallback=None)  # coluna F (nome)
+        col_base_cod = pick_col(df_base, ["Cliente", "CLIENTE"], fallback=None)      # código
+        col_base_nome = pick_col(df_base, ["Nome 1", "NOME 1", "NOME1"], fallback=None)  # nome
+
+        # FATURADO: cidade
+        col_fat_cidade = pick_col(df_fat, ["LocInc", "LOCINC", "Cidade", "CIDADE"], fallback=None)
+
+        # FATURADO: código do vendedor (se existir)
+        col_fat_cod_vend = pick_col(
+            df_fat,
+            ["Gr", "GR", "CODIGO VENDEDOR", "CÓDIGO VENDEDOR", "COD VENDEDOR", "CÓD VENDEDOR", "RG", "R.G"],
+            fallback=None,
+        )
 
         # normaliza FATURADO
         if col_fat_cod and col_fat_cod in df_fat.columns:
@@ -3290,7 +3314,13 @@ elif menu_interna == "📚 Perfil do Cliente":
         if col_fat_nome and col_fat_nome in df_fat.columns:
             df_fat[col_fat_nome] = df_fat[col_fat_nome].astype(str).str.strip().str.upper()
 
-        # normaliza BASE
+        if col_fat_cidade and col_fat_cidade in df_fat.columns:
+            df_fat[col_fat_cidade] = df_fat[col_fat_cidade].astype(str).str.strip().str.upper()
+
+        if col_fat_cod_vend and col_fat_cod_vend in df_fat.columns:
+            df_fat[col_fat_cod_vend] = df_fat[col_fat_cod_vend].apply(limpar_cod)
+
+        # normaliza BASE filtrada
         if col_base_cod and col_base_cod in df_base_filtrada.columns:
             df_base_filtrada[col_base_cod] = df_base_filtrada[col_base_cod].apply(limpar_cod)
 
@@ -3312,42 +3342,136 @@ elif menu_interna == "📚 Perfil do Cliente":
         else:
             df_last["ClienteRef"] = df_last["ClienteRef"].astype(str).str.strip().str.upper()
 
-        # 5) Carteira (BASE) -> conjuntos (código e nome)
+        # 5) Carteira (BASE) -> conjuntos (sempre prioriza CÓDIGO)
         set_base_cod = set()
-        set_base_nome = set()
-
         if col_base_cod and col_base_cod in df_base_filtrada.columns:
             set_base_cod = set(
                 [str(x).strip() for x in df_base_filtrada[col_base_cod].dropna().unique().tolist() if str(x).strip() != ""]
             )
 
-        if col_base_nome and col_base_nome in df_base_filtrada.columns:
-            set_base_nome = set(
-                [str(x).strip().upper() for x in df_base_filtrada[col_base_nome].dropna().unique().tolist() if str(x).strip() != ""]
+        # conjuntos no FATURADO (CÓDIGO)
+        set_fat_cod = set()
+        if col_fat_cod and col_fat_cod in df_fat.columns:
+            set_fat_cod = set(
+                [str(x).strip() for x in df_fat[col_fat_cod].dropna().unique().tolist() if str(x).strip() != ""]
             )
 
-        if not set_base_cod and not set_base_nome:
-            st.info("Com os filtros atuais, não encontrei clientes válidos na BASE (código/nome) para gerar alertas.")
+        # ✅ Sem faturamento = está na BASE e NÃO aparece no FATURADO (SEMPRE POR CÓDIGO)
+        if not set_base_cod:
+            st.info("Não encontrei códigos de cliente válidos na BASE para gerar alertas.")
             sem_faturamento = []
         else:
-            # conjuntos no FATURADO (código e nome)
-            set_fat_cod = set()
-            set_fat_nome = set()
+            sem_faturamento = sorted(list(set_base_cod - set_fat_cod))
 
-            if col_fat_cod and col_fat_cod in df_fat.columns:
-                set_fat_cod = set(
-                    [str(x).strip() for x in df_fat[col_fat_cod].dropna().unique().tolist() if str(x).strip() != ""]
-                )
+        # =========================================================
+        # ✅ DIM CLIENTES (BASE + fallback FATURADO) — sempre por CÓDIGO
+        # =========================================================
+        dim_base_cols = []
+        if col_base_cod and col_base_cod in df_base_filtrada.columns:
+            dim_base_cols.append(col_base_cod)
 
-            if col_fat_nome and col_fat_nome in df_fat.columns:
-                set_fat_nome = set(
-                    [str(x).strip().upper() for x in df_fat[col_fat_nome].dropna().unique().tolist() if str(x).strip() != ""]
-                )
+        for c in [col_base_nome1, col_base_estado, col_base_local, col_base_analista, col_base_vendedor, col_base_cod_vend]:
+            if c and c in df_base_filtrada.columns and c not in dim_base_cols:
+                dim_base_cols.append(c)
 
-            # ✅ Sem faturamento = está na BASE e NÃO aparece no FATURADO
-            # Prioridade: código (mais confiável). Se não tiver código, usa nome.
-            sem_faturamento = sorted(list(set_base_cod - set_fat_cod)) if set_base_cod else sorted(list(set_base_nome - set_fat_nome))
+        dim_base = df_base_filtrada[dim_base_cols].drop_duplicates().copy()
 
+        ren = {}
+        if col_base_cod and col_base_cod in dim_base.columns:
+            ren[col_base_cod] = "Cliente"
+        if col_base_nome1 and col_base_nome1 in dim_base.columns:
+            ren[col_base_nome1] = "NomeCliente"
+        if col_base_estado and col_base_estado in dim_base.columns:
+            ren[col_base_estado] = "Estado"
+        if col_base_local and col_base_local in dim_base.columns:
+            ren[col_base_local] = "Cidade"
+        if col_base_analista and col_base_analista in dim_base.columns:
+            ren[col_base_analista] = "Analista"
+        if col_base_vendedor and col_base_vendedor in dim_base.columns:
+            ren[col_base_vendedor] = "Vendedor"
+        if col_base_cod_vend and col_base_cod_vend in dim_base.columns:
+            ren[col_base_cod_vend] = "CodVendedor"
+
+        dim_base = dim_base.rename(columns=ren)
+
+        if "Cliente" in dim_base.columns:
+            dim_base["Cliente"] = dim_base["Cliente"].apply(limpar_cod)
+
+        for c in ["NomeCliente", "Estado", "Cidade", "Analista", "Vendedor"]:
+            if c in dim_base.columns:
+                dim_base[c] = dim_base[c].astype(str).str.strip().str.upper()
+
+        if "CodVendedor" in dim_base.columns:
+            dim_base["CodVendedor"] = dim_base["CodVendedor"].apply(limpar_cod)
+
+        # fallback FATURADO (última linha do cliente pelo código)
+        dim_fat = None
+        if col_fat_cod and col_fat_cod in df_fat.columns:
+            cols_fat_dim = [col_fat_cod, col_data]
+
+            for c in [col_estado, col_analista, col_vendedor, col_fat_cod_vend, col_fat_nome, col_fat_cidade]:
+                if c and c in df_fat.columns and c not in cols_fat_dim:
+                    cols_fat_dim.append(c)
+
+            tmp = df_fat[cols_fat_dim].copy()
+            tmp[col_fat_cod] = tmp[col_fat_cod].apply(limpar_cod)
+
+            if col_fat_nome and col_fat_nome in tmp.columns:
+                tmp[col_fat_nome] = tmp[col_fat_nome].astype(str).str.strip().str.upper()
+
+            if col_fat_cidade and col_fat_cidade in tmp.columns:
+                tmp[col_fat_cidade] = tmp[col_fat_cidade].astype(str).str.strip().str.upper()
+
+            if col_fat_cod_vend and col_fat_cod_vend in tmp.columns:
+                tmp[col_fat_cod_vend] = tmp[col_fat_cod_vend].apply(limpar_cod)
+
+            tmp = tmp.sort_values(col_data)
+            dim_fat = tmp.groupby(col_fat_cod).tail(1).copy()
+
+            renf = {col_fat_cod: "Cliente"}
+            if col_analista and col_analista in dim_fat.columns:
+                renf[col_analista] = "Analista_fat"
+            if col_estado and col_estado in dim_fat.columns:
+                renf[col_estado] = "Estado_fat"
+            if col_vendedor and col_vendedor in dim_fat.columns:
+                renf[col_vendedor] = "Vendedor_fat"
+            if col_fat_cod_vend and col_fat_cod_vend in dim_fat.columns:
+                renf[col_fat_cod_vend] = "CodVendedor_fat"
+            if col_fat_nome and col_fat_nome in dim_fat.columns:
+                renf[col_fat_nome] = "NomeCliente_fat"
+            if col_fat_cidade and col_fat_cidade in dim_fat.columns:
+                renf[col_fat_cidade] = "Cidade_fat"
+
+            dim_fat = dim_fat.rename(columns=renf)
+
+            for c in ["Analista_fat", "Estado_fat", "Vendedor_fat", "NomeCliente_fat", "Cidade_fat"]:
+                if c in dim_fat.columns:
+                    dim_fat[c] = dim_fat[c].astype(str).str.strip().str.upper()
+
+        dim_cli = dim_base.copy()
+
+        if dim_fat is not None and not dim_fat.empty:
+            dim_cli = dim_cli.merge(dim_fat, on="Cliente", how="left")
+
+            def _coalesce(a, b):
+                if a in dim_cli.columns and b in dim_cli.columns:
+                    dim_cli[a] = dim_cli[a].fillna("").astype(str).str.strip()
+                    dim_cli[b] = dim_cli[b].fillna("").astype(str).str.strip()
+                    dim_cli[a] = dim_cli[a].where(dim_cli[a] != "", dim_cli[b])
+                return dim_cli
+
+            dim_cli = _coalesce("Analista", "Analista_fat")
+            dim_cli = _coalesce("Estado", "Estado_fat")
+            dim_cli = _coalesce("Vendedor", "Vendedor_fat")
+            dim_cli = _coalesce("CodVendedor", "CodVendedor_fat")
+            dim_cli = _coalesce("NomeCliente", "NomeCliente_fat")
+            dim_cli = _coalesce("Cidade", "Cidade_fat")
+
+        for c in ["Cliente", "Estado", "Analista", "Vendedor", "CodVendedor", "Cidade", "NomeCliente"]:
+            if c not in dim_cli.columns:
+                dim_cli[c] = ""
+
+        dim_cli = dim_cli[["Cliente", "NomeCliente", "Estado", "Cidade", "Analista", "Vendedor", "CodVendedor"]].drop_duplicates()
 
         # 6) 30/60/90: somente quem tem histórico no FATURADO (apareceu ao menos uma vez)
         hoje_ref_alerta = df_fat[col_data].max()
@@ -3356,9 +3480,8 @@ elif menu_interna == "📚 Perfil do Cliente":
         else:
             hoje_ref_alerta = pd.Timestamp(hoje_ref_alerta.date())
 
-                # base de dias sem comprar (para clientes da BASE)
-        # df_last agora usa "ClienteRef" (código se existir, senão nome)
-        set_base_ref = set_base_cod if set_base_cod else set_base_nome
+        # base de dias sem comprar (para clientes da BASE) — SEMPRE POR CÓDIGO
+        set_base_ref = set_base_cod
 
         df_last_base = df_last[df_last["ClienteRef"].astype(str).isin(set_base_ref)].copy()
 
@@ -3371,7 +3494,6 @@ elif menu_interna == "📚 Perfil do Cliente":
 
         # padroniza coluna para o resto do seu código não precisar mudar
         df_last_base = df_last_base.rename(columns={"ClienteRef": "Cliente"})
-
 
         # buckets
         df_30 = df_last_base[df_last_base["DiasSemCompra"] > 30].copy()
@@ -3468,11 +3590,18 @@ elif menu_interna == "📚 Perfil do Cliente":
 
             if alerta_sel == "SEM_FAT":
                 st.write("Clientes na BASE que **nunca apareceram** no FATURADO (sem faturamento).")
-                df_lista = pd.DataFrame({"Cliente": sem_faturamento})
+
+                df_lista = dim_cli[dim_cli["Cliente"].astype(str).isin([str(x) for x in sem_faturamento])].copy()
+                df_lista = df_lista.sort_values(["Estado", "Cidade", "Vendedor", "Cliente"])
+
                 if df_lista.empty:
                     st.success("✅ Nenhum cliente sem faturamento (BASE x FATURADO) no recorte atual da BASE.")
                 else:
-                    st.dataframe(df_lista, use_container_width=True, hide_index=True)
+                    st.dataframe(
+                        df_lista[["Cliente", "NomeCliente", "Estado", "Cidade", "Analista", "Vendedor", "CodVendedor"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
                 pdf_bytes = _make_pdf_bytes(
                     f"Sem faturamento (BASE x FATURADO) | Ref: {hoje_ref_alerta.strftime('%d/%m/%Y')}",
@@ -3490,10 +3619,24 @@ elif menu_interna == "📚 Perfil do Cliente":
                 # justificativa (para cliente da lista)
                 if not df_lista.empty:
                     st.markdown("#### 📝 Justificativa (controle)")
-                    cli_j = st.selectbox("Cliente (sem faturamento):", df_lista["Cliente"].astype(str).tolist(), key="cli_j_semfat")
-                    just = st.text_area("Justificativa:", placeholder="Ex.: cliente inativo, fechamento, sem atendimento, troca de CNPJ, concorrência, etc.", key="txt_j_semfat")
+                    cli_j = st.selectbox(
+                        "Cliente (sem faturamento):",
+                        df_lista["Cliente"].astype(str).tolist(),
+                        key="cli_j_semfat",
+                    )
+                    just = st.text_area(
+                        "Justificativa:",
+                        placeholder="Ex.: cliente inativo, fechamento, sem atendimento, troca de CNPJ, concorrência, etc.",
+                        key="txt_j_semfat",
+                    )
                     if st.button("Salvar justificativa", key="btn_save_j_semfat"):
                         now_ts = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
+
+                        row_dim = df_lista[df_lista["Cliente"].astype(str) == str(cli_j)].head(1)
+                        _estado = row_dim["Estado"].iloc[0] if not row_dim.empty else ""
+                        _analista = row_dim["Analista"].iloc[0] if not row_dim.empty else ""
+                        _vend = row_dim["Vendedor"].iloc[0] if not row_dim.empty else ""
+
                         df_row = pd.DataFrame([{
                             "Timestamp": now_ts,
                             "Tipo": "SEM_FATURAMENTO",
@@ -3504,8 +3647,12 @@ elif menu_interna == "📚 Perfil do Cliente":
                             "Analista_Filtro": str(analista_sel),
                             "Supervisor_Filtro": str(supervisor_sel),
                             "Vendedor_Filtro": str(vendedor_sel),
+                            "Estado": str(_estado),
+                            "Analista": str(_analista),
+                            "Vendedor": str(_vend),
                             "Justificativa": str(just).strip(),
                         }])
+
                         ok, err = _append_justificativa(df_row)
                         if ok:
                             st.success("✅ Justificativa salva na aba JUSTIFICATIVAS.")
@@ -3518,6 +3665,15 @@ elif menu_interna == "📚 Perfil do Cliente":
 
                 df_bucket = df_last_base[df_last_base["DiasSemCompra"] > lim].copy()
                 df_bucket = df_bucket.sort_values("DiasSemCompra", ascending=False)
+
+                # enriquece com dim (sempre por código)
+                df_bucket["Cliente"] = df_bucket["Cliente"].apply(limpar_cod)
+                df_bucket = df_bucket.merge(
+                    dim_cli[["Cliente", "NomeCliente", "Estado", "Cidade", "Analista", "Vendedor", "CodVendedor"]],
+                    on="Cliente",
+                    how="left",
+                )
+
                 df_show = df_bucket.copy()
                 df_show["UltimaCompra"] = df_show["UltimaCompra"].dt.strftime("%d/%m/%Y")
                 df_show = df_show.rename(columns={"UltimaCompra": "Última compra", "DiasSemCompra": "Dias sem compra"})
@@ -3525,11 +3681,19 @@ elif menu_interna == "📚 Perfil do Cliente":
                 if df_show.empty:
                     st.success(f"✅ Nenhum cliente acima de {lim} dias sem compra no recorte atual da BASE.")
                 else:
-                    st.dataframe(df_show[["Cliente", "Última compra", "Dias sem compra"]], use_container_width=True, hide_index=True)
+                    st.dataframe(
+                        df_show[["Cliente", "NomeCliente", "Estado", "Cidade", "Analista", "Vendedor", "CodVendedor", "Última compra", "Dias sem compra"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
                 pdf_bytes = _make_pdf_bytes(
                     f"Clientes > {lim} dias sem compra | Ref: {hoje_ref_alerta.strftime('%d/%m/%Y')}",
-                    (df_show[["Cliente", "Última compra", "Dias sem compra"]] if not df_show.empty else df_show),
+                    (
+                        df_show[["Cliente", "NomeCliente", "Estado", "Cidade", "Analista", "Vendedor", "CodVendedor", "Última compra", "Dias sem compra"]]
+                        if not df_show.empty
+                        else df_show
+                    ),
                 )
                 if pdf_bytes:
                     st.download_button(
@@ -3544,27 +3708,32 @@ elif menu_interna == "📚 Perfil do Cliente":
                 if not df_show.empty:
                     st.markdown("#### 📝 Justificativa (controle)")
                     cli_j = st.selectbox("Cliente:", df_show["Cliente"].astype(str).tolist(), key=f"cli_j_{lim}")
-                    just = st.text_area("Justificativa:", placeholder="Ex.: sem estoque, visitado e não fechou, cliente fechado, sem giro, problema de preço, etc.", key=f"txt_j_{lim}")
+                    just = st.text_area(
+                        "Justificativa:",
+                        placeholder="Ex.: sem estoque, visitado e não fechou, cliente fechado, sem giro, problema de preço, etc.",
+                        key=f"txt_j_{lim}",
+                    )
                     if st.button("Salvar justificativa", key=f"btn_save_j_{lim}"):
                         now_ts = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
 
                         # busca última compra e dias
                         row_ = df_bucket[df_bucket["Cliente"].astype(str) == str(cli_j)].head(1)
-                        ult = row_["UltimaCompra"].iloc[0] if not row_.empty else None
-                        dias_ = int(row_["DiasSemCompra"].iloc[0]) if not row_.empty else ""
+                        ult = row_["Última compra"].iloc[0] if ("Última compra" in row_.columns and not row_.empty) else None
+                        dias_ = int(row_["Dias sem compra"].iloc[0]) if ("Dias sem compra" in row_.columns and not row_.empty) else ""
 
                         df_row = pd.DataFrame([{
                             "Timestamp": now_ts,
                             "Tipo": f"{lim}D_SEM_COMPRA",
                             "Cliente": str(cli_j),
                             "DiasSemCompra": dias_,
-                            "UltimaCompra": (_dt_pt(ult) if ult is not None else ""),
+                            "UltimaCompra": (str(ult) if ult is not None else ""),
                             "Estado_Filtro": str(estado_sel),
                             "Analista_Filtro": str(analista_sel),
                             "Supervisor_Filtro": str(supervisor_sel),
                             "Vendedor_Filtro": str(vendedor_sel),
                             "Justificativa": str(just).strip(),
                         }])
+
                         ok, err = _append_justificativa(df_row)
                         if ok:
                             st.success("✅ Justificativa salva na aba JUSTIFICATIVAS.")
@@ -3575,6 +3744,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.info("Para habilitar os alertas (sem faturamento / 30/60/90 + controle), a aba BASE precisa existir e ter clientes.")
 
     st.markdown("---")
+
 
     # ============================
     # 5) Filtros UI
