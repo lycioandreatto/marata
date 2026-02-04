@@ -3175,38 +3175,58 @@ elif menu_interna == "📚 Perfil do Cliente":
         st.warning(f"Não consegui ler a aba BASE: {e}")
         df_base = None
 
-    # 2) Mapeia colunas na BASE (mínimo: cliente)
+        # 2) Mapeia colunas na BASE (mínimo: cliente)
     col_base_cliente = None
+    col_base_nome1 = None
     col_base_estado = None
     col_base_analista = None
     col_base_supervisor = None
     col_base_vendedor = None
 
     if df_base is not None and not df_base.empty:
+        # ✅ BASE: código do cliente (geralmente "Cliente")
         col_base_cliente = pick_col(
             df_base,
             ["Cliente", "CÓDIGO CLIENTE", "COD CLIENTE", "CODIGO CLIENTE", "CÓDIGO", "CODIGO"],
-            fallback=df_base.columns[0] if len(df_base.columns) > 0 else None,
+            fallback=None,
         )
 
-        # (opcionais) se existirem na BASE, os filtros do topo também filtram a carteira inteira
+        # ✅ BASE: nome do cliente (o seu "Nome 1")
+        col_base_nome1 = pick_col(
+            df_base,
+            ["Nome 1", "NOME 1", "NOME1", "Razão social", "RAZAO SOCIAL", "Cliente (Nome)", "CLIENTE (NOME)"],
+            fallback=None,
+        )
+
+        # (opcionais) filtros (se existirem na BASE)
         col_base_estado = pick_col(df_base, ["EscrV", "ESCRV", "Estado", "UF"], fallback=None)
         col_base_analista = pick_col(df_base, ["ANALISTA", "Analista"], fallback=None)
         col_base_supervisor = pick_col(df_base, ["EqvS", "EQVS", "Supervisor", "COD SUPERVISOR"], fallback=None)
-        col_base_vendedor = pick_col(df_base, ["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS", "Vendedor"], fallback=None)
+        col_base_vendedor = pick_col(
+            df_base,
+            ["VENDEDOR", "Vendedor", "Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS"],
+            fallback=None,
+        )
 
-        df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
+        # normaliza base
+        if col_base_cliente and col_base_cliente in df_base.columns:
+            df_base[col_base_cliente] = df_base[col_base_cliente].apply(limpar_cod)
+
+        if col_base_nome1 and col_base_nome1 in df_base.columns:
+            df_base[col_base_nome1] = df_base[col_base_nome1].astype(str).str.strip().str.upper()
 
         if col_base_estado and col_base_estado in df_base.columns:
             df_base[col_base_estado] = df_base[col_base_estado].astype(str).str.strip().str.upper()
         if col_base_analista and col_base_analista in df_base.columns:
             df_base[col_base_analista] = df_base[col_base_analista].astype(str).str.strip().str.upper()
         if col_base_supervisor and col_base_supervisor in df_base.columns:
-            df_base[col_base_supervisor] = df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
+            df_base[col_base_supervisor] = (
+                df_base[col_base_supervisor].apply(limpar_cod).astype(str).str.strip().str.upper()
+            )
         if col_base_vendedor and col_base_vendedor in df_base.columns:
             df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
 
-        # aplica os mesmos filtros do topo na BASE (SE as colunas existirem)
+        # aplica filtros do topo na BASE (se as colunas existirem)
         df_base_filtrada = df_base.copy()
 
         if col_base_estado and col_base_estado in df_base_filtrada.columns and estado_sel != "(Todos)":
@@ -3221,7 +3241,7 @@ elif menu_interna == "📚 Perfil do Cliente":
         if col_base_vendedor and col_base_vendedor in df_base_filtrada.columns and vendedor_sel != "(Todos)":
             df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_vendedor] == vendedor_sel].copy()
 
-        # 3) Última compra por cliente (NO FATURADO COMPLETO, não só no recorte filtrado)
+        # 3) Última compra por cliente (NO FATURADO COMPLETO)
         df_last = (
             df_fat.groupby(col_cliente)[col_data]
             .max()
@@ -3230,21 +3250,98 @@ elif menu_interna == "📚 Perfil do Cliente":
         )
         df_last["Cliente"] = df_last["Cliente"].apply(limpar_cod)
 
-        # 4) Carteira (BASE) -> lista de clientes
-        carteira_clientes = sorted(
-            [x for x in df_base_filtrada[col_base_cliente].dropna().unique().tolist() if str(x).strip() != ""]
-        )
+        # 4) FATURADO: resolver duplicidade de colunas "Cliente" (K e L)
+        #    - K cruza com "Nome 1" da BASE
+        #    - L cruza com "Cliente" (código) da BASE
+        cliente_cols_idx = [i for i, c in enumerate(df_fat.columns) if str(c).strip().upper() == "CLIENTE"]
 
-        # Se a BASE filtrada ficou vazia, não quebra a tela
-        if not carteira_clientes:
-            st.info("Com os filtros atuais, não encontrei clientes na BASE para gerar alertas.")
-            carteira_clientes = []
+        col_fat_cliente_k = None  # nome (K)
+        col_fat_cliente_l = None  # código (L)
 
-        # 5) Cruzamento BASE x FATURADO
-        set_base = set([str(x) for x in carteira_clientes])
-        set_fat = set([str(x) for x in df_fat[col_cliente].dropna().unique().tolist() if str(x).strip() != ""])
+        if len(cliente_cols_idx) >= 2:
+            col_fat_cliente_k = df_fat.columns[cliente_cols_idx[0]]
+            col_fat_cliente_l = df_fat.columns[cliente_cols_idx[1]]
+        else:
+            # fallback: usa o col_cliente que você já mapeou (se não houver duplicidade)
+            col_fat_cliente_l = col_cliente
 
-        sem_faturamento = sorted(list(set_base - set_fat))  # nunca apareceu no FATURADO
+        # normaliza as colunas do FATURADO usadas no cruzamento
+        if col_fat_cliente_k and col_fat_cliente_k in df_fat.columns:
+            df_fat[col_fat_cliente_k] = df_fat[col_fat_cliente_k].astype(str).str.strip().str.upper()
+
+        if col_fat_cliente_l and col_fat_cliente_l in df_fat.columns:
+            df_fat[col_fat_cliente_l] = df_fat[col_fat_cliente_l].apply(limpar_cod)
+
+        # 5) Carteira (BASE) -> lista (código e nome)
+        carteira_cod = []
+        carteira_nome = []
+
+        if col_base_cliente and col_base_cliente in df_base_filtrada.columns:
+            carteira_cod = [
+                x for x in df_base_filtrada[col_base_cliente].dropna().unique().tolist()
+                if str(x).strip() != ""
+            ]
+
+        if col_base_nome1 and col_base_nome1 in df_base_filtrada.columns:
+            carteira_nome = [
+                x for x in df_base_filtrada[col_base_nome1].dropna().unique().tolist()
+                if str(x).strip() != ""
+            ]
+
+        # se não tiver nenhum identificador, não quebra
+        if not carteira_cod and not carteira_nome:
+            st.info("Com os filtros atuais, não encontrei clientes válidos na BASE (código/nome) para gerar alertas.")
+            carteira_cod = []
+            carteira_nome = []
+
+        # 6) Cruzamento BASE x FATURADO (código OU nome)
+        set_fat_cod = set()
+        set_fat_nome = set()
+
+        if col_fat_cliente_l and col_fat_cliente_l in df_fat.columns:
+            set_fat_cod = set(
+                [str(x).strip() for x in df_fat[col_fat_cliente_l].dropna().unique().tolist() if str(x).strip() != ""]
+            )
+
+        if col_fat_cliente_k and col_fat_cliente_k in df_fat.columns:
+            set_fat_nome = set(
+                [str(x).strip().upper() for x in df_fat[col_fat_cliente_k].dropna().unique().tolist() if str(x).strip() != ""]
+            )
+
+        # monta uma tabela "carteira" com o que existir (código e/ou nome)
+        df_cart = pd.DataFrame({
+            "Cliente_Cod": pd.Series([str(x).strip() for x in carteira_cod], dtype="object"),
+        })
+
+        if carteira_nome:
+            df_cart2 = pd.DataFrame({
+                "Cliente_Nome1": pd.Series([str(x).strip().upper() for x in carteira_nome], dtype="object"),
+            })
+            # tenta unir por índice (quando ambas existem, pode não ter 1:1; então mantém separado)
+            # aqui a lógica é: qualquer um que tiver código OU nome e não aparecer no FATURADO entra no sem faturamento
+            df_cart = pd.concat([df_cart, df_cart2], axis=1)
+
+        # flags de match (se existir o campo)
+        if "Cliente_Cod" in df_cart.columns:
+            df_cart["_match_cod"] = df_cart["Cliente_Cod"].astype(str).isin(set_fat_cod)
+        else:
+            df_cart["_match_cod"] = False
+
+        if "Cliente_Nome1" in df_cart.columns:
+            df_cart["_match_nome"] = df_cart["Cliente_Nome1"].astype(str).isin(set_fat_nome)
+        else:
+            df_cart["_match_nome"] = False
+
+        # ✅ sem faturamento = não bate nem por código, nem por nome
+        df_semfat = df_cart[(df_cart["_match_cod"] == False) & (df_cart["_match_nome"] == False)].copy()
+
+        # lista final para exibição (prioriza código; se não tiver, usa nome)
+        sem_faturamento = []
+        if "Cliente_Cod" in df_semfat.columns:
+            sem_faturamento += [x for x in df_semfat["Cliente_Cod"].dropna().tolist() if str(x).strip() != ""]
+        if not sem_faturamento and "Cliente_Nome1" in df_semfat.columns:
+            sem_faturamento += [x for x in df_semfat["Cliente_Nome1"].dropna().tolist() if str(x).strip() != ""]
+
 
         # 6) 30/60/90: somente quem tem histórico no FATURADO (apareceu ao menos uma vez)
         hoje_ref_alerta = df_fat[col_data].max()
