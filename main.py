@@ -2461,10 +2461,6 @@ elif menu == "🚚 Logística":
 
 
 
- import requests
- import plotly.express as px
-
-
 
 # --- PÁGINA: TESTES (ACURÁCIA) ---
 elif menu_interna == "🧪 TESTES":
