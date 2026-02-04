@@ -3227,7 +3227,9 @@ elif menu_interna == "📚 Perfil do Cliente":
             df_base[col_base_vendedor] = df_base[col_base_vendedor].astype(str).str.strip().str.upper()
 
         # aplica filtros do topo na BASE (se as colunas existirem)
+               # aplica os mesmos filtros do topo na BASE (SE as colunas existirem)
         df_base_filtrada = df_base.copy()
+        _base_total = int(df_base_filtrada.shape[0])
 
         if col_base_estado and col_base_estado in df_base_filtrada.columns and estado_sel != "(Todos)":
             df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_estado] == estado_sel].copy()
@@ -3240,6 +3242,13 @@ elif menu_interna == "📚 Perfil do Cliente":
 
         if col_base_vendedor and col_base_vendedor in df_base_filtrada.columns and vendedor_sel != "(Todos)":
             df_base_filtrada = df_base_filtrada[df_base_filtrada[col_base_vendedor] == vendedor_sel].copy()
+
+        # ✅ Fallback: se os filtros do topo "não casarem" com a BASE e zerarem tudo,
+        # não mata o alerta — usa a BASE completa.
+        if df_base_filtrada.empty and _base_total > 0:
+            df_base_filtrada = df_base.copy()
+            st.info("⚠️ Os filtros do topo não bateram com os valores da BASE. Usando BASE completa para gerar os alertas.")
+
 
         # 3) Última compra por cliente (NO FATURADO COMPLETO)
         df_last = (
