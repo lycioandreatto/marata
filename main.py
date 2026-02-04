@@ -1698,14 +1698,13 @@ if menu == "📅 Agendamentos do Dia":
         st.info("Nenhum agendamento para hoje.")
 
 # ==========================================
-# ✅ NOVA PÁGINA: LOGÍSTICA (SIMULAÇÃO)
+# ✅ NOVA PÁGINA: LOGÍSTICA (SIMULAÇÃO) — + FECHAMENTO DE CARGA + MAPA FUNCIONANDO
 # ==========================================
 elif menu == "🚚 Logística":
-    st.header("🚚 Logística — Simulação Inteligente (SLA / Rota / Risco)")
+    st.header("🚚 Logística — Simulação Inteligente (SLA / Rota / Risco / Carga)")
 
     # ---------------------------------------------------------
-    # 1) LÊ A ABA "LOGISTICA" (sua nova aba de teste)
-    #    Colunas esperadas (mínimo): ANALISTA, SUPERVISOR, VENDEDOR, Estado, CIDADE, CLIENTE, COD CLIENTE, DATA
+    # 1) LÊ A ABA "LOGISTICA"
     # ---------------------------------------------------------
     try:
         df_log = conn.read(spreadsheet=url_planilha, worksheet="LOGISTICA")
@@ -1721,7 +1720,18 @@ elif menu == "🚚 Logística":
         # ---------------------------------------------------------
         # 2) LIMPEZA / PADRONIZAÇÃO
         # ---------------------------------------------------------
-        for c in ["ANALISTA", "SUPERVISOR", "VENDEDOR", "Estado", "CIDADE", "CLIENTE", "COD CLIENTE", "DATA"]:
+        col_map = {
+            "ANALISTA": "ANALISTA",
+            "SUPERVISOR": "SUPERVISOR",
+            "VENDEDOR": "VENDEDOR",
+            "Estado": "Estado",
+            "CIDADE": "CIDADE",
+            "CLIENTE": "CLIENTE",
+            "COD CLIENTE": "COD CLIENTE",
+            "DATA": "DATA",
+        }
+
+        for c in col_map.values():
             if c not in df_log.columns:
                 df_log[c] = ""
 
@@ -1740,7 +1750,7 @@ elif menu == "🚚 Logística":
             st.info("Sem datas válidas na coluna DATA (verifique o formato dd/mm/aaaa).")
         else:
             # ---------------------------------------------------------
-            # 3) PERMISSÕES (mesma ideia do resto do sistema)
+            # 3) PERMISSÕES
             # ---------------------------------------------------------
             if is_admin or is_diretoria:
                 df_view = df_log.copy()
@@ -1756,13 +1766,15 @@ elif menu == "🚚 Logística":
                 st.info("Não há registros de logística para seu perfil/filtros.")
             else:
                 # ---------------------------------------------------------
-                # 4) FILTROS (rápidos e corporativos)
+                # 4) FILTROS
                 # ---------------------------------------------------------
                 with st.expander("🎯 Filtros", expanded=False):
                     f1, f2, f3, f4 = st.columns(4)
 
                     def _opt(df, col):
-                        vals = sorted([str(x) for x in df[col].dropna().unique().tolist() if str(x).strip() != ""])
+                        vals = sorted(
+                            [str(x) for x in df[col].dropna().unique().tolist() if str(x).strip() != ""]
+                        )
                         return ["Todos"] + vals
 
                     sel_estado = f1.selectbox("Estado:", _opt(df_view, "Estado"), key="log_sel_estado")
@@ -1774,7 +1786,6 @@ elif menu == "🚚 Logística":
                     sel_vend = f3.selectbox("Vendedor:", _opt(df_tmp, "VENDEDOR"), key="log_sel_vend")
                     df_tmp = df_tmp if sel_vend == "Todos" else df_tmp[df_tmp["VENDEDOR"] == sel_vend]
 
-                    # Período
                     dt_min = df_tmp["DT"].min().date()
                     dt_max = df_tmp["DT"].max().date()
 
@@ -1797,73 +1808,58 @@ elif menu == "🚚 Logística":
                     st.info("Sem dados para os filtros selecionados.")
                 else:
                     # ---------------------------------------------------------
-                    # 5) SIMULAÇÃO COMPLETA (inventando dados de logística)
-                    #    - Cria indicadores realistas: rota, SLA, atraso, tentativa, etc.
+                    # 5) SIMULAÇÃO (dados inventados)
                     # ---------------------------------------------------------
-                    rng_seed = int(pd.Timestamp.now().strftime("%Y%m%d"))  # muda por dia (simulação "viva")
+                    rng_seed = int(pd.Timestamp.now().strftime("%Y%m%d"))  # muda diariamente
                     rs = np.random.RandomState(rng_seed)
 
-                    # ROTA (simulada) - cria uma rota por cidade/vendedor
                     df_view["ROTA_ID"] = (
                         df_view["Estado"].astype(str) + "-" +
                         df_view["CIDADE"].astype(str) + "-" +
                         df_view["VENDEDOR"].astype(str)
                     )
 
-                    # Transportadora / Modal (simulado)
-                    transportadoras = ["FROTA PRÓPRIA", "TERCEIRO A", "TERCEIRO B", "CORREIOS"]
+                    transportadoras = ["FROTA PROPRIA", "TERCEIRO A", "TERCEIRO B", "CORREIOS"]
                     df_view["TRANSPORTADORA"] = rs.choice(transportadoras, size=len(df_view), p=[0.45, 0.25, 0.20, 0.10])
 
-                    # JANELA (simulado)
-                    janelas = ["MANHÃ", "TARDE", "COMERCIAL"]
+                    janelas = ["MANHA", "TARDE", "COMERCIAL"]
                     df_view["JANELA"] = rs.choice(janelas, size=len(df_view), p=[0.35, 0.40, 0.25])
 
-                    # Tentativas e status (simulado)
                     df_view["TENTATIVAS"] = rs.choice([1, 2, 3], size=len(df_view), p=[0.78, 0.18, 0.04])
+                    df_view["ATRASO_FREQ_CLIENTE"] = (rs.beta(2, 6, size=len(df_view)) * 100).round(1)
+                    df_view["ATRASO_FREQ_ROTA"] = (rs.beta(2.2, 5.5, size=len(df_view)) * 100).round(1)
 
-                    # Histórico de atraso do cliente (simulado: 0 a 1)
-                    df_view["ATRASO_FREQ_CLIENTE"] = (rs.beta(2, 6, size=len(df_view)) * 100).round(1)  # %
-                    # Risco de rota (simulado)
-                    df_view["ATRASO_FREQ_ROTA"] = (rs.beta(2.2, 5.5, size=len(df_view)) * 100).round(1)  # %
-
-                    # SLA planejado vs realizado (simulado)
                     df_view["SLA_PLANEJADO_DIAS"] = rs.choice([1, 2, 3, 4, 5], size=len(df_view), p=[0.18, 0.32, 0.27, 0.15, 0.08])
-                    # atraso realizado (pode ser negativo ou positivo)
-                    delta = rs.normal(loc=0.6, scale=1.2, size=len(df_view))  # média de +0.6 dia
+                    delta = rs.normal(loc=0.6, scale=1.2, size=len(df_view))
                     delta = np.clip(delta, -2.0, 6.0)
                     df_view["ATRASO_DIAS"] = np.round(delta, 1)
 
-                    df_view["SLA_REAL_DIAS"] = (df_view["SLA_PLANEJADO_DIAS"].astype(float) + df_view["ATRASO_DIAS"].astype(float)).round(1)
-                    df_view["NO_PRAZO"] = df_view["ATRASO_DIAS"].apply(lambda x: "SIM" if float(x) <= 0 else "NÃO")
+                    df_view["SLA_REAL_DIAS"] = (
+                        df_view["SLA_PLANEJADO_DIAS"].astype(float) + df_view["ATRASO_DIAS"].astype(float)
+                    ).round(1)
+                    df_view["NO_PRAZO"] = df_view["ATRASO_DIAS"].apply(lambda x: "SIM" if float(x) <= 0 else "NAO")
 
-                    motivos = ["TRÂNSITO", "CLIENTE FECHADO", "ENDEREÇO DIFÍCIL", "CHUVA", "ATRASO NA SEPARAÇÃO", "SEM OCORRÊNCIA"]
+                    motivos = ["TRANSITO", "CLIENTE FECHADO", "ENDERECO DIFICIL", "CHUVA", "ATRASO NA SEPARACAO", "SEM OCORRENCIA"]
                     df_view["MOTIVO"] = rs.choice(motivos, size=len(df_view), p=[0.20, 0.15, 0.12, 0.08, 0.15, 0.30])
 
                     # ---------------------------------------------------------
-                    # 6) PROBABILIDADE DE "ATENDER/ENTREGAR SEM PROBLEMA" (0–100%)
-                    #    Sem ML pesado: score corporativo (simples e explicável)
+                    # 6) PROBABILIDADE (score explicável)
                     # ---------------------------------------------------------
                     def _clip01(x):
                         return max(min(float(x), 1.0), 0.0)
 
-                    # Normalizações
                     n_atraso_cliente = df_view["ATRASO_FREQ_CLIENTE"].astype(float) / 100.0
                     n_atraso_rota = df_view["ATRASO_FREQ_ROTA"].astype(float) / 100.0
-                    n_tentativas = df_view["TENTATIVAS"].astype(float).clip(lower=1, upper=3)  # 1..3
-                    n_tentativas = (n_tentativas - 1) / 2  # 0..1
+
+                    n_tentativas = df_view["TENTATIVAS"].astype(float).clip(lower=1, upper=3)
+                    n_tentativas = (n_tentativas - 1) / 2
+
                     n_sla = df_view["SLA_PLANEJADO_DIAS"].astype(float).clip(lower=1, upper=5)
-                    n_sla = (n_sla - 1) / 4  # 0..1 (quanto maior, pior para "atender rápido")
+                    n_sla = (n_sla - 1) / 4
 
-                    # Peso de transportadora (simulado)
-                    map_transp = {
-                        "FROTA PRÓPRIA": 0.10,
-                        "TERCEIRO A": 0.18,
-                        "TERCEIRO B": 0.22,
-                        "CORREIOS": 0.30,
-                    }
-                    n_transp = df_view["TRANSPORTADORA"].map(map_transp).fillna(0.20).astype(float)  # 0..0.30
+                    map_transp = {"FROTA PROPRIA": 0.10, "TERCEIRO A": 0.18, "TERCEIRO B": 0.22, "CORREIOS": 0.30}
+                    n_transp = df_view["TRANSPORTADORA"].map(map_transp).fillna(0.20).astype(float)
 
-                    # Score (quanto maior, pior)
                     risco = (
                         n_atraso_cliente * 0.40
                         + n_atraso_rota * 0.30
@@ -1872,40 +1868,81 @@ elif menu == "🚚 Logística":
                         + n_transp * 0.05
                     )
 
-                    # Probabilidade final (0..100)
                     df_view["PROB_ATENDER_%"] = (1.0 - risco).apply(_clip01) * 100.0
                     df_view["PROB_ATENDER_%"] = df_view["PROB_ATENDER_%"].round(1)
 
-                    # Classificação (explicável)
                     def _faixa(p):
                         p = float(p)
                         if p >= 80:
                             return "ALTA"
                         if p >= 60:
-                            return "MÉDIA"
+                            return "MEDIA"
                         return "BAIXA"
 
                     df_view["RISCO"] = df_view["PROB_ATENDER_%"].apply(_faixa)
 
-                    # Sugestão de ação (texto corporativo)
                     def _acao(r):
                         p = float(r.get("PROB_ATENDER_%", 0))
                         mot = str(r.get("MOTIVO", "")).upper()
                         if p < 60:
                             if "CLIENTE FECHADO" in mot:
-                                return "Confirmar janela com cliente antes de sair; ajustar horário/rota."
-                            if "ATRASO NA SEPARAÇÃO" in mot:
-                                return "Priorizar separação no CD; liberar picking/expedição mais cedo."
-                            if "ENDEREÇO DIFÍCIL" in mot:
-                                return "Validar endereço/rota no mapa; incluir ponto de referência."
-                            return "Replanejar rota (priorizar cedo) e acompanhar via checklist de entrega."
+                                return "Confirmar janela com cliente antes de sair; ajustar horario/rota."
+                            if "ATRASO NA SEPARACAO" in mot:
+                                return "Priorizar separacao no CD; liberar expedicao mais cedo."
+                            if "ENDERECO DIFICIL" in mot:
+                                return "Validar endereco/rota; incluir ponto de referencia."
+                            return "Replanejar rota (priorizar cedo) e acompanhar via checklist."
                         if p < 80:
-                            return "Monitorar execução; manter janela e revisar rota se ocorrer novo atraso."
-                        return "Rota saudável; manter padrão de atendimento."
-                    df_view["AÇÃO_RECOMENDADA"] = df_view.apply(_acao, axis=1)
+                            return "Monitorar execucao; manter janela e revisar rota se ocorrer novo atraso."
+                        return "Rota saudavel; manter padrao de atendimento."
+
+                    df_view["ACAO_RECOMENDADA"] = df_view.apply(_acao, axis=1)
 
                     # ---------------------------------------------------------
-                    # 7) CARDS EXECUTIVOS
+                    # 7) SIMULAÇÃO DE FECHAMENTO DE CARGA (NOVO)
+                    # - CARGA_MIN_CXS: mínimo de caixas para "fechar carga"
+                    # - CXS_CONFIRMADAS: caixas já confirmadas (simulado)
+                    # - FALTA_P_FECHAR: quanto falta para fechar a carga
+                    # ---------------------------------------------------------
+                    # regra: distribui um "minimo" por rota (ex.: caminhão pequeno / médio)
+                    carga_min_por_rota = df_view[["ROTA_ID"]].drop_duplicates().copy()
+                    carga_min_por_rota["CARGA_MIN_CXS"] = rs.choice([600, 800, 1000, 1200], size=len(carga_min_por_rota), p=[0.20, 0.35, 0.30, 0.15])
+
+                    # volume confirmado por cliente (simulado)
+                    df_view["CXS_CONFIRMADAS"] = rs.gamma(shape=2.0, scale=120.0, size=len(df_view)).round().astype(int).clip(lower=0)
+
+                    # junta mínimo da rota
+                    df_view = df_view.merge(carga_min_por_rota, on="ROTA_ID", how="left")
+                    df_view["CARGA_MIN_CXS"] = pd.to_numeric(df_view["CARGA_MIN_CXS"], errors="coerce").fillna(800).astype(int)
+
+                    # agrega por rota: total confirmado
+                    df_rota_carga = (
+                        df_view.groupby("ROTA_ID", dropna=False)
+                        .agg(
+                            ESTADO=("Estado", "first"),
+                            CIDADE=("CIDADE", "first"),
+                            VENDEDOR=("VENDEDOR", "first"),
+                            TRANSPORTADORA=("TRANSPORTADORA", "first"),
+                            CARGA_MIN_CXS=("CARGA_MIN_CXS", "max"),
+                            CXS_CONFIRMADAS_ROTA=("CXS_CONFIRMADAS", "sum"),
+                            PROB_MEDIA=("PROB_ATENDER_%", "mean"),
+                            ONTIME_PCT=("NO_PRAZO", lambda s: (s == "SIM").mean() * 100),
+                            ATRASO_ROTA=("ATRASO_FREQ_ROTA", "mean"),
+                        )
+                        .reset_index()
+                    )
+                    df_rota_carga["PROB_MEDIA"] = df_rota_carga["PROB_MEDIA"].round(1)
+                    df_rota_carga["ONTIME_PCT"] = df_rota_carga["ONTIME_PCT"].round(1)
+                    df_rota_carga["ATRASO_ROTA"] = df_rota_carga["ATRASO_ROTA"].round(1)
+
+                    df_rota_carga["FALTA_P_FECHAR"] = (
+                        df_rota_carga["CARGA_MIN_CXS"].astype(int) - df_rota_carga["CXS_CONFIRMADAS_ROTA"].astype(int)
+                    ).clip(lower=0)
+
+                    df_rota_carga["CARGA_FECHADA"] = df_rota_carga["FALTA_P_FECHAR"].apply(lambda x: "SIM" if int(x) == 0 else "NAO")
+
+                    # ---------------------------------------------------------
+                    # 8) CARDS
                     # ---------------------------------------------------------
                     st.markdown("## 📌 Visão Executiva (Logística)")
 
@@ -1917,20 +1954,24 @@ elif menu == "🚚 Logística":
                     risco_baixo = int((df_view["RISCO"] == "BAIXA").sum())
                     risco_baixo_pct = (risco_baixo / total * 100) if total > 0 else 0
 
-                    c1, c2, c3, c4 = st.columns(4)
+                    rotas_total = int(df_rota_carga["ROTA_ID"].nunique())
+                    rotas_fechadas = int((df_rota_carga["CARGA_FECHADA"] == "SIM").sum())
+                    rotas_fechadas_pct = (rotas_fechadas / rotas_total * 100) if rotas_total > 0 else 0
+
+                    c1, c2, c3, c4, c5 = st.columns(5)
                     c1.metric("Registros (período)", total)
                     c2.metric("On Time (%)", f"{ot_pct:.1f}%")
                     c3.metric("Prob. média de atender", f"{p_med:.1f}%")
                     c4.metric("Risco BAIXO (%)", f"{risco_baixo_pct:.1f}%")
+                    c5.metric("Rotas com carga fechada", f"{rotas_fechadas}/{rotas_total}", delta=f"{rotas_fechadas_pct:.1f}%")
 
                     st.markdown("---")
 
                     # ---------------------------------------------------------
-                    # 8) ALERTAS: clientes e rotas com atraso frequente
+                    # 9) ALERTAS (Clientes + Rotas)
                     # ---------------------------------------------------------
-                    st.markdown("## 🚨 Alertas (o que mais dói)")
+                    st.markdown("## 🚨 Alertas")
 
-                    # Top clientes com atraso frequente
                     df_cli = (
                         df_view.groupby(["COD CLIENTE", "CLIENTE"], dropna=False)
                         .agg(
@@ -1938,289 +1979,303 @@ elif menu == "🚚 Logística":
                             PROB_MEDIA=("PROB_ATENDER_%", "mean"),
                             ATRASO_CLIENTE=("ATRASO_FREQ_CLIENTE", "mean"),
                             ATRASO_REAL_MED=("ATRASO_DIAS", "mean"),
+                            TENTATIVAS_MED=("TENTATIVAS", "mean"),
                         )
                         .reset_index()
                     )
                     df_cli["PROB_MEDIA"] = df_cli["PROB_MEDIA"].round(1)
                     df_cli["ATRASO_CLIENTE"] = df_cli["ATRASO_CLIENTE"].round(1)
                     df_cli["ATRASO_REAL_MED"] = df_cli["ATRASO_REAL_MED"].round(1)
-
-                    df_cli = df_cli.sort_values(by=["ATRASO_CLIENTE", "ATRASO_REAL_MED", "QTD"], ascending=[False, False, False]).head(10)
-
-                    # Top rotas com atraso frequente
-                    df_rota = (
-                        df_view.groupby(["ROTA_ID"], dropna=False)
-                        .agg(
-                            QTD=("ROTA_ID", "count"),
-                            PROB_MEDIA=("PROB_ATENDER_%", "mean"),
-                            ATRASO_ROTA=("ATRASO_FREQ_ROTA", "mean"),
-                            ATRASO_REAL_MED=("ATRASO_DIAS", "mean"),
-                            ONTIME=("NO_PRAZO", lambda s: (s == "SIM").mean() * 100),
-                        )
-                        .reset_index()
-                    )
-                    df_rota["PROB_MEDIA"] = df_rota["PROB_MEDIA"].round(1)
-                    df_rota["ATRASO_ROTA"] = df_rota["ATRASO_ROTA"].round(1)
-                    df_rota["ATRASO_REAL_MED"] = df_rota["ATRASO_REAL_MED"].round(1)
-                    df_rota["ONTIME"] = df_rota["ONTIME"].round(1)
-
-                    df_rota = df_rota.sort_values(by=["ATRASO_ROTA", "ATRASO_REAL_MED", "QTD"], ascending=[False, False, False]).head(10)
+                    df_cli["TENTATIVAS_MED"] = df_cli["TENTATIVAS_MED"].round(1)
 
                     a1, a2 = st.columns(2)
+
                     with a1:
-                        st.caption("Top 10 clientes com maior recorrência de atraso (simulado)")
-                        st.dataframe(df_cli, use_container_width=True, hide_index=True, height=320)
+                        st.caption("⚠️ Clientes com probabilidade baixa/média + atrasos frequentes (simulado)")
+                        df_cli_alert = df_cli[
+                            (df_cli["PROB_MEDIA"] < 75) & (df_cli["ATRASO_CLIENTE"] >= 25)
+                        ].sort_values(by=["PROB_MEDIA", "ATRASO_CLIENTE"], ascending=[True, False]).head(15)
+
+                        if df_cli_alert.empty:
+                            st.success("Sem alertas críticos de clientes no recorte atual.")
+                        else:
+                            st.dataframe(
+                                df_cli_alert.rename(columns={
+                                    "COD CLIENTE": "COD",
+                                    "CLIENTE": "CLIENTE",
+                                    "QTD": "REGISTROS",
+                                    "PROB_MEDIA": "PROB MÉDIA (%)",
+                                    "ATRASO_CLIENTE": "ATRASO FREQ. CLIENTE (%)",
+                                    "ATRASO_REAL_MED": "ATRASO REAL MÉDIO (dias)",
+                                    "TENTATIVAS_MED": "TENTATIVAS MÉDIA",
+                                }),
+                                use_container_width=True,
+                                hide_index=True,
+                                height=350
+                            )
+
                     with a2:
-                        st.caption("Top 10 rotas com maior recorrência de atraso (simulado)")
-                        st.dataframe(df_rota, use_container_width=True, hide_index=True, height=320)
+                        st.caption("⚠️ Rotas com maior risco operacional (simulado)")
+                        df_rota_alert = df_rota_carga.sort_values(
+                            by=["CARGA_FECHADA", "FALTA_P_FECHAR", "ATRASO_ROTA", "PROB_MEDIA"],
+                            ascending=[True, False, False, True]
+                        ).head(15)
+
+                        st.dataframe(
+                            df_rota_alert.rename(columns={
+                                "ROTA_ID": "ROTA",
+                                "ESTADO": "UF",
+                                "CIDADE": "CIDADE",
+                                "VENDEDOR": "VENDEDOR",
+                                "TRANSPORTADORA": "TRANSP.",
+                                "CARGA_MIN_CXS": "META CARGA (cxs)",
+                                "CXS_CONFIRMADAS_ROTA": "CONFIRMADAS (cxs)",
+                                "FALTA_P_FECHAR": "FALTA FECHAR (cxs)",
+                                "CARGA_FECHADA": "CARGA FECHADA",
+                                "PROB_MEDIA": "PROB MÉDIA (%)",
+                                "ONTIME_PCT": "ONTIME (%)",
+                                "ATRASO_ROTA": "ATRASO FREQ. ROTA (%)",
+                            }),
+                            use_container_width=True,
+                            hide_index=True,
+                            height=350
+                        )
 
                     st.markdown("---")
 
                     # ---------------------------------------------------------
-                    # 9) TABELA PRINCIPAL (com probabilidade e ações)
+                    # 10) SIMULADOR DE FECHAMENTO DE CARGA (INTERATIVO) ✅ NOVO
                     # ---------------------------------------------------------
-                    st.markdown("## 📋 Plano de ação (por atendimento)")
+                    st.markdown("## 📦 Simulador de Fechamento de Carga (por rota)")
 
-                    # Ordena por risco (pior primeiro)
-                    df_show = df_view.copy()
-                    df_show = df_show.sort_values(by=["PROB_ATENDER_%", "ATRASO_DIAS"], ascending=[True, False]).reset_index(drop=True)
+                    col_sim1, col_sim2, col_sim3 = st.columns([0.45, 0.25, 0.30])
 
-                    cols_out = [
-                        "ANALISTA", "SUPERVISOR", "VENDEDOR",
-                        "Estado", "CIDADE", "CLIENTE", "COD CLIENTE",
-                        "DATA",
-                        "ROTA_ID", "TRANSPORTADORA", "JANELA",
-                        "SLA_PLANEJADO_DIAS", "ATRASO_DIAS", "NO_PRAZO",
-                        "PROB_ATENDER_%", "RISCO",
-                        "MOTIVO", "AÇÃO_RECOMENDADA"
+                    rotas_opts = sorted(df_rota_carga["ROTA_ID"].astype(str).unique().tolist())
+                    rota_sel = col_sim1.selectbox("Escolha a rota:", rotas_opts, key="log_rota_sel_sim")
+
+                    df_r = df_rota_carga[df_rota_carga["ROTA_ID"] == rota_sel].copy()
+                    if df_r.empty:
+                        st.info("Rota não encontrada no recorte.")
+                    else:
+                        r0 = df_r.iloc[0]
+                        meta_carga = int(r0["CARGA_MIN_CXS"])
+                        confirmadas = int(r0["CXS_CONFIRMADAS_ROTA"])
+                        falta = int(r0["FALTA_P_FECHAR"])
+
+                        col_sim2.metric("Meta p/ fechar (cxs)", meta_carga)
+                        col_sim3.metric("Confirmadas (cxs)", confirmadas)
+
+                        if meta_carga > 0:
+                            pct = min(confirmadas / meta_carga, 1.0)
+                            st.progress(pct)
+
+                        if falta == 0:
+                            st.success("✅ Carga fechada nessa rota (simulado).")
+                        else:
+                            st.warning(f"⚠️ Falta **{falta} caixas** para fechar a carga nessa rota (simulado).")
+
+                        st.markdown("### ➕ Simular entrada de novo pedido para fechar carga")
+                        s1, s2, s3 = st.columns([0.34, 0.33, 0.33])
+
+                        # simula sugestão automática de pedido para fechar
+                        sugestao_auto = falta if falta > 0 else 0
+                        pedido_novo = s1.number_input(
+                            "Novo pedido (caixas):",
+                            min_value=0,
+                            max_value=20000,
+                            value=int(min(max(sugestao_auto, 0), 20000)),
+                            step=10,
+                            key="log_pedido_novo_cxs"
+                        )
+
+                        confirmadas_sim = confirmadas + int(pedido_novo)
+                        falta_sim = max(meta_carga - confirmadas_sim, 0)
+
+                        s2.metric("Confirmadas (sim)", confirmadas_sim)
+                        s3.metric("Falta (sim)", falta_sim)
+
+                        if meta_carga > 0:
+                            st.progress(min(confirmadas_sim / meta_carga, 1.0))
+
+                        if falta_sim == 0:
+                            st.success("✅ Com esse pedido, a carga fecha (simulado).")
+                        else:
+                            st.info(f"Com esse pedido, ainda faltam **{falta_sim} caixas** para fechar a carga (simulado).")
+
+                        st.markdown("---")
+
+                        st.markdown("### 💡 Ações sugeridas para fechar carga")
+                        if falta > 0:
+                            st.markdown(
+                                f"""
+                                - Priorizar clientes da rota **{rota_sel}** para completar **{falta} cxs**.
+                                - Oferecer condição comercial para **completar a carga** (ex.: mix ou SKUs de giro).
+                                - Se atraso de rota estiver alto, **adiantar separação** e travar janela de saída.
+                                """
+                            )
+                        else:
+                            st.markdown(
+                                """
+                                - Carga fechada: focar em **pontualidade (SLA)** e reduzir ocorrências.
+                                - Monitorar clientes com histórico de “cliente fechado” e ajustar janela.
+                                """
+                            )
+
+                    # ---------------------------------------------------------
+                    # 11) TABELA DETALHADA (o que o usuário vê)
+                    # ---------------------------------------------------------
+                    st.markdown("## 📄 Detalhamento (simulado)")
+
+                    cols_show = [
+                        "DT", "ANALISTA", "SUPERVISOR", "VENDEDOR", "Estado", "CIDADE",
+                        "CLIENTE", "COD CLIENTE", "ROTA_ID",
+                        "TRANSPORTADORA", "JANELA", "SLA_PLANEJADO_DIAS", "ATRASO_DIAS",
+                        "SLA_REAL_DIAS", "NO_PRAZO", "MOTIVO",
+                        "ATRASO_FREQ_CLIENTE", "ATRASO_FREQ_ROTA", "TENTATIVAS",
+                        "PROB_ATENDER_%", "RISCO", "ACAO_RECOMENDADA",
+                        "CXS_CONFIRMADAS", "CARGA_MIN_CXS"
                     ]
-                    cols_out = [c for c in cols_out if c in df_show.columns]
+
+                    df_show = df_view[[c for c in cols_show if c in df_view.columns]].copy()
+                    df_show = df_show.sort_values(by=["DT", "PROB_ATENDER_%"], ascending=[False, True]).reset_index(drop=True)
 
                     st.dataframe(
-                        df_show[cols_out],
+                        df_show.style.format({
+                            "DT": lambda x: x.strftime("%d/%m/%Y") if pd.notna(x) else "",
+                            "SLA_PLANEJADO_DIAS": lambda x: f"{float(x):.0f}" if pd.notna(x) else "",
+                            "ATRASO_DIAS": lambda x: f"{float(x):.1f}" if pd.notna(x) else "",
+                            "SLA_REAL_DIAS": lambda x: f"{float(x):.1f}" if pd.notna(x) else "",
+                            "ATRASO_FREQ_CLIENTE": lambda x: f"{float(x):.1f}%".replace(".", ","),
+                            "ATRASO_FREQ_ROTA": lambda x: f"{float(x):.1f}%".replace(".", ","),
+                            "PROB_ATENDER_%": lambda x: f"{float(x):.1f}%".replace(".", ","),
+                        }),
                         use_container_width=True,
                         hide_index=True,
                         height=420
                     )
 
-                    # ---------------------------------------------------------
-                    # 10) MAPA DA ROTA (SIMULADO)
-                    #     - Se você já tem df_base com COORDENADAS por cliente,
-                    #       aproveita e plota a rota real.
-                    #     - Se não tiver, gera coordenadas falsas só para a demo.
-                    # ---------------------------------------------------------
-                    st.markdown("---")
-                    st.markdown("## 🗺️ Mapa da rota (demo)")
-
-                    # Seleciona uma rota para visualizar
-                    rotas = sorted(df_view["ROTA_ID"].dropna().unique().tolist())
-                    rota_sel = st.selectbox("Escolha uma rota para ver no mapa:", rotas, key="log_rota_mapa")
-
-                    df_map = df_view[df_view["ROTA_ID"] == rota_sel].copy()
-
-                    # tenta usar coordenadas reais da BASE, se existir
-                    coords_ok = False
-                    if "df_base" in globals() and df_base is not None and ("COORDENADAS" in df_base.columns) and ("Cliente" in df_base.columns):
-                        try:
-                            df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
-                            df_coords["Cliente"] = df_coords["Cliente"].astype(str).str.strip()
-                            df_map["COD CLIENTE"] = df_map["COD CLIENTE"].astype(str).str.strip()
-
-                            df_map = df_map.merge(
-                                df_coords,
-                                left_on="COD CLIENTE",
-                                right_on="Cliente",
-                                how="left"
-                            )
-
-                            def _parse_coord(x):
-                                try:
-                                    if isinstance(x, str) and "," in x:
-                                        lat, lon = x.split(",", 1)
-                                        return float(lat.strip()), float(lon.strip())
-                                except:
-                                    pass
-                                return None, None
-
-                            df_map["LAT"] = df_map["COORDENADAS"].apply(lambda v: _parse_coord(v)[0])
-                            df_map["LON"] = df_map["COORDENADAS"].apply(lambda v: _parse_coord(v)[1])
-
-                            df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
-                            coords_ok = not df_map.empty
-                        except:
-                            coords_ok = False
-
-                    # se não tiver coords reais, inventa só pro demo (centro baseado no Estado/Cidade)
-                    if not coords_ok:
-                        # Centro fictício (Aracaju/SE como fallback)
-                        lat0, lon0 = -10.9472, -37.0731
-                        n = len(df_map)
-
-                        # espalha pontos próximos
-                        df_map["LAT"] = lat0 + rs.normal(0, 0.03, size=n)
-                        df_map["LON"] = lon0 + rs.normal(0, 0.03, size=n)
-
-                    # cor por risco (alto=vermelho, médio=amarelo, baixo=verde)
-                    def _cor(risco_txt):
-                        t = str(risco_txt).upper()
-                        if t == "BAIXA":
-                            return [0, 160, 0, 200]
-                        if t == "MÉDIA":
-                            return [255, 165, 0, 200]
-                        return [200, 0, 0, 220]
-
-                    df_map["COR_PINO"] = df_map["RISCO"].apply(_cor)
-                    df_map["TOOLTIP"] = df_map.apply(
-                        lambda r: (
-                            f"Cliente: {r.get('CLIENTE','')} | "
-                            f"Prob.: {r.get('PROB_ATENDER_%','')}% | "
-                            f"Risco: {r.get('RISCO','')} | "
-                            f"Motivo: {r.get('MOTIVO','')}"
-                        ),
-                        axis=1
-                    )
-
-                    dados_mapa = df_map[["LON", "LAT", "COR_PINO", "TOOLTIP"]].to_dict(orient="records")
-                    lat_center = float(df_map["LAT"].mean())
-                    lon_center = float(df_map["LON"].mean())
-
-                    import pydeck as pdk
-
-                    layer_pontos = pdk.Layer(
-                        "ScatterplotLayer",
-                        data=dados_mapa,
-                        get_position="[LON, LAT]",
-                        get_fill_color="COR_PINO",
-                        get_radius=120,
-                        radius_units="meters",
-                        pickable=True
-                    )
-
-                    # Linha da rota (conecta os pontos na ordem da data)
-                    df_line = df_map.sort_values("DT").copy()
-                    path = df_line[["LON", "LAT"]].values.tolist()
-                    df_path = pd.DataFrame([{"path": path}])
-
-                    layer_rota = pdk.Layer(
-                        "PathLayer",
-                        data=df_path,
-                        get_path="path",
-                        get_width=4,
-                        width_scale=3,
-                        width_min_pixels=2,
-                        pickable=False,
-                    )
-
-                    view_state = pdk.ViewState(
-                        latitude=lat_center,
-                        longitude=lon_center,
-                        zoom=11,
-                        pitch=0
-                    )
-
-                    tooltip = {"text": "{TOOLTIP}"}
-
-                    st.pydeck_chart(
-                        pdk.Deck(
-                            layers=[layer_rota, layer_pontos],
-                            initial_view_state=view_state,
-                            tooltip=tooltip,
-                            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                        ),
-                        use_container_width=True
-                    )
-
-                    st.caption(
-                        "Legenda (pinos): Verde = risco baixo | Laranja = risco médio | Vermelho = risco alto. "
-                        "A linha é a sequência da rota (por DATA)."
-                    )
-
                     st.markdown("---")
 
                     # ---------------------------------------------------------
-                    # 11) EXPORT (para impressionar)
-                    #     exporta a tabela de plano de ação (com probabilidade/ação)
+                    # 12) MAPA (FUNCIONANDO) ✅
+                    # - Como sua aba LOGISTICA ainda não tem coordenadas, eu simulo coords por UF/CIDADE.
+                    # - Se você depois adicionar colunas LAT/LON reais, é só trocar o gerador.
                     # ---------------------------------------------------------
-                    st.markdown("### 📤 Exportar (Plano de ação da logística — demo)")
+                    st.markdown("## 🗺️ Mapa (simulado) — Rotas e risco")
 
-                    col_exp1, col_exp2 = st.columns(2)
-                    df_export = df_show[cols_out].copy()
+                    try:
+                        import pydeck as pdk
 
-                    # Excel
-                    with col_exp1:
-                        import io as _io
-                        buffer_xlsx = _io.BytesIO()
-                        with pd.ExcelWriter(buffer_xlsx, engine="xlsxwriter") as writer:
-                            df_export.to_excel(writer, index=False, sheet_name="LOGISTICA")
+                        # centros aproximados por UF (para simular) - se não achar, cai num default
+                        centros_uf = {
+                            "SE": (-10.9162, -37.0617),  # Aracaju
+                            "AL": (-9.6658, -35.7353),   # Maceió
+                            "BA": (-12.9714, -38.5014),  # Salvador
+                            "PE": (-8.0476, -34.8770),   # Recife
+                            "PB": (-7.1153, -34.8610),   # João Pessoa
+                            "RN": (-5.7945, -35.2110),   # Natal
+                            "CE": (-3.7319, -38.5267),   # Fortaleza
+                            "PI": (-5.0919, -42.8034),   # Teresina
+                            "MA": (-2.5307, -44.3068),   # São Luís
+                        }
 
-                            worksheet = writer.sheets["LOGISTICA"]
-                            for i, col_name in enumerate(df_export.columns):
-                                try:
-                                    max_len = max([len(str(col_name))] + [len(str(v)) for v in df_export[col_name].astype(str).fillna("").tolist()])
-                                    worksheet.set_column(i, i, min(max_len + 2, 45))
-                                except:
-                                    pass
+                        def _uf_to_sigla(uf_raw):
+                            uf = str(uf_raw).strip().upper()
+                            # seus dados podem vir como "SE1" etc -> pega duas primeiras letras
+                            if len(uf) >= 2:
+                                return uf[:2]
+                            return uf
 
-                        st.download_button(
-                            "📥 Baixar Excel (Logística)",
-                            data=buffer_xlsx.getvalue(),
-                            file_name="logistica_simulacao.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="btn_export_excel_logistica"
+                        df_map = df_view.copy()
+                        df_map["UF_SIGLA"] = df_map["Estado"].apply(_uf_to_sigla)
+
+                        # gera lat/lon por rota, para não ficar tudo em cima
+                        rotas = df_map["ROTA_ID"].dropna().unique().tolist()
+                        rota_to_center = {}
+
+                        for rid in rotas:
+                            df_rid = df_map[df_map["ROTA_ID"] == rid].head(1)
+                            uf_sig = str(df_rid["UF_SIGLA"].iloc[0]) if not df_rid.empty else "SE"
+                            lat0, lon0 = centros_uf.get(uf_sig, (-10.0, -37.0))
+                            # jitter por rota (fixo no seed do dia)
+                            jlat = rs.normal(0, 0.12)
+                            jlon = rs.normal(0, 0.12)
+                            rota_to_center[rid] = (lat0 + jlat, lon0 + jlon)
+
+                        # aplica um jitter leve por cliente (para espalhar pontos)
+                        lats = []
+                        lons = []
+                        for _, r in df_map.iterrows():
+                            latc, lonc = rota_to_center.get(r.get("ROTA_ID"), (-10.0, -37.0))
+                            lats.append(latc + rs.normal(0, 0.03))
+                            lons.append(lonc + rs.normal(0, 0.03))
+
+                        df_map["LAT"] = lats
+                        df_map["LON"] = lons
+
+                        # cor por risco (ALTA/MEDIA/BAIXA) mas sem “tirar nada”: só adiciona
+                        def _color(risco_txt):
+                            s = str(risco_txt).upper().strip()
+                            if s == "ALTA":
+                                return [0, 160, 0, 180]      # verde (alta prob)
+                            if s == "MEDIA":
+                                return [255, 165, 0, 180]    # laranja
+                            return [200, 0, 0, 180]         # vermelho (baixa prob)
+
+                        df_map["COR"] = df_map["RISCO"].apply(_color)
+
+                        df_map["TOOLTIP"] = df_map.apply(
+                            lambda r: (
+                                f"Cliente: {r.get('CLIENTE','')} | Cod: {r.get('COD CLIENTE','')} | "
+                                f"Rota: {r.get('ROTA_ID','')} | Prob: {r.get('PROB_ATENDER_%','')}% | "
+                                f"Motivo: {r.get('MOTIVO','')}"
+                            ),
+                            axis=1
                         )
 
-                    # PDF
-                    with col_exp2:
-                        import io as _io
-                        from fpdf import FPDF as _FPDF
+                        dados_mapa = df_map[["LON", "LAT", "COR", "TOOLTIP", "ROTA_ID", "RISCO"]].to_dict(orient="records")
 
-                        def _pdf_table_bytes(df_pdf):
-                            pdf = _FPDF(orientation="L", unit="mm", format="A4")
-                            pdf.set_auto_page_break(auto=True, margin=10)
-                            pdf.add_page()
+                        lat_center = float(df_map["LAT"].mean())
+                        lon_center = float(df_map["LON"].mean())
 
-                            pdf.set_font("Arial", "B", 10)
-                            pdf.cell(0, 8, "LOGISTICA — Plano de Acao (Simulacao)", ln=True)
-                            pdf.ln(1)
-
-                            pdf.set_font("Arial", size=7)
-
-                            page_w = 297 - 20
-                            n_cols = max(len(df_pdf.columns), 1)
-                            col_w = max(page_w / n_cols, 18)
-
-                            # Cabeçalho
-                            pdf.set_font("Arial", "B", 7)
-                            for c in df_pdf.columns:
-                                txt = str(c)[:25]
-                                pdf.cell(col_w, 6, txt, border=1)
-                            pdf.ln()
-
-                            # Linhas
-                            pdf.set_font("Arial", size=7)
-                            for _, row in df_pdf.iterrows():
-                                for c in df_pdf.columns:
-                                    v = row.get(c, "")
-                                    s = "" if pd.isna(v) else str(v)
-                                    s = s.replace("\n", " ").strip()
-                                    s = s[:35]
-                                    pdf.cell(col_w, 6, s, border=1)
-                                pdf.ln()
-
-                            out = _io.BytesIO(pdf.output(dest="S").encode("latin-1"))
-                            return out.getvalue()
-
-                        pdf_bytes = _pdf_table_bytes(df_export)
-
-                        st.download_button(
-                            "🧾 Baixar PDF (Logística)",
-                            data=pdf_bytes,
-                            file_name="logistica_simulacao.pdf",
-                            mime="application/pdf",
-                            key="btn_export_pdf_logistica"
+                        layer_pontos = pdk.Layer(
+                            "ScatterplotLayer",
+                            data=dados_mapa,
+                            get_position="[LON, LAT]",
+                            get_radius=2500,
+                            radius_units="meters",
+                            get_fill_color="COR",
+                            pickable=True,
+                            opacity=0.8,
+                            stroked=True,
+                            get_line_color=[40, 40, 40, 120],
+                            line_width_min_pixels=1,
                         )
 
-    # fim da página Logística
+                        view_state = pdk.ViewState(
+                            latitude=lat_center,
+                            longitude=lon_center,
+                            zoom=7.5,
+                            pitch=0
+                        )
+
+                        st.pydeck_chart(
+                            pdk.Deck(
+                                layers=[layer_pontos],
+                                initial_view_state=view_state,
+                                tooltip={"text": "{TOOLTIP}"},
+                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                            ),
+                            use_container_width=True
+                        )
+
+                        st.caption(
+                            "Mapa simulado (sem coordenadas reais na aba LOGISTICA): pontos são espalhados por UF/rota para demonstrar a ideia."
+                        )
+
+                    except Exception as e:
+                        st.warning(f"Não foi possível renderizar o mapa da logística: {e}")
+
 
 
 # --- PÁGINA: TESTES (ACURÁCIA) ---
