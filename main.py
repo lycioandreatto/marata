@@ -5530,7 +5530,6 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
             )
 
       # ----------------------------
-try:
     # ----------------------------
     # ✅ SUGESTÕES (beta) - só aparece quando selecionar vendedor
     # ----------------------------
