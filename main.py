@@ -1241,20 +1241,64 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-        # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+               # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
+
+            # ✅ trava para não reenviar e-mail no rerun (por analista + dia)
+            if "validacao_dia_email" not in st.session_state:
+                st.session_state["validacao_dia_email"] = {}
+
+            chave_envio = f"{user_atual.upper()}_{hoje_str}"
+
             if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
+
                 ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
-                if ids:
+
+                if not ids:
+                    st.info("Não há visitas com status REALIZADO para aprovar.")
+                else:
+                    # 1) Aprova em massa
                     df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
+
+                    # 2) Salva na planilha
                     conn.update(
                         spreadsheet=url_planilha,
                         worksheet="AGENDA",
                         data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
                     )
-                    st.success("Todas as visitas realizadas foram aprovadas!")
+
+                    # 3) Envia e-mail (SÓ SE for analista) e só 1x por dia
+                    if is_analista and not st.session_state["validacao_dia_email"].get(chave_envio, False):
+
+                        # ✅ Quem vai receber (diretoria/gestão)
+                        # Se você tiver lista de diretoria, coloque aqui:
+                        # EMAILS_DIRETORIA = ["aldo@marata.com.br", ...]
+                        destinatarios = EMAILS_GESTAO.copy()
+
+                        # Se quiser mandar pra alguém fixo também:
+                        # destinatarios += ["marciajanaina@marata.com.br"]
+
+                        destinatarios_str = ", ".join(destinatarios)
+
+                        ok_envio = enviar_email_validacao_agendas(
+                            destinatarios_lista=destinatarios_str,
+                            analista=user_atual.upper(),
+                            data_str=hoje_str,
+                            qtd_aprovadas=len(ids),
+                        )
+
+                        if ok_envio:
+                            st.session_state["validacao_dia_email"][chave_envio] = True
+                            st.success("Todas as visitas realizadas foram aprovadas e a diretoria foi notificada ✅")
+                        else:
+                            st.warning("Aprovação feita, mas falhou ao enviar o e-mail de notificação.")
+
+                    else:
+                        st.success("Todas as visitas realizadas foram aprovadas ✅")
+
                     time.sleep(1)
                     st.rerun()
+
 
         # --- TABELA ---
         if not df_dia.empty:
