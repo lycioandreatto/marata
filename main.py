@@ -2155,16 +2155,16 @@ elif menu == "🚚 Logística":
 
                     st.markdown("---")
 
-                                       # ---------------------------------------------------------
-                                        # ---------------------------------------------------------
-                    # 12) MAPA (FUNCIONANDO SEM TILES) ✅
-                    # - Troca pydeck (tela verde) por Plotly ScatterGeo (não usa tiles)
-                    # - Funciona no Streamlit Cloud sem token
+                                      # ---------------------------------------------------------
+                    # 12) MAPA (PONTOS + ROTAS INTERLIGADAS) ✅
+                    # - Plotly ScatterGeo (não usa tiles; funciona no Cloud)
+                    # - Desenha linhas interligando pontos por ROTA_ID
                     # ---------------------------------------------------------
                     st.markdown("## 🗺️ Mapa (simulado) — Rotas e risco")
 
                     try:
                         import plotly.express as px
+                        import plotly.graph_objects as go
 
                         centros_uf = {
                             "SE": (-10.9162, -37.0617),
@@ -2185,6 +2185,18 @@ elif menu == "🚚 Logística":
                         df_map = df_view.copy()
                         df_map["UF_SIGLA"] = df_map["Estado"].apply(_uf_to_sigla)
 
+                        # tenta usar DATA como sequenciamento
+                        if "DATA" in df_map.columns:
+                            df_map["_DT_SEQ"] = pd.to_datetime(df_map["DATA"], dayfirst=True, errors="coerce")
+                        else:
+                            df_map["_DT_SEQ"] = pd.NaT
+
+                        # fallback: se tudo NaT, usa índice como sequência
+                        if df_map["_DT_SEQ"].isna().all():
+                            df_map["_SEQ"] = range(1, len(df_map) + 1)
+                        else:
+                            df_map["_SEQ"] = df_map["_DT_SEQ"].fillna(pd.Timestamp("1900-01-01"))
+
                         # cria um "centro" por rota e espalha pontos ao redor (simulado)
                         rotas = df_map["ROTA_ID"].dropna().unique().tolist()
                         rota_to_center = {}
@@ -2203,8 +2215,8 @@ elif menu == "🚚 Logística":
                         lons = []
                         for _, r in df_map.iterrows():
                             latc, lonc = rota_to_center.get(r.get("ROTA_ID"), (-10.0, -37.0))
-                            lats.append(float(latc + rs.normal(0, 0.03)))
-                            lons.append(float(lonc + rs.normal(0, 0.03)))
+                            lats.append(float(latc + float(rs.normal(0, 0.03))))
+                            lons.append(float(lonc + float(rs.normal(0, 0.03))))
 
                         df_map["LAT"] = pd.to_numeric(lats, errors="coerce")
                         df_map["LON"] = pd.to_numeric(lons, errors="coerce")
@@ -2213,6 +2225,7 @@ elif menu == "🚚 Logística":
                         if df_map.empty:
                             st.info("Sem pontos válidos para o mapa.")
                         else:
+                            # tooltip rico
                             df_map["TOOLTIP"] = df_map.apply(
                                 lambda r: (
                                     f"Cliente: {r.get('CLIENTE','')}"
@@ -2225,15 +2238,9 @@ elif menu == "🚚 Logística":
                                 axis=1
                             )
 
-                            # cores fixas por risco (plotly aceita nomes/hex)
-                            cor_risco = {
-                                "ALTA": "green",
-                                "MEDIA": "orange",
-                                "BAIXA": "red",
-                            }
                             df_map["RISCO"] = df_map["RISCO"].astype(str).str.upper().str.strip()
-                            df_map["COR_RISCO"] = df_map["RISCO"].map(cor_risco).fillna("red")
 
+                            # 1) camada de pontos (color por risco)
                             fig = px.scatter_geo(
                                 df_map,
                                 lat="LAT",
@@ -2252,7 +2259,42 @@ elif menu == "🚚 Logística":
                                 projection="natural earth",
                             )
 
-                            # foca no Brasil / Nordeste (aprox) e melhora layout
+                            # 2) linhas por rota interligando os pontos (na ordem)
+                            for rid in rotas:
+                                df_r = df_map[df_map["ROTA_ID"] == rid].copy()
+                                if df_r.empty or len(df_r) < 2:
+                                    continue
+
+                                df_r = df_r.sort_values("_SEQ", ascending=True).reset_index(drop=True)
+
+                                # linha ligando sequência
+                                fig.add_trace(
+                                    go.Scattergeo(
+                                        lat=df_r["LAT"],
+                                        lon=df_r["LON"],
+                                        mode="lines",
+                                        line=dict(width=2),
+                                        name=f"Rota {rid}",
+                                        hoverinfo="skip",
+                                        showlegend=False,
+                                    )
+                                )
+
+                                # (opcional) rótulo do "início" da rota
+                                primeiro = df_r.iloc[0]
+                                fig.add_trace(
+                                    go.Scattergeo(
+                                        lat=[float(primeiro["LAT"])],
+                                        lon=[float(primeiro["LON"])],
+                                        mode="text",
+                                        text=[f"Início {rid}"],
+                                        textfont=dict(size=10),
+                                        showlegend=False,
+                                        hoverinfo="skip",
+                                    )
+                                )
+
+                            # foco no BR / Nordeste
                             fig.update_geos(
                                 center=dict(lat=-10.5, lon=-40.0),
                                 lataxis_range=[-20, 5],
@@ -2266,7 +2308,7 @@ elif menu == "🚚 Logística":
                             )
 
                             fig.update_layout(
-                                height=520,
+                                height=560,
                                 margin=dict(l=0, r=0, t=10, b=0),
                                 legend_title_text="Risco (simulado)",
                             )
@@ -2274,12 +2316,11 @@ elif menu == "🚚 Logística":
                             st.plotly_chart(fig, use_container_width=True)
 
                             st.caption(
-                                "Mapa simulado (sem coordenadas reais na aba LOGISTICA): pontos são gerados por UF/rota para demonstrar a ideia."
+                                "Mapa simulado: as rotas são desenhadas ligando os clientes por ROTA_ID na ordem de DATA (quando existir)."
                             )
 
                     except Exception as e:
                         st.warning(f"Não foi possível renderizar o mapa da logística: {e}")
-
 
 
 
