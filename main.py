@@ -1298,8 +1298,8 @@ if pode_validar and not df_dia.empty:
             st.info("Não há visitas com STATUS = Realizado para aprovar.")
 
 
-                    time.sleep(1)
-                    st.rerun()
+        time.sleep(1)
+        st.rerun()
 
 
         # --- TABELA ---
