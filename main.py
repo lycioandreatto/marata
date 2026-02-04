@@ -2156,14 +2156,15 @@ elif menu == "🚚 Logística":
                     st.markdown("---")
 
                                        # ---------------------------------------------------------
-                    # 12) MAPA (FUNCIONANDO) ✅ AJUSTADO
-                    # - Força provider CARTO (evita tela verde quando o deck não “pega” o basemap)
-                    # - Tenta GL style (positron). Se falhar, cai num raster simples.
+                                        # ---------------------------------------------------------
+                    # 12) MAPA (FUNCIONANDO SEM TILES) ✅
+                    # - Troca pydeck (tela verde) por Plotly ScatterGeo (não usa tiles)
+                    # - Funciona no Streamlit Cloud sem token
                     # ---------------------------------------------------------
                     st.markdown("## 🗺️ Mapa (simulado) — Rotas e risco")
 
                     try:
-                        import pydeck as pdk
+                        import plotly.express as px
 
                         centros_uf = {
                             "SE": (-10.9162, -37.0617),
@@ -2184,6 +2185,7 @@ elif menu == "🚚 Logística":
                         df_map = df_view.copy()
                         df_map["UF_SIGLA"] = df_map["Estado"].apply(_uf_to_sigla)
 
+                        # cria um "centro" por rota e espalha pontos ao redor (simulado)
                         rotas = df_map["ROTA_ID"].dropna().unique().tolist()
                         rota_to_center = {}
 
@@ -2191,119 +2193,93 @@ elif menu == "🚚 Logística":
                             df_rid = df_map[df_map["ROTA_ID"] == rid].head(1)
                             uf_sig = str(df_rid["UF_SIGLA"].iloc[0]) if not df_rid.empty else "SE"
                             lat0, lon0 = centros_uf.get(uf_sig, (-10.0, -37.0))
-                            jlat = rs.normal(0, 0.12)
-                            jlon = rs.normal(0, 0.12)
+
+                            # jitter do centro da rota
+                            jlat = float(rs.normal(0, 0.12))
+                            jlon = float(rs.normal(0, 0.12))
                             rota_to_center[rid] = (lat0 + jlat, lon0 + jlon)
 
                         lats = []
                         lons = []
                         for _, r in df_map.iterrows():
                             latc, lonc = rota_to_center.get(r.get("ROTA_ID"), (-10.0, -37.0))
-                            lats.append(latc + rs.normal(0, 0.03))
-                            lons.append(lonc + rs.normal(0, 0.03))
+                            lats.append(float(latc + rs.normal(0, 0.03)))
+                            lons.append(float(lonc + rs.normal(0, 0.03)))
 
-                        df_map["LAT"] = lats
-                        df_map["LON"] = lons
-
-                        def _color(risco_txt):
-                            s = str(risco_txt).upper().strip()
-                            if s == "ALTA":
-                                return [0, 160, 0, 180]
-                            if s == "MEDIA":
-                                return [255, 165, 0, 180]
-                            return [200, 0, 0, 180]
-
-                        df_map["COR"] = df_map["RISCO"].apply(_color)
-
-                        df_map["TOOLTIP"] = df_map.apply(
-                            lambda r: (
-                                f"Cliente: {r.get('CLIENTE','')} | Cod: {r.get('COD CLIENTE','')} | "
-                                f"Rota: {r.get('ROTA_ID','')} | Prob: {r.get('PROB_ATENDER_%','')}% | "
-                                f"Motivo: {r.get('MOTIVO','')}"
-                            ),
-                            axis=1
-                        )
-
-                        # ✅ garante que não tem NaN
-                        df_map["LAT"] = pd.to_numeric(df_map["LAT"], errors="coerce")
-                        df_map["LON"] = pd.to_numeric(df_map["LON"], errors="coerce")
+                        df_map["LAT"] = pd.to_numeric(lats, errors="coerce")
+                        df_map["LON"] = pd.to_numeric(lons, errors="coerce")
                         df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
 
                         if df_map.empty:
                             st.info("Sem pontos válidos para o mapa.")
                         else:
-                            dados_mapa = df_map[["LON", "LAT", "COR", "TOOLTIP"]].to_dict(orient="records")
-
-                            lat_center = float(df_map["LAT"].mean())
-                            lon_center = float(df_map["LON"].mean())
-
-                            layer_pontos = pdk.Layer(
-                                "ScatterplotLayer",
-                                data=dados_mapa,
-                                get_position="[LON, LAT]",
-                                get_radius=2500,
-                                radius_units="meters",
-                                get_fill_color="COR",
-                                pickable=True,
-                                opacity=0.85,
-                                stroked=True,
-                                get_line_color=[40, 40, 40, 120],
-                                line_width_min_pixels=1,
+                            df_map["TOOLTIP"] = df_map.apply(
+                                lambda r: (
+                                    f"Cliente: {r.get('CLIENTE','')}"
+                                    f"<br>Cod: {r.get('COD CLIENTE','')}"
+                                    f"<br>Rota: {r.get('ROTA_ID','')}"
+                                    f"<br>Prob. atender: {r.get('PROB_ATENDER_%','')}%"
+                                    f"<br>Risco: {r.get('RISCO','')}"
+                                    f"<br>Motivo: {r.get('MOTIVO','')}"
+                                ),
+                                axis=1
                             )
 
-                            view_state = pdk.ViewState(
-                                latitude=lat_center,
-                                longitude=lon_center,
-                                zoom=7.5,
-                                pitch=0
+                            # cores fixas por risco (plotly aceita nomes/hex)
+                            cor_risco = {
+                                "ALTA": "green",
+                                "MEDIA": "orange",
+                                "BAIXA": "red",
+                            }
+                            df_map["RISCO"] = df_map["RISCO"].astype(str).str.upper().str.strip()
+                            df_map["COR_RISCO"] = df_map["RISCO"].map(cor_risco).fillna("red")
+
+                            fig = px.scatter_geo(
+                                df_map,
+                                lat="LAT",
+                                lon="LON",
+                                color="RISCO",
+                                hover_name="CLIENTE",
+                                hover_data={
+                                    "COD CLIENTE": True,
+                                    "ROTA_ID": True,
+                                    "PROB_ATENDER_%": True,
+                                    "MOTIVO": True,
+                                    "LAT": False,
+                                    "LON": False,
+                                },
+                                scope="south america",
+                                projection="natural earth",
                             )
 
-                            # ✅ estilo principal (CARTO GL)
-                            carto_gl = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                            # foca no Brasil / Nordeste (aprox) e melhora layout
+                            fig.update_geos(
+                                center=dict(lat=-10.5, lon=-40.0),
+                                lataxis_range=[-20, 5],
+                                lonaxis_range=[-55, -30],
+                                showcountries=True,
+                                countrycolor="LightGray",
+                                showland=True,
+                                landcolor="rgb(245,245,245)",
+                                showocean=True,
+                                oceancolor="rgb(235,245,255)",
+                            )
 
-                            # ✅ fallback raster (quando GL não carrega no ambiente)
-                            # (deck aceita map_style=None e mostra “fundo” sem tiles;
-                            # aqui forçamos um TileLayer raster pra garantir mapa)
-                            use_fallback = st.toggle("Usar mapa alternativo (raster)", value=False, key="log_map_fallback")
+                            fig.update_layout(
+                                height=520,
+                                margin=dict(l=0, r=0, t=10, b=0),
+                                legend_title_text="Risco (simulado)",
+                            )
 
-                            if not use_fallback:
-                                st.pydeck_chart(
-                                    pdk.Deck(
-                                        layers=[layer_pontos],
-                                        initial_view_state=view_state,
-                                        tooltip={"text": "{TOOLTIP}"},
-                                        map_style=carto_gl,
-                                        map_provider="carto",
-                                    ),
-                                    use_container_width=True
-                                )
-                            else:
-                                layer_tiles = pdk.Layer(
-                                    "TileLayer",
-                                    data=None,
-                                    min_zoom=0,
-                                    max_zoom=19,
-                                    tile_size=256,
-                                    get_tile_url="https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-                                )
-
-                                st.pydeck_chart(
-                                    pdk.Deck(
-                                        layers=[layer_tiles, layer_pontos],
-                                        initial_view_state=view_state,
-                                        tooltip={"text": "{TOOLTIP}"},
-                                        map_style=None,
-                                        map_provider="carto",
-                                    ),
-                                    use_container_width=True
-                                )
+                            st.plotly_chart(fig, use_container_width=True)
 
                             st.caption(
-                                "Mapa simulado (sem coordenadas reais na aba LOGISTICA): pontos são espalhados por UF/rota para demonstrar a ideia."
+                                "Mapa simulado (sem coordenadas reais na aba LOGISTICA): pontos são gerados por UF/rota para demonstrar a ideia."
                             )
 
                     except Exception as e:
                         st.warning(f"Não foi possível renderizar o mapa da logística: {e}")
+
 
 
 
