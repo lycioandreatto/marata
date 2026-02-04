@@ -1052,7 +1052,7 @@ with st.sidebar:
         "📋 Novo Agendamento",
         texto_ver_agenda
     ]
-    
+    opcoes_menu.append("🗺️ MAPA FATURADO")
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     opcoes_menu.append("📚 Perfil do Cliente")
 
@@ -4995,6 +4995,233 @@ elif menu_interna == "📚 Perfil do Cliente":
                 st.dataframe(df_diff.head(int(top_n_diff)), use_container_width=True, hide_index=True)
 
 
+
+
+# ============================
+# 🗺️ PÁGINA: MAPA FATURADO (INSIGHTS)
+# Cole este bloco NO MESMO NÍVEL dos outros "elif menu == ..."
+# ============================
+elif menu == "🗺️ MAPA FATURADO":
+    import re
+    import requests
+    import plotly.express as px
+
+    st.header("🗺️ Mapa de Vendas por Estado — FATURADO")
+
+    # ============================
+    # 1) Lê a aba FATURADO
+    # ============================
+    try:
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+    except Exception as e:
+        df_faturado = None
+        st.error(f"Erro ao ler a aba FATURADO: {e}")
+
+    if df_faturado is None or df_faturado.empty:
+        st.warning("A aba FATURADO está vazia ou não foi carregada.")
+        st.stop()
+
+    # Padroniza nomes (sem quebrar se já estiver ok)
+    df_faturado = df_faturado.copy()
+    df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
+
+    # ============================
+    # 2) Detecta colunas (tolerante a variações)
+    # ============================
+    def _find_col(possiveis):
+        cols_upper = {c.upper(): c for c in df_faturado.columns}
+        for p in possiveis:
+            if p.upper() in cols_upper:
+                return cols_upper[p.upper()]
+        return None
+
+    col_uf_raw = _find_col(["EscrV", "ESCRV"])
+    col_hier = _find_col(["Hierarquia de produtos", "HIERARQUIA DE PRODUTOS", "HIERARQUIA", "HIERARQUIA DE PRODUTO"])
+    col_qtd = _find_col(["Qtd Vendas (S/Dec)", "QTD VENDAS (S/DEC)", "QTD VENDAS", "QUANTIDADE"])
+    col_rec = _find_col(["Receita", "RECEITA", "FATURAMENTO", "VALOR"])
+
+    faltando = []
+    if not col_uf_raw:
+        faltando.append("EscrV")
+    if not col_qtd:
+        faltando.append("Qtd Vendas (S/Dec)")
+    if not col_rec:
+        faltando.append("Receita")
+
+    if faltando:
+        st.error(f"Colunas obrigatórias não encontradas no FATURADO: {', '.join(faltando)}")
+        st.stop()
+
+    # ============================
+    # 3) Normaliza UF: "SE1" -> "SE" | "BA1" -> "BA"
+    # ============================
+    def _uf_from_escrv(x):
+        s = str(x).strip().upper()
+        if s in ["", "NAN", "NONE"]:
+            return ""
+        # pega as 2 primeiras letras
+        m = re.match(r"^([A-Z]{2})", s)
+        if m:
+            return m.group(1)
+        return ""
+
+    df_faturado["UF"] = df_faturado[col_uf_raw].apply(_uf_from_escrv)
+
+    # Remove linhas sem UF válida
+    df_faturado = df_faturado[df_faturado["UF"].astype(str).str.len() == 2].copy()
+    if df_faturado.empty:
+        st.warning("Não encontrei UF válida na coluna EscrV (ex: SE1, BA1).")
+        st.stop()
+
+    # ============================
+    # 4) Trata numéricos (Quantidade / Receita)
+    # ============================
+    def _to_num(v):
+        try:
+            # aceita "1.234,56" e "1234.56"
+            s = str(v).strip().replace(".", "").replace(",", ".")
+            return float(s)
+        except Exception:
+            return 0.0
+
+    df_faturado["_QTD_"] = df_faturado[col_qtd].apply(_to_num)
+    df_faturado["_REC_"] = df_faturado[col_rec].apply(_to_num)
+
+    # ============================
+    # 5) Filtro por Hierarquia
+    # ============================
+    if col_hier:
+        df_faturado[col_hier] = df_faturado[col_hier].astype(str).fillna("")
+        lista_hier = sorted([h for h in df_faturado[col_hier].unique().tolist() if h.strip() != ""])
+        hier_sel = st.selectbox(
+            "Filtrar por Hierarquia de Produto (opcional)",
+            ["(Todas)"] + lista_hier
+        )
+        if hier_sel != "(Todas)":
+            df_faturado = df_faturado[df_faturado[col_hier] == hier_sel].copy()
+
+    if df_faturado.empty:
+        st.info("Sem dados após aplicar o filtro.")
+        st.stop()
+
+    # ============================
+    # 6) Escolha do indicador (Receita x Quantidade)
+    # ============================
+    modo = st.radio(
+        "Visualizar no mapa por:",
+        ["Receita", "Quantidade Vendida"],
+        horizontal=True
+    )
+
+    valor_col = "_REC_" if modo == "Receita" else "_QTD_"
+    label_val = "Receita" if modo == "Receita" else "Qtd Vendida"
+
+    # ============================
+    # 7) Agrega por UF
+    # ============================
+    df_uf = (
+        df_faturado.groupby("UF", as_index=False)
+        .agg(
+            Receita=("_REC_", "sum"),
+            Quantidade=("_QTD_", "sum")
+        )
+    )
+
+    # ============================
+    # 8) GeoJSON dos estados (cacheado)
+    # ============================
+    @st.cache_data(ttl=60 * 60 * 24)  # 24h
+    def _load_brazil_states_geojson():
+        # GeoJSON de estados do Brasil (UF). Fonte pública em GitHub.
+        # Se um link cair, troque a URL aqui.
+        url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson"
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        return r.json()
+
+    try:
+        geojson = _load_brazil_states_geojson()
+    except Exception as e:
+        st.error(f"Não consegui baixar o GeoJSON dos estados. Erro: {e}")
+        st.stop()
+
+    # ============================
+    # 9) Descobre qual propriedade do GeoJSON tem a UF (ex: 'sigla', 'abbr', etc.)
+    # ============================
+    # Vamos tentar casar automaticamente pra não quebrar.
+    sample_props = {}
+    try:
+        sample_props = geojson["features"][0]["properties"]
+    except Exception:
+        sample_props = {}
+
+    # Chaves comuns onde pode estar a UF
+    possible_keys = ["sigla", "uf", "abbr", "state", "name", "nome"]
+
+    # Escolhe a primeira que exista
+    chosen_key = None
+    for k in possible_keys:
+        if k in sample_props:
+            chosen_key = k
+            break
+
+    if not chosen_key:
+        # fallback: tenta achar qualquer campo string que tenha "SP" / "RJ" etc
+        # (bem tolerante)
+        for k, v in sample_props.items():
+            if isinstance(v, str) and len(v.strip()) == 2 and v.strip().isalpha():
+                chosen_key = k
+                break
+
+    if not chosen_key:
+        st.error("GeoJSON não tem uma propriedade clara de UF para casar (sigla/uf/abbr).")
+        st.stop()
+
+    feature_key = f"properties.{chosen_key}"
+
+    # ============================
+    # 10) Choropleth (mapa pintado por UF)
+    # ============================
+    fig = px.choropleth(
+        df_uf,
+        geojson=geojson,
+        locations="UF",
+        featureidkey=feature_key,
+        color=label_val,
+        hover_data={"UF": True, "Receita": ":,.2f", "Quantidade": ":,.0f"},
+        scope="south america",
+        title=f"{label_val} por Estado (UF)"
+    )
+
+    # Ajustes para “ficar só Brasil”
+    fig.update_geos(
+        fitbounds="locations",
+        visible=False
+    )
+    fig.update_layout(
+        margin={"r": 0, "t": 50, "l": 0, "b": 0},
+        height=650
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ============================
+    # 11) Cards de resumo (insights rápidos)
+    # ============================
+    total_rec = float(df_faturado["_REC_"].sum())
+    total_qtd = float(df_faturado["_QTD_"].sum())
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Receita Total (filtro atual)", f"{total_rec:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c2.metric("Qtd Total (filtro atual)", f"{total_qtd:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    if total_qtd > 0:
+        ticket = total_rec / total_qtd
+        c3.metric("Receita por Unidade (médio)", f"{ticket:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    # Top 5 estados
+    st.markdown("### Top 5 Estados")
+    top = df_uf.sort_values(by=label_val, ascending=False).head(5).copy()
+    st.dataframe(top, use_container_width=True, hide_index=True)
 
 
                     
