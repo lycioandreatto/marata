@@ -1245,18 +1245,86 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-        # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
             if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
+                # pega só as visitas REALIZADAS do dia (no recorte atual)
                 ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
-                if ids:
+
+                if not ids:
+                    st.info("Não há visitas com status 'Realizado' para aprovar em massa.")
+                else:
+                    # ✅ Marca como OK no df_agenda (base completa)
                     df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
+
+                    # ✅ Salva na planilha
                     conn.update(
                         spreadsheet=url_planilha,
                         worksheet="AGENDA",
                         data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
                     )
-                    st.success("Todas as visitas realizadas foram aprovadas!")
+
+                    # ============================
+                    # ✅ E-MAIL PARA DIRETORIA (RESUMO DA VALIDAÇÃO)
+                    # - Total de registros do dia (no recorte de acesso)
+                    # - Total realizados
+                    # - Total aprovados (OK)
+                    # - Total reprovados (REPROVADO)
+                    # - Quantos foram aprovados em massa (ids)
+                    # ============================
+                    try:
+                        import smtplib
+                        from email.mime.text import MIMEText
+                        from email.mime.multipart import MIMEMultipart
+
+                        # Recalcula contagens com df_dia (recorte atual do usuário)
+                        total_dia = int(len(df_dia))
+                        total_realizados = int(len(df_dia[df_dia["STATUS"] == "Realizado"]))
+                        total_ok = int(len(df_dia[df_dia[col_aprov_exec] == "OK"]))
+                        total_reprovado = int(len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]))
+                        total_aprovados_massa = int(len(ids))
+
+                        # Destinatários: use sua lista fixa (ajuste a lista EMAILS_GESTAO para ser a diretoria)
+                        destinatarios_lista = ", ".join(EMAILS_GESTAO) if isinstance(EMAILS_GESTAO, list) else str(EMAILS_GESTAO)
+
+                        email_origem = st.secrets["email"]["sender_email"]
+                        senha_origem = st.secrets["email"]["sender_password"]
+                        smtp_server = st.secrets["email"]["smtp_server"]
+                        smtp_port = st.secrets["email"]["smtp_port"]
+
+                        msg = MIMEMultipart()
+                        msg["From"] = f"MARATÁ-GVP <{email_origem}>"
+                        msg["To"] = destinatarios_lista
+                        msg["Subject"] = f"✅ Validação diária confirmada - {user_atual} ({hoje_str})"
+
+                        corpo = f"""
+Olá,
+
+O analista {user_atual} confirmou a validação das agendas do dia {hoje_str}.
+
+RESUMO:
+- Total de visitas na tela (recorte atual): {total_dia}
+- Total de visitas realizadas: {total_realizados}
+- Total aprovadas (OK): {total_ok}
+- Total reprovadas: {total_reprovado}
+
+Total de visitas realizadas aprovadas em massa: {total_aprovados_massa}
+
+E-mail gerado automaticamente pelo Sistema Maratá GVP.
+""".strip()
+
+                        msg.attach(MIMEText(corpo, "plain"))
+
+                        server = smtplib.SMTP(smtp_server, smtp_port)
+                        server.starttls()
+                        server.login(email_origem, senha_origem)
+                        server.sendmail(email_origem, [x.strip() for x in destinatarios_lista.split(",") if x.strip()], msg.as_string())
+                        server.quit()
+
+                    except Exception as e:
+                        st.warning(f"Validação salva, mas não consegui enviar e-mail: {e}")
+
+                    st.success("Todas as visitas realizadas foram aprovadas! (E-mail enviado para a diretoria)")
                     time.sleep(1)
                     st.rerun()
 
@@ -1264,11 +1332,26 @@ if menu == "📅 Agendamentos do Dia":
         if not df_dia.empty:
 
             # ✅ Cidade
-            if df_base is not None and not df_base.empty and ("Cliente" in df_base.columns) and ("Local" in df_base.columns):
+            if (
+                df_base is not None
+                and not df_base.empty
+                and ("Cliente" in df_base.columns)
+                and ("Local" in df_base.columns)
+            ):
                 df_cidades = df_base[["Cliente", "Local"]].drop_duplicates("Cliente").copy()
-                df_cidades["Cliente"] = df_cidades["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                df_cidades["Cliente"] = (
+                    df_cidades["Cliente"]
+                    .astype(str)
+                    .str.strip()
+                    .str.replace(r"\.0$", "", regex=True)
+                )
 
-                df_dia["CÓDIGO CLIENTE"] = df_dia["CÓDIGO CLIENTE"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                df_dia["CÓDIGO CLIENTE"] = (
+                    df_dia["CÓDIGO CLIENTE"]
+                    .astype(str)
+                    .str.strip()
+                    .str.replace(r"\.0$", "", regex=True)
+                )
                 df_dia = (
                     df_dia.merge(
                         df_cidades,
@@ -1295,7 +1378,9 @@ if menu == "📅 Agendamentos do Dia":
                 use_container_width=True,
                 column_config={
                     "EDITAR": st.column_config.CheckboxColumn("📝"),
-                    col_aprov_exec: st.column_config.SelectboxColumn("AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]),
+                    col_aprov_exec: st.column_config.SelectboxColumn(
+                        "AUDITORIA", options=["PENDENTE", "OK", "REPROVADO"]
+                    ),
                 },
                 disabled=[
                     c
@@ -1439,7 +1524,6 @@ if menu == "📅 Agendamentos do Dia":
                         )
                         st.cache_data.clear()
 
-
                         st.success("Dados atualizados! (GPS do vendedor preservado)")
                         time.sleep(1)
                         st.rerun()
@@ -1466,11 +1550,18 @@ if menu == "📅 Agendamentos do Dia":
                             base_cliente = df_base.copy()
                             if "Cliente" in base_cliente.columns:
                                 base_cliente["Cliente"] = (
-                                    base_cliente["Cliente"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                                    base_cliente["Cliente"]
+                                    .astype(str)
+                                    .str.strip()
+                                    .str.replace(r"\.0$", "", regex=True)
                                 )
 
                             coord = None
-                            if (base_cliente is not None) and (not base_cliente.empty) and ("COORDENADAS" in base_cliente.columns):
+                            if (
+                                (base_cliente is not None)
+                                and (not base_cliente.empty)
+                                and ("COORDENADAS" in base_cliente.columns)
+                            ):
                                 linha_cli = base_cliente[base_cliente["Cliente"] == cod_sel]
                                 if not linha_cli.empty:
                                     coord = linha_cli.iloc[0]["COORDENADAS"]
@@ -1512,10 +1603,10 @@ if menu == "📅 Agendamentos do Dia":
                         )
                         st.cache_data.clear()
 
-
                         st.success("Dados atualizados!")
                         time.sleep(1)
                         st.rerun()
+
 
             # ============================
             # 🗺️ MAPA (AO FINAL)
