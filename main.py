@@ -263,7 +263,7 @@ MAPA_EMAILS = {
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
 
-def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, qtd_aprovadas):
+def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, total, aprovadas, reprovadas):
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -284,7 +284,10 @@ Olá,
 
 O analista {analista} confirmou a validação das agendas do dia {data_str}.
 
-Total de visitas realizadas aprovadas em massa: {qtd_aprovadas}
+📊 RESUMO DA VALIDAÇÃO:
+- Total de visitas do dia (no recorte atual): {total}
+- Aprovadas (OK): {aprovadas}
+- Reprovadas: {reprovadas}
 
 E-mail gerado automaticamente pelo Sistema Maratá GVP.
 """
@@ -301,6 +304,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
     except Exception as e:
         st.error(f"Erro no envio do e-mail de validação: {e}")
         return False
+
 
 
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
@@ -1241,60 +1245,58 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-               # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
-        if pode_validar and not df_dia.empty:
+              # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+if pode_validar and not df_dia.empty:
+    if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
 
-            # ✅ trava para não reenviar e-mail no rerun (por analista + dia)
-            if "validacao_dia_email" not in st.session_state:
-                st.session_state["validacao_dia_email"] = {}
+        # IDs que serão aprovados (somente status Realizado)
+        ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
 
-            chave_envio = f"{user_atual.upper()}_{hoje_str}"
+        if ids:
+            # 1) Aprova no df_agenda (base geral)
+            df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
 
-            if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
+            # 2) Salva na planilha
+            conn.update(
+                spreadsheet=url_planilha,
+                worksheet="AGENDA",
+                data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
+            )
 
-                ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
+            # 3) Calcula números pro e-mail (no recorte atual do df_dia)
+            data_str = hoje_str
+            analista_nome = user_atual.strip().upper()
 
-                if not ids:
-                    st.info("Não há visitas com status REALIZADO para aprovar.")
-                else:
-                    # 1) Aprova em massa
-                    df_agenda.loc[df_agenda["ID"].astype(str).isin(ids), col_aprov_exec] = "OK"
+            total_dia = int(df_dia.shape[0])
 
-                    # 2) Salva na planilha
-                    conn.update(
-                        spreadsheet=url_planilha,
-                        worksheet="AGENDA",
-                        data=df_agenda.drop(columns=["LINHA", "DT_COMPLETA"], errors="ignore"),
-                    )
+            # aprovadas = quantas foram aprovadas em massa agora (ids)
+            aprovadas = int(len(ids))
 
-                    # 3) Envia e-mail (SÓ SE for analista) e só 1x por dia
-                    if is_analista and not st.session_state["validacao_dia_email"].get(chave_envio, False):
+            # reprovadas = quantas já estavam marcadas como REPROVADO no recorte do dia
+            reprovadas = int((df_dia[col_aprov_exec].astype(str).str.upper() == "REPROVADO").sum())
 
-                        # ✅ Quem vai receber (diretoria/gestão)
-                        # Se você tiver lista de diretoria, coloque aqui:
-                        # EMAILS_DIRETORIA = ["aldo@marata.com.br", ...]
-                        destinatarios = EMAILS_GESTAO.copy()
+            # 4) Lista de e-mails da diretoria/gestão (ajuste aqui se quiser outro destino fixo)
+            # Se você tiver um EMAILS_DIRETORIA, use ele. Senão, reaproveita EMAILS_GESTAO.
+            lista_dest = EMAILS_GESTAO.copy()
+            string_dest = ", ".join(lista_dest)
 
-                        # Se quiser mandar pra alguém fixo também:
-                        # destinatarios += ["marciajanaina@marata.com.br"]
+            # 5) Envia o e-mail
+            with st.spinner("Enviando e-mail para diretoria..."):
+                enviar_email_validacao_agendas(
+                    destinatarios_lista=string_dest,
+                    analista=analista_nome,
+                    data_str=data_str,
+                    total=total_dia,
+                    aprovadas=aprovadas,
+                    reprovadas=reprovadas,
+                )
 
-                        destinatarios_str = ", ".join(destinatarios)
+            st.success("✅ Todas as visitas realizadas foram aprovadas e a diretoria foi notificada!")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.info("Não há visitas com STATUS = Realizado para aprovar.")
 
-                        ok_envio = enviar_email_validacao_agendas(
-                            destinatarios_lista=destinatarios_str,
-                            analista=user_atual.upper(),
-                            data_str=hoje_str,
-                            qtd_aprovadas=len(ids),
-                        )
-
-                        if ok_envio:
-                            st.session_state["validacao_dia_email"][chave_envio] = True
-                            st.success("Todas as visitas realizadas foram aprovadas e a diretoria foi notificada ✅")
-                        else:
-                            st.warning("Aprovação feita, mas falhou ao enviar o e-mail de notificação.")
-
-                    else:
-                        st.success("Todas as visitas realizadas foram aprovadas ✅")
 
                     time.sleep(1)
                     st.rerun()
