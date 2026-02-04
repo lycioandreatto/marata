@@ -1788,7 +1788,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
 # ==========================================
 
 
-elif menu == "🚚 Logística":
+#elif menu == "🚚 Logística":
     st.header("🚚 Logística — Simulação Inteligente (SLA / Rota / Risco / Carga)")
 
     # ---------------------------------------------------------
