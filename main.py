@@ -3413,10 +3413,19 @@ elif menu_interna == "📚 Perfil do Cliente":
                     hide_index=True,
                 )
 
-    # ============================
-    # ✅ NOVO (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
-    # - Classifica CLIENTES A/B/C por faturamento no recorte atual (filtros do topo)
-    # - Respeita o mesmo período selecionado (periodo)
+        # ============================
+    # ✅ AJUSTE (2.1/3): ABC DE CLIENTES (FOCO FATURAMENTO / RECEITA)
+    # ✅ NOVA LÓGICA: Classe por MÉDIA MENSAL DE RECEITA (no recorte atual + período)
+    #
+    # Regras:
+    # - Média mensal receita > 300.000  => Classe A
+    # - Média mensal receita >= 100.000 => Classe B
+    # - Média mensal receita > 15.000   => Classe C
+    # - Senão                           => Classe D
+    #
+    # Mantém o mesmo estilo:
+    # - Tabela 1: quantidade de clientes por classe + receita total por classe
+    # - Tabela 2: lista de clientes com classe + receita + pedidos
     # ============================
     st.subheader("📌 Curva ABC de Clientes (por Faturamento)")
 
@@ -3429,80 +3438,114 @@ elif menu_interna == "📚 Perfil do Cliente":
         dt_min_abc = df_cli_abc_base[col_data].max() - pd.DateOffset(months=meses)
         df_cli_abc_base = df_cli_abc_base[df_cli_abc_base[col_data] >= dt_min_abc].copy()
 
-    df_abc_rec = (
-        df_cli_abc_base.groupby(col_cliente)
-        .agg(Receita=(col_rec, "sum"), Pedidos=(col_pedido, "nunique"))
-        .sort_values("Receita", ascending=False)
-        .reset_index()
-        .rename(columns={col_cliente: "Cliente"})
-    )
+    # garante datas válidas
+    df_cli_abc_base = df_cli_abc_base[df_cli_abc_base[col_data].notna()].copy()
 
-    if df_abc_rec.empty:
-        st.info("Sem dados suficientes para calcular ABC de clientes por faturamento.")
+    if df_cli_abc_base.empty:
+        st.info("Sem dados suficientes para calcular ABC de clientes por faturamento (no recorte/período atual).")
     else:
-        rec_total_abc = df_abc_rec["Receita"].sum()
-        if rec_total_abc <= 0:
-            st.info("Faturamento total zerado no período.")
-        else:
-            # ⚙️ cálculos (mantém numérico)
-            df_abc_rec["% Receita"] = (df_abc_rec["Receita"] / rec_total_abc * 100)
-            df_abc_rec["% Acum."] = df_abc_rec["% Receita"].cumsum()
+        # --- Agrega por cliente e mês (para calcular média mensal) ---
+        df_cli_abc_base["_MES"] = df_cli_abc_base[col_data].dt.to_period("M").astype(str)
 
-            def class_abc_rec(p):
-                if p <= 80:
-                    return "A"
-                elif p <= 95:
-                    return "B"
+        df_cli_mes = (
+            df_cli_abc_base.groupby([col_cliente, "_MES"])
+            .agg(
+                Receita_Mes=(col_rec, "sum"),
+                Pedidos_Mes=(col_pedido, "nunique"),
+            )
+            .reset_index()
+        )
+
+        # --- Agora, por cliente: média mensal de receita + total de receita + pedidos ---
+        df_abc_cli = (
+            df_cli_mes.groupby(col_cliente)
+            .agg(
+                Receita=( "Receita_Mes", "sum"),
+                Pedidos=( "Pedidos_Mes", "sum"),
+                Meses=("Receita_Mes", "count"),
+                MediaMensal=("Receita_Mes", "mean"),
+            )
+            .reset_index()
+            .rename(columns={col_cliente: "Cliente"})
+        )
+
+        # normaliza cliente (se tiver .0 etc.)
+        df_abc_cli["Cliente"] = df_abc_cli["Cliente"].apply(limpar_cod)
+
+        # --- Classificação por regra fixa (A/B/C/D) ---
+        def class_por_media_mensal(v):
+            try:
+                v = float(v)
+            except Exception:
+                v = 0.0
+
+            if v > 300000:
+                return "A"
+            elif v >= 100000:
+                return "B"
+            elif v > 15000:
                 return "C"
+            return "D"
 
-            df_abc_rec["Classe"] = df_abc_rec["% Acum."].apply(class_abc_rec)
+        df_abc_cli["Classe"] = df_abc_cli["MediaMensal"].apply(class_por_media_mensal)
 
-            resumo_abc_rec = (
-                df_abc_rec.groupby("Classe")
-                .agg(
-                    Clientes=("Cliente", "count"),
-                    Receita=("Receita", "sum"),
-                    Perc_Rec=("% Receita", "sum"),
-                )
-                .reset_index()
-                .sort_values("Classe")
+        # ordena para exibição (mantém estilo: lista ordenada por Receita total)
+        df_abc_cli = df_abc_cli.sort_values("Receita", ascending=False).reset_index(drop=True)
+
+        # --- Resumo por classe (qtd clientes + receita total) ---
+        resumo_abc_rec = (
+            df_abc_cli.groupby("Classe")
+            .agg(
+                Clientes=("Cliente", "count"),
+                Receita=("Receita", "sum"),
+            )
+            .reset_index()
+        )
+
+        # garante ordem A,B,C,D (mesmo se faltar alguma)
+        ordem = pd.Categorical(resumo_abc_rec["Classe"], categories=["A", "B", "C", "D"], ordered=True)
+        resumo_abc_rec = resumo_abc_rec.assign(_ord=ordem).sort_values("_ord").drop(columns=["_ord"])
+
+        # --- Formatações (somente exibição) ---
+        def fmt_brl(v):
+            try:
+                return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return "R$ 0,00"
+
+        def fmt_brl0(v):
+            try:
+                return f"R$ {float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return "R$ 0"
+
+        # tabela resumo
+        resumo_show = resumo_abc_rec.copy()
+        resumo_show["Receita"] = resumo_show["Receita"].apply(fmt_brl)
+
+        # tabela detalhe
+        detalhe_show = df_abc_cli.copy()
+        detalhe_show["Receita"] = detalhe_show["Receita"].apply(fmt_brl)
+        detalhe_show["Média mensal"] = detalhe_show["MediaMensal"].apply(fmt_brl0)
+        detalhe_show = detalhe_show.rename(columns={"Pedidos": "Pedidos", "Meses": "Meses"})
+
+        cA2, cB2 = st.columns([1, 2])
+        with cA2:
+            st.dataframe(resumo_show, use_container_width=True, hide_index=True)
+
+        with cB2:
+            st.caption(
+                "Critério por **média mensal de receita** (no período/recorte atual): "
+                "A > 300.000 | B ≥ 100.000 | C > 15.000 | D ≤ 15.000"
+            )
+            st.dataframe(
+                detalhe_show[["Cliente", "Classe", "Receita", "Média mensal", "Meses", "Pedidos"]].head(30),
+                use_container_width=True,
+                hide_index=True,
             )
 
-            # ✅ formatação BRL (R$) para exibição (sem alterar os cálculos)
-            def fmt_brl(v):
-                try:
-                    return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                except Exception:
-                    return "R$ 0,00"
-
-            # ✅ formatação % (somente exibição)
-            def fmt_pct(v, casas=1):
-                try:
-                    return f"{float(v):.{casas}f}%".replace(".", ",")
-                except Exception:
-                    return "-"
-
-            resumo_show = resumo_abc_rec.copy()
-            resumo_show["Receita"] = resumo_show["Receita"].apply(fmt_brl)
-            resumo_show["Perc_Rec"] = resumo_show["Perc_Rec"].apply(lambda x: fmt_pct(x, 1))
-
-            detalhe_show = df_abc_rec.copy()
-            detalhe_show["Receita"] = detalhe_show["Receita"].apply(fmt_brl)
-            detalhe_show["% Receita"] = detalhe_show["% Receita"].apply(lambda x: fmt_pct(x, 1))
-            detalhe_show["% Acum."] = detalhe_show["% Acum."].apply(lambda x: fmt_pct(x, 1))
-
-            cA2, cB2 = st.columns([1, 2])
-            with cA2:
-                st.dataframe(resumo_show, use_container_width=True, hide_index=True)
-            with cB2:
-                st.caption("A = até 80% do faturamento acumulado | B = 80–95% | C = 95–100%")
-                st.dataframe(
-                    detalhe_show[["Cliente", "Classe", "Receita", "% Receita", "% Acum.", "Pedidos"]].head(30),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
     st.markdown("---")
+
 
     # ============================
     # ✅ NOVO (3/3): GAPS (SKUs que SUMIRAM)
