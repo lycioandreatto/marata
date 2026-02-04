@@ -1786,7 +1786,9 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
 # ==========================================
 # ✅ NOVA PÁGINA: LOGÍSTICA (SIMULAÇÃO) — + FECHAMENTO DE CARGA + MAPA FUNCIONANDO
 # ==========================================
- elif menu == "🚚 Logística":
+
+
+elif menu == "🚚 Logística":
     st.header("🚚 Logística — Simulação Inteligente (SLA / Rota / Risco / Carga)")
 
     # ---------------------------------------------------------
