@@ -263,7 +263,7 @@ MAPA_EMAILS = {
 # E-mails que sempre recebem
 EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
 
-def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, qtd_aprovadas):
+def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, total, aprovadas, reprovadas):
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -284,7 +284,10 @@ Olá,
 
 O analista {analista} confirmou a validação das agendas do dia {data_str}.
 
-Total de visitas realizadas aprovadas em massa: {qtd_aprovadas}
+📊 RESUMO DA VALIDAÇÃO:
+- Total de visitas do dia (no recorte atual): {total}
+- Aprovadas (OK): {aprovadas}
+- Reprovadas: {reprovadas}
 
 E-mail gerado automaticamente pelo Sistema Maratá GVP.
 """
@@ -301,6 +304,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
     except Exception as e:
         st.error(f"Erro no envio do e-mail de validação: {e}")
         return False
+
 
 
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
