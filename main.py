@@ -2466,8 +2466,15 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
     st.header("📌 DASH RESUMO (FATURADO)")
 
     # =========================
-    # 1) Valida base
+    # 1) CARREGA FATURADO AQUI (corrige NameError)
     # =========================
+    try:
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+    except Exception as e:
+        df_faturado = None
+        st.error(f"Falha ao ler a aba FATURADO: {e}")
+        st.stop()
+
     if df_faturado is None or df_faturado.empty:
         st.warning("A aba FATURADO está vazia ou não foi carregada.")
         st.stop()
@@ -2475,7 +2482,7 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
     df = df_faturado.copy()
 
     # =========================
-    # 2) Padronização mínima (só pra esta página)
+    # 2) Padronização mínima
     # =========================
     def _safe_str(x):
         try:
@@ -2483,47 +2490,41 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
         except Exception:
             return ""
 
-    # Colunas esperadas (ajuste aqui se seu df_faturado já renomeia diferente)
+    # Colunas esperadas (ajuste aqui se seu FATURADO tiver nomes diferentes)
     col_estado = "EscrV"
     col_hierarquia = "Hierarquia de produtos"
     col_qtd = "Qtd Vendas (S/Dec)"
     col_receita = "Receita"
-    col_vendedor = "VENDEDOR"  # se no seu FATURADO estiver como "Vendedor" ou outro, troque aqui
+    col_vendedor = "VENDEDOR"  # se no seu FATURADO estiver "Vendedor", ajuste
 
-    # Se seu df_faturado já está com nomes renomeados, tente fallback:
-    if col_hierarquia not in df.columns:
-        # alguns casos você renomeia para HIERARQUIA
-        if "HIERARQUIA" in df.columns:
-            col_hierarquia = "HIERARQUIA"
+    # fallbacks comuns
+    if col_hierarquia not in df.columns and "HIERARQUIA" in df.columns:
+        col_hierarquia = "HIERARQUIA"
 
-    if col_qtd not in df.columns:
-        if "QTD_VENDAS" in df.columns:
-            col_qtd = "QTD_VENDAS"
+    if col_qtd not in df.columns and "QTD_VENDAS" in df.columns:
+        col_qtd = "QTD_VENDAS"
 
-    if col_receita not in df.columns:
-        if "RECEITA" in df.columns:
-            col_receita = "RECEITA"
+    if col_receita not in df.columns and "RECEITA" in df.columns:
+        col_receita = "RECEITA"
 
     if col_vendedor not in df.columns:
-        # fallback comum
-        if "VENDEDOR_NOME" in df.columns:
-            col_vendedor = "VENDEDOR_NOME"
-        elif "Vendedor" in df.columns:
+        if "Vendedor" in df.columns:
             col_vendedor = "Vendedor"
+        elif "VENDEDOR_NOME" in df.columns:
+            col_vendedor = "VENDEDOR_NOME"
 
-    # =========================
-    # 3) Cria UF (AL1 -> AL)
-    # =========================
-    if col_estado not in df.columns:
-        st.error(f"Coluna '{col_estado}' não encontrada no FATURADO.")
+    # valida colunas mínimas
+    faltando = [c for c in [col_estado, col_qtd, col_receita] if c not in df.columns]
+    if faltando:
+        st.error(f"Faltam colunas no FATURADO: {faltando}")
         st.stop()
 
+    # =========================
+    # 3) UF (AL1 -> AL)
+    # =========================
     df[col_estado] = df[col_estado].apply(_safe_str).str.upper()
-
-    # UF = 2 primeiras letras (AL1 -> AL)
     df["UF"] = df[col_estado].astype(str).str[:2]
 
-    # Só UFs válidas (opcional, mas evita lixo)
     ufs_validas = {
         "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
         "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
@@ -2540,20 +2541,20 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
             s = str(v).strip()
             if s == "" or s.lower() in ["nan", "none"]:
                 return 0.0
-            s = s.replace(".", "").replace(",", ".")  # pt-br -> float
+            s = s.replace(".", "").replace(",", ".")
             return float(s)
         except Exception:
             return 0.0
 
-    if col_qtd not in df.columns or col_receita not in df.columns:
-        st.error("Não encontrei as colunas de quantidade e/ou receita no FATURADO.")
-        st.stop()
-
     df[col_qtd] = df[col_qtd].apply(_to_float)
     df[col_receita] = df[col_receita].apply(_to_float)
 
+    if df.empty:
+        st.info("Sem dados válidos após normalização (UF/valores).")
+        st.stop()
+
     # =========================
-    # 5) Filtros (Hierarquia + Vendedor opcional)
+    # 5) Filtros
     # =========================
     st.markdown("### 🔍 Filtros")
 
@@ -2574,12 +2575,7 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
             sel_v = []
 
     with c3:
-        metrica = st.radio(
-            "Métrica do mapa",
-            ["Receita", "Quantidade"],
-            horizontal=False,
-            index=0
-        )
+        metrica = st.radio("Métrica do mapa", ["Receita", "Quantidade"], index=0)
 
     if sel_h and col_hierarquia in df.columns:
         df = df[df[col_hierarquia].isin(sel_h)].copy()
@@ -2598,39 +2594,35 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
     qtd_total = float(df[col_qtd].sum())
     ticket_medio = (receita_total / qtd_total) if qtd_total > 0 else 0.0
 
+    def _fmt_money(v):
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def _fmt_int(v):
+        return f"{v:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Receita Total", f"R$ {receita_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    k2.metric("Quantidade Total", f"{qtd_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    k3.metric("Ticket Médio (R$/un)", f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    k1.metric("Receita Total", _fmt_money(receita_total))
+    k2.metric("Quantidade Total", _fmt_int(qtd_total))
+    k3.metric("Ticket Médio (R$/un)", _fmt_money(ticket_medio))
     k4.metric("UFs com venda", df["UF"].nunique())
 
     st.markdown("---")
 
     # =========================
-    # 7) Agrega por UF (para o mapa)
+    # 7) Agrega por UF (CERTINHO)
     # =========================
     df_uf = (
         df.groupby("UF", as_index=False)
           .agg(
-              RECEITA=("Receita", "sum") if "Receita" in df.columns else (col_receita, "sum"),
+              RECEITA=(col_receita, "sum"),
               QTD=(col_qtd, "sum")
           )
     )
 
-    # garantia caso "Receita" não exista com esse nome:
-    if "RECEITA" not in df_uf.columns:
-        df_uf = df_uf.rename(columns={"RECEITA": "RECEITA"}, errors="ignore")
-
-    if "RECEITA" not in df_uf.columns and "RECEITA" not in df_uf.columns:
-        # normaliza nomes
-        if "RECEITA" in df_uf.columns:
-            pass
-
-    # cria coluna valor dinâmica
     df_uf["VALOR"] = df_uf["RECEITA"] if metrica == "Receita" else df_uf["QTD"]
 
     # =========================
-    # 8) Mapa (Plotly choropleth por UF)
+    # 8) Mapa (Plotly)
     # =========================
     st.markdown("### 🗺️ Mapa do Brasil por Estado")
 
@@ -2651,33 +2643,27 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
                 "VALOR": False
             },
         )
-        # Ajusta visual p/ focar no Brasil
         fig.update_geos(fitbounds="locations", visible=False)
-        fig.update_layout(margin={"r":0, "t":0, "l":0, "b":0})
-
+        fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
         st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
-        st.warning(f"Não consegui renderizar o mapa (plotly). Erro: {e}")
-        st.info("Se quiser, eu adapto para pydeck ou outra lib que você esteja usando.")
+        st.warning(f"Não consegui renderizar o mapa (Plotly). Erro: {e}")
+        st.info("Se quiser, eu faço a versão do mapa com pydeck (sem plotly).")
 
     # =========================
-    # 9) Rankings + Insights
+    # 9) Rankings
     # =========================
     st.markdown("---")
     c_left, c_right = st.columns([0.55, 0.45])
 
-    # Top UFs
     with c_left:
         st.markdown("### 🏆 Top Estados")
         df_top_uf = df_uf.sort_values("VALOR", ascending=False).head(10).copy()
         df_top_uf["Receita (R$)"] = df_top_uf["RECEITA"]
         df_top_uf["Quantidade"] = df_top_uf["QTD"]
-        df_top_uf = df_top_uf[["UF", "Receita (R$)", "Quantidade"]]
+        st.dataframe(df_top_uf[["UF", "Receita (R$)", "Quantidade"]], use_container_width=True, hide_index=True)
 
-        st.dataframe(df_top_uf, use_container_width=True, hide_index=True)
-
-    # Top Vendedores
     with c_right:
         st.markdown("### 🧑‍💼 Top Vendedores")
         if col_vendedor in df.columns:
@@ -2701,12 +2687,14 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
 
             st.dataframe(df_v[["Vendedor", "Receita (R$)", "Quantidade", "Clientes (n)"]], use_container_width=True, hide_index=True)
         else:
-            st.info("Coluna de vendedor não encontrada nesta base.")
+            st.info("Coluna de vendedor não encontrada no FATURADO.")
 
     # =========================
-    # 10) Texto de insight automático (diretoria gosta)
+    # 10) Insights automáticos
     # =========================
     st.markdown("---")
+    st.markdown("### 💡 Insights automáticos")
+
     try:
         uf_lider = df_uf.sort_values("RECEITA", ascending=False).iloc[0]["UF"]
         receita_lider = float(df_uf.sort_values("RECEITA", ascending=False).iloc[0]["RECEITA"])
@@ -2716,14 +2704,15 @@ elif menu_interna == "📌 DASH RESUMO (FATURADO)":
         qtd_lider = float(df_uf.sort_values("QTD", ascending=False).iloc[0]["QTD"])
         share_lider_qtd = (qtd_lider / qtd_total * 100) if qtd_total > 0 else 0.0
 
-        st.markdown("### 💡 Insights automáticos")
-        st.write(f"• **Maior faturamento:** {uf_lider} — R$ {receita_lider:,.2f} (**{share_lider:.1f}%** do total)".replace(",", "X").replace(".", ",").replace("X", "."))
-        st.write(f"• **Maior volume:** {uf_lider_qtd} — {qtd_lider:,.0f} unidades (**{share_lider_qtd:.1f}%** do total)".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.write(f"• Maior faturamento: **{uf_lider}** — {_fmt_money(receita_lider)} (**{share_lider:.1f}%** do total)")
+        st.write(f"• Maior volume: **{uf_lider_qtd}** — {_fmt_int(qtd_lider)} unidades (**{share_lider_qtd:.1f}%** do total)")
+
         if sel_h:
-            st.write("• **Filtro aplicado:** Hierarquia selecionada impacta diretamente o ranking por UF e vendedor (mapa já reflete isso).")
+            st.write("• Você está filtrando por Hierarquia: o mapa e os rankings já refletem esse recorte.")
 
     except Exception:
         st.write("• Não foi possível gerar insights automáticos (dados insuficientes).")
+
 
 
 
