@@ -2461,257 +2461,154 @@ elif menu == "🚚 Logística":
 
 
 
-# --- PÁGINA: DASH RESUMO (FATURADO) ---
-elif menu_interna == "📌 DASH RESUMO (FATURADO)":
-    st.header("📌 DASH RESUMO (FATURADO)")
+import requests
+import plotly.express as px
 
-    # =========================
-    # 1) CARREGA FATURADO AQUI (corrige NameError)
-    # =========================
+# =========================
+# ✅ DASH RESUMO (FATURADO)
+# =========================
+elif menu == "📊 DASH RESUMO":
+
+    st.header("📊 DASH RESUMO — FATURADO")
+
+    # --- 1) CARREGA FATURADO (resolve o NameError) ---
     try:
         df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
     except Exception as e:
         df_faturado = None
-        st.error(f"Falha ao ler a aba FATURADO: {e}")
-        st.stop()
+        st.error(f"Falha ao ler aba FATURADO: {e}")
 
     if df_faturado is None or df_faturado.empty:
         st.warning("A aba FATURADO está vazia ou não foi carregada.")
         st.stop()
 
-    df = df_faturado.copy()
-
-    # =========================
-    # 2) Padronização mínima
-    # =========================
-    def _safe_str(x):
-        try:
-            return str(x).strip()
-        except Exception:
-            return ""
-
-    # Colunas esperadas (ajuste aqui se seu FATURADO tiver nomes diferentes)
+    # --- 2) PADRONIZA COLUNAS IMPORTANTES ---
+    # (garante que os nomes existem como você descreveu)
     col_estado = "EscrV"
-    col_hierarquia = "Hierarquia de produtos"
     col_qtd = "Qtd Vendas (S/Dec)"
     col_receita = "Receita"
-    col_vendedor = "VENDEDOR"  # se no seu FATURADO estiver "Vendedor", ajuste
+    col_hier = "Hierarquia de produtos"
+    col_vend = "Cliente"  # se quiser usar depois; ajuste se necessário
+    col_analista = "ANALISTA"  # se existir no faturado; se não, ignore
 
-    # fallbacks comuns
-    if col_hierarquia not in df.columns and "HIERARQUIA" in df.columns:
-        col_hierarquia = "HIERARQUIA"
+    for c in [col_estado, col_qtd, col_receita]:
+        if c not in df_faturado.columns:
+            st.error(f"Coluna obrigatória não encontrada no FATURADO: '{c}'")
+            st.stop()
 
-    if col_qtd not in df.columns and "QTD_VENDAS" in df.columns:
-        col_qtd = "QTD_VENDAS"
-
-    if col_receita not in df.columns and "RECEITA" in df.columns:
-        col_receita = "RECEITA"
-
-    if col_vendedor not in df.columns:
-        if "Vendedor" in df.columns:
-            col_vendedor = "Vendedor"
-        elif "VENDEDOR_NOME" in df.columns:
-            col_vendedor = "VENDEDOR_NOME"
-
-    # valida colunas mínimas
-    faltando = [c for c in [col_estado, col_qtd, col_receita] if c not in df.columns]
-    if faltando:
-        st.error(f"Faltam colunas no FATURADO: {faltando}")
-        st.stop()
-
-    # =========================
-    # 3) UF (AL1 -> AL)
-    # =========================
-    df[col_estado] = df[col_estado].apply(_safe_str).str.upper()
-    df["UF"] = df[col_estado].astype(str).str[:2]
-
-    ufs_validas = {
-        "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
-        "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
-    }
-    df = df[df["UF"].isin(ufs_validas)].copy()
-
-    # =========================
-    # 4) Converte números
-    # =========================
-    def _to_float(v):
-        try:
-            if v is None:
-                return 0.0
-            s = str(v).strip()
-            if s == "" or s.lower() in ["nan", "none"]:
-                return 0.0
-            s = s.replace(".", "").replace(",", ".")
-            return float(s)
-        except Exception:
-            return 0.0
-
-    df[col_qtd] = df[col_qtd].apply(_to_float)
-    df[col_receita] = df[col_receita].apply(_to_float)
-
-    if df.empty:
-        st.info("Sem dados válidos após normalização (UF/valores).")
-        st.stop()
-
-    # =========================
-    # 5) Filtros
-    # =========================
-    st.markdown("### 🔍 Filtros")
-
-    c1, c2, c3 = st.columns([0.45, 0.35, 0.20])
-
-    with c1:
-        if col_hierarquia in df.columns:
-            lista_h = sorted([x for x in df[col_hierarquia].dropna().unique().tolist() if str(x).strip() != ""])
-            sel_h = st.multiselect("Hierarquia (opcional)", lista_h)
-        else:
-            sel_h = []
-
-    with c2:
-        if col_vendedor in df.columns:
-            lista_v = sorted([x for x in df[col_vendedor].dropna().unique().tolist() if str(x).strip() != ""])
-            sel_v = st.multiselect("Vendedor (opcional)", lista_v)
-        else:
-            sel_v = []
-
-    with c3:
-        metrica = st.radio("Métrica do mapa", ["Receita", "Quantidade"], index=0)
-
-    if sel_h and col_hierarquia in df.columns:
-        df = df[df[col_hierarquia].isin(sel_h)].copy()
-
-    if sel_v and col_vendedor in df.columns:
-        df = df[df[col_vendedor].isin(sel_v)].copy()
-
-    if df.empty:
-        st.info("Sem dados para os filtros selecionados.")
-        st.stop()
-
-    # =========================
-    # 6) KPIs
-    # =========================
-    receita_total = float(df[col_receita].sum())
-    qtd_total = float(df[col_qtd].sum())
-    ticket_medio = (receita_total / qtd_total) if qtd_total > 0 else 0.0
-
-    def _fmt_money(v):
-        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-    def _fmt_int(v):
-        return f"{v:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Receita Total", _fmt_money(receita_total))
-    k2.metric("Quantidade Total", _fmt_int(qtd_total))
-    k3.metric("Ticket Médio (R$/un)", _fmt_money(ticket_medio))
-    k4.metric("UFs com venda", df["UF"].nunique())
-
-    st.markdown("---")
-
-    # =========================
-    # 7) Agrega por UF (CERTINHO)
-    # =========================
-    df_uf = (
-        df.groupby("UF", as_index=False)
-          .agg(
-              RECEITA=(col_receita, "sum"),
-              QTD=(col_qtd, "sum")
-          )
+    # --- 3) LIMPA UF A PARTIR DO EscrV (AL1 -> AL, BA1 -> BA) ---
+    # pega as 2 primeiras letras (sigla UF)
+    df_faturado = df_faturado.copy()
+    df_faturado["UF"] = (
+        df_faturado[col_estado]
+        .astype(str)
+        .str.upper()
+        .str.extract(r"([A-Z]{2})", expand=False)
     )
 
-    df_uf["VALOR"] = df_uf["RECEITA"] if metrica == "Receita" else df_uf["QTD"]
+    # Converte métricas numéricas
+    df_faturado[col_qtd] = pd.to_numeric(df_faturado[col_qtd], errors="coerce").fillna(0)
+    df_faturado[col_receita] = pd.to_numeric(df_faturado[col_receita], errors="coerce").fillna(0)
+
+    # --- 4) FILTRO POR HIERARQUIA (opcional) ---
+    if col_hier in df_faturado.columns:
+        st.markdown("### 🔎 Filtros")
+        hier_opts = sorted([x for x in df_faturado[col_hier].dropna().astype(str).unique()])
+        hier_sel = st.multiselect("Hierarquia de produtos", hier_opts)
+        if hier_sel:
+            df_faturado = df_faturado[df_faturado[col_hier].astype(str).isin(hier_sel)].copy()
+
+    # --- 5) AGREGA POR UF ---
+    df_uf = (
+        df_faturado.dropna(subset=["UF"])
+        .groupby("UF", as_index=False)
+        .agg(
+            RECEITA_TOTAL=(col_receita, "sum"),
+            QTD_TOTAL=(col_qtd, "sum"),
+        )
+    )
 
     # =========================
-    # 8) Mapa (Plotly)
+    # ✅ 6) GEOJSON (UFs do Brasil)
+    # Fonte: serviço ArcGIS (Limites Estaduais IBGE 2021) com campo `sigla`
     # =========================
-    st.markdown("### 🗺️ Mapa do Brasil por Estado")
+    @st.cache_data(ttl=24 * 60 * 60)
+    def carregar_geojson_ufs():
+        url = "https://pamgia.ibama.gov.br/server/rest/services/SIGAGEO/bases/MapServer/31/query"
+        params = {
+            "where": "1=1",
+            "outFields": "sigla,nm_uf,nm_regiao",
+            "returnGeometry": "true",
+            "f": "geojson",
+        }
+        r = requests.get(url, params=params, timeout=30)
+        r.raise_for_status()
+        return r.json()
 
     try:
-        import plotly.express as px
+        geojson_ufs = carregar_geojson_ufs()
+    except Exception as e:
+        st.warning(f"Não consegui carregar o GeoJSON dos estados. Erro: {e}")
+        st.stop()
 
+    # --- 7) SELETOR Receita x Quantidade (rádio) ---
+    st.markdown("### 🗺️ Mapa por Estado")
+    metrica = st.radio(
+        "Visualizar por:",
+        ["Receita", "Quantidade"],
+        horizontal=True,
+        index=0,
+        key="radio_metrica_mapa",
+    )
+
+    if metrica == "Receita":
+        valor_col = "RECEITA_TOTAL"
+        titulo = "Receita Total por UF"
+    else:
+        valor_col = "QTD_TOTAL"
+        titulo = "Quantidade Total por UF"
+
+    # --- 8) CHOROPLETH (sem locationmode; usa geojson + featureidkey) ---
+    try:
         fig = px.choropleth(
             df_uf,
+            geojson=geojson_ufs,
             locations="UF",
-            locationmode="BR-states",
-            color="VALOR",
-            scope="south america",
+            featureidkey="properties.sigla",  # casa UF com `sigla` do geojson
+            color=valor_col,
             hover_name="UF",
             hover_data={
-                "UF": True,
-                "RECEITA": ":,.2f",
-                "QTD": ":,.0f",
-                "VALOR": False
+                "RECEITA_TOTAL": ":,.0f",
+                "QTD_TOTAL": ":,.0f",
             },
+            title=titulo,
         )
+
         fig.update_geos(fitbounds="locations", visible=False)
-        fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+        fig.update_layout(margin={"r": 0, "t": 40, "l": 0, "b": 0})
+
         st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
         st.warning(f"Não consegui renderizar o mapa (Plotly). Erro: {e}")
-        st.info("Se quiser, eu faço a versão do mapa com pydeck (sem plotly).")
 
-    # =========================
-    # 9) Rankings
-    # =========================
-    st.markdown("---")
-    c_left, c_right = st.columns([0.55, 0.45])
+    # --- 9) INSIGHTS BÁSICOS (exemplos rápidos) ---
+    st.markdown("### 💡 Insights rápidos")
+    c1, c2, c3 = st.columns(3)
 
-    with c_left:
-        st.markdown("### 🏆 Top Estados")
-        df_top_uf = df_uf.sort_values("VALOR", ascending=False).head(10).copy()
-        df_top_uf["Receita (R$)"] = df_top_uf["RECEITA"]
-        df_top_uf["Quantidade"] = df_top_uf["QTD"]
-        st.dataframe(df_top_uf[["UF", "Receita (R$)", "Quantidade"]], use_container_width=True, hide_index=True)
+    total_receita = float(df_faturado[col_receita].sum())
+    total_qtd = float(df_faturado[col_qtd].sum())
+    ticket_medio = (total_receita / total_qtd) if total_qtd > 0 else 0
 
-    with c_right:
-        st.markdown("### 🧑‍💼 Top Vendedores")
-        if col_vendedor in df.columns:
-            df_v = (
-                df.groupby(col_vendedor, as_index=False)
-                  .agg(
-                      RECEITA=(col_receita, "sum"),
-                      QTD=(col_qtd, "sum"),
-                      CLIENTES=("Cliente", "nunique") if "Cliente" in df.columns else (col_vendedor, "size")
-                  )
-            )
-            df_v["VALOR"] = df_v["RECEITA"] if metrica == "Receita" else df_v["QTD"]
-            df_v = df_v.sort_values("VALOR", ascending=False).head(10)
+    c1.metric("Receita Total", f"{total_receita:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c2.metric("Qtd Total", f"{total_qtd:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c3.metric("Ticket Médio (Receita/Qtd)", f"{ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
-            df_v = df_v.rename(columns={
-                col_vendedor: "Vendedor",
-                "RECEITA": "Receita (R$)",
-                "QTD": "Quantidade",
-                "CLIENTES": "Clientes (n)"
-            })
+    # Top UFs
+    st.markdown("**Top 5 UFs por Receita**")
+    top_ufs = df_uf.sort_values("RECEITA_TOTAL", ascending=False).head(5).copy()
+    st.dataframe(top_ufs, use_container_width=True, hide_index=True)
 
-            st.dataframe(df_v[["Vendedor", "Receita (R$)", "Quantidade", "Clientes (n)"]], use_container_width=True, hide_index=True)
-        else:
-            st.info("Coluna de vendedor não encontrada no FATURADO.")
-
-    # =========================
-    # 10) Insights automáticos
-    # =========================
-    st.markdown("---")
-    st.markdown("### 💡 Insights automáticos")
-
-    try:
-        uf_lider = df_uf.sort_values("RECEITA", ascending=False).iloc[0]["UF"]
-        receita_lider = float(df_uf.sort_values("RECEITA", ascending=False).iloc[0]["RECEITA"])
-        share_lider = (receita_lider / receita_total * 100) if receita_total > 0 else 0.0
-
-        uf_lider_qtd = df_uf.sort_values("QTD", ascending=False).iloc[0]["UF"]
-        qtd_lider = float(df_uf.sort_values("QTD", ascending=False).iloc[0]["QTD"])
-        share_lider_qtd = (qtd_lider / qtd_total * 100) if qtd_total > 0 else 0.0
-
-        st.write(f"• Maior faturamento: **{uf_lider}** — {_fmt_money(receita_lider)} (**{share_lider:.1f}%** do total)")
-        st.write(f"• Maior volume: **{uf_lider_qtd}** — {_fmt_int(qtd_lider)} unidades (**{share_lider_qtd:.1f}%** do total)")
-
-        if sel_h:
-            st.write("• Você está filtrando por Hierarquia: o mapa e os rankings já refletem esse recorte.")
-
-    except Exception:
-        st.write("• Não foi possível gerar insights automáticos (dados insuficientes).")
 
 
 
