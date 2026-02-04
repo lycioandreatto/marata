@@ -2509,7 +2509,7 @@ elif menu_interna == "📚 Perfil do Cliente":
     #   (2) Clientes 30/60/90 dias sem compra (com base na última compra no FATURADO)
     # - Permite: ver lista, exportar PDF e registrar justificativa
     # =========================================================
-   st.subheader("🔔 Alertas de carteira (Sem faturamento / Sem compra)")
+st.subheader("🔔 Alertas de carteira (Sem faturamento / Sem compra)")
 
 def _fmt_int_pt(v):
     try:
