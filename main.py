@@ -261,7 +261,7 @@ MAPA_EMAILS = {
 }
 
 # E-mails que sempre recebem
-EMAILS_GESTAO = ["lycio.oliveira@marata.com.br"]
+EMAILS_GESTAO = ["aldo@marata.com.br"]
 
 def enviar_email_validacao_agendas(destinatarios_lista, analista, data_str, total, aprovadas, reprovadas):
     import smtplib
