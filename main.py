@@ -1011,7 +1011,8 @@ with st.sidebar:
     
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     opcoes_menu.append("📚 Perfil do Cliente")
-    if is admin:
+
+    if is_admin: 
         opcoes_menu.append("🧪 TESTES")
 
     
