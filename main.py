@@ -5039,11 +5039,7 @@ elif menu == "🗺️ MAPA FATURADO":
     col_hier   = _find_col(["Hierarquia de produtos", "HIERARQUIA DE PRODUTOS", "HIERARQUIA", "HIERARQUIA DE PRODUTO"])
     col_qtd    = _find_col(["Qtd Vendas (S/Dec)", "QTD VENDAS (S/DEC)", "Qtd Vendas", "QTD VENDAS", "QUANTIDADE"])
     col_rec    = _find_col(["Receita", "RECEITA", "FATURAMENTO", "VALOR"])
-
-    # vendedor no seu FATURADO:
     col_vend   = _find_col(["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS", "VENDEDOR"])
-
-    # analista
     col_ana    = _find_col(["ANALISTA", "Analista"])
 
     faltando = []
@@ -5080,7 +5076,6 @@ elif menu == "🗺️ MAPA FATURADO":
             s = str(v).strip()
             if s.lower() in ["nan", "none", ""]:
                 return 0.0
-            # aceita "1.234,56" e "1234.56"
             s = s.replace(".", "").replace(",", ".")
             return float(s)
         except Exception:
@@ -5090,10 +5085,37 @@ elif menu == "🗺️ MAPA FATURADO":
     df_faturado["_REC_"] = df_faturado[col_rec].apply(_to_num)
 
     # ============================
-    # 5) Slicers (Analista / Vendedor / UF / Hierarquia)
+    # 5) Formatação BR (R$ / inteiros / %)
+    # ============================
+    def _fmt_brl(v):
+        try:
+            v = float(v)
+        except Exception:
+            v = 0.0
+        s = f"{v:,.2f}"
+        s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"R$ {s}"
+
+    def _fmt_int(v):
+        try:
+            v = float(v)
+        except Exception:
+            v = 0.0
+        s = f"{v:,.0f}"
+        return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def _fmt_pct(v):
+        try:
+            v = float(v)
+        except Exception:
+            v = 0.0
+        s = f"{v*100:,.1f}%"
+        return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+    # ============================
+    # 6) Slicers (Analista / Vendedor / UF / Hierarquia)
     # ============================
     st.markdown("### 🔎 Filtros")
-
     f1, f2, f3, f4 = st.columns(4)
 
     # Analista
@@ -5120,7 +5142,7 @@ elif menu == "🗺️ MAPA FATURADO":
         with f2:
             st.caption("Região de vendas (não encontrada no FATURADO)")
 
-    # UF / EscrV
+    # UF
     with f3:
         lista_uf = sorted(df_faturado["UF"].dropna().unique().tolist())
         uf_sel = st.multiselect("EscrV (UF)", ["(Todos)"] + lista_uf, default=["(Todos)"])
@@ -5133,8 +5155,6 @@ elif menu == "🗺️ MAPA FATURADO":
         lista_hier = sorted([h for h in df_faturado[col_hier].unique().tolist() if h])
         with f4:
             hier_sel = st.selectbox("Hierarquia de produtos", ["(Todas)"] + lista_hier)
-        if hier_sel != "(Todas)":
-            df_faturado = df_faturado[df_faturado[col_hier] == hier_sel].copy()
     else:
         with f4:
             st.caption("Hierarquia (não encontrada no FATURADO)")
@@ -5145,7 +5165,7 @@ elif menu == "🗺️ MAPA FATURADO":
         st.stop()
 
     # ============================
-    # 6) Indicador do mapa
+    # 7) Indicador do mapa (Receita x Quantidade)
     # ============================
     modo = st.radio(
         "Visualizar no mapa por:",
@@ -5161,20 +5181,54 @@ elif menu == "🗺️ MAPA FATURADO":
         titulo_col = "Quantidade Vendida"
 
     # ============================
-    # 7) Agrega por UF
+    # 8) Base TOTAL por UF (sempre é o total do filtro, sem hierarquia travada)
+    # (serve para calcular o % da hierarquia dentro do estado)
     # ============================
-    df_uf = (
+    df_total_uf = (
         df_faturado.groupby("UF", as_index=False)
+        .agg(
+            Receita_Total=("_REC_", "sum"),
+            Quantidade_Total=("_QTD_", "sum")
+        )
+    )
+
+    # ============================
+    # 9) Se escolheu hierarquia, cria df_hier (para pintar no mapa e calcular share%)
+    # ============================
+    if (col_hier and col_hier in df_faturado.columns) and (hier_sel != "(Todas)"):
+        df_hier = df_faturado[df_faturado[col_hier] == hier_sel].copy()
+    else:
+        df_hier = df_faturado.copy()
+
+    df_uf = (
+        df_hier.groupby("UF", as_index=False)
         .agg(
             Receita=("_REC_", "sum"),
             Quantidade=("_QTD_", "sum")
         )
     )
 
+    # Junta totals para % (share dentro do estado)
+    df_uf = df_uf.merge(df_total_uf, on="UF", how="left")
+
+    # Share por estado (da hierarquia dentro do estado)
+    df_uf["Share_Receita_no_Estado"] = df_uf.apply(
+        lambda r: (r["Receita"] / r["Receita_Total"]) if float(r.get("Receita_Total", 0) or 0) > 0 else 0.0,
+        axis=1
+    )
+    df_uf["Share_Qtd_no_Estado"] = df_uf.apply(
+        lambda r: (r["Quantidade"] / r["Quantidade_Total"]) if float(r.get("Quantidade_Total", 0) or 0) > 0 else 0.0,
+        axis=1
+    )
+
+    if df_uf.empty:
+        st.info("Sem dados agregados por UF para montar o mapa.")
+        st.stop()
+
     # ============================
-    # 8) GeoJSON dos estados (cacheado)
+    # 10) GeoJSON dos estados (cacheado)
     # ============================
-    @st.cache_data(ttl=60 * 60 * 24)  # 24h
+    @st.cache_data(ttl=60 * 60 * 24)
     def _load_brazil_states_geojson():
         url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson"
         r = requests.get(url, timeout=30)
@@ -5188,7 +5242,7 @@ elif menu == "🗺️ MAPA FATURADO":
         st.stop()
 
     # ============================
-    # 9) Descobre qual propriedade do GeoJSON tem a UF
+    # 11) Descobre qual propriedade do GeoJSON tem a UF
     # ============================
     sample_props = {}
     try:
@@ -5217,69 +5271,132 @@ elif menu == "🗺️ MAPA FATURADO":
     feature_key = f"properties.{chosen_key}"
 
     # ============================
-    # 10) Mapa (choropleth)
+    # 12) Mapa
     # ============================
+    hover_dict = {
+        "UF": True,
+        "Receita": ":,.2f",
+        "Quantidade": ":,.0f",
+        "Share_Receita_no_Estado": ":.1%",
+        "Share_Qtd_no_Estado": ":.1%",
+    }
+
+    titulo_mapa = f"{titulo_col} por Estado (UF)"
+    if hier_sel != "(Todas)":
+        titulo_mapa += f" — Hierarquia: {hier_sel}"
+
     fig = px.choropleth(
         df_uf,
         geojson=geojson,
         locations="UF",
         featureidkey=feature_key,
         color=color_col,
-        hover_data={
-            "UF": True,
-            "Receita": ":,.2f",
-            "Quantidade": ":,.0f",
-        },
+        hover_data=hover_dict,
         scope="south america",
-        title=f"{titulo_col} por Estado (UF)"
+        title=titulo_mapa
     )
 
     fig.update_geos(fitbounds="locations", visible=False)
-    fig.update_layout(margin={"r": 0, "t": 50, "l": 0, "b": 0}, height=620)
-
+    fig.update_layout(margin={"r": 0, "t": 55, "l": 0, "b": 0}, height=620)
     st.plotly_chart(fig, use_container_width=True)
 
     # ============================
-    # 11) Cards de resumo
+    # 13) Cards (agora em R$)
+    # - Se hierarquia selecionada: mostra total da hierarquia + share no filtro geral
     # ============================
-    def _fmt_money(v):
-        return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-    def _fmt_int(v):
-        return f"{float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
     total_rec = float(df_faturado["_REC_"].sum())
     total_qtd = float(df_faturado["_QTD_"].sum())
     ticket = (total_rec / total_qtd) if total_qtd > 0 else 0.0
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Receita Total (filtro atual)", _fmt_money(total_rec))
-    c2.metric("Qtd Total (filtro atual)", _fmt_int(total_qtd))
-    c3.metric("Ticket Médio (Receita/Qtd)", _fmt_money(ticket))
+    total_rec_h = float(df_hier["_REC_"].sum())
+    total_qtd_h = float(df_hier["_QTD_"].sum())
+    share_rec_filtro = (total_rec_h / total_rec) if total_rec > 0 else 0.0
+    share_qtd_filtro = (total_qtd_h / total_qtd) if total_qtd > 0 else 0.0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Receita Total (filtro)", _fmt_brl(total_rec))
+    c2.metric("Qtd Total (filtro)", _fmt_int(total_qtd))
+    c3.metric("Ticket Médio", _fmt_brl(ticket))
+    if hier_sel != "(Todas)":
+        c4.metric("Share da Hierarquia (Receita)", _fmt_pct(share_rec_filtro))
+    else:
+        c4.metric("Share da Hierarquia (Qtd)", _fmt_pct(share_qtd_filtro))
 
     # ============================
-    # 12) Rankings e insights
+    # 14) Pontos Fortes x Pontos Fracos por UF (para a hierarquia/visão atual)
+    # ============================
+    st.markdown("### ✅ Pontos Fortes x ❌ Pontos Fracos (por Estado)")
+
+    a, b = st.columns(2)
+
+    with a:
+        st.markdown("#### ✅ Top 5 Estados (mais fortes)")
+        top5 = df_uf.sort_values(by=color_col, ascending=False).head(5).copy()
+        show_top5 = top5[["UF", "Receita", "Quantidade", "Share_Receita_no_Estado", "Share_Qtd_no_Estado"]].copy()
+        show_top5["Receita"] = show_top5["Receita"].apply(_fmt_brl)
+        show_top5["Quantidade"] = show_top5["Quantidade"].apply(_fmt_int)
+        show_top5["% Receita da Hierarquia no Estado"] = show_top5["Share_Receita_no_Estado"].apply(_fmt_pct)
+        show_top5["% Qtd da Hierarquia no Estado"] = show_top5["Share_Qtd_no_Estado"].apply(_fmt_pct)
+        show_top5 = show_top5.drop(columns=["Share_Receita_no_Estado", "Share_Qtd_no_Estado"])
+        st.dataframe(show_top5, use_container_width=True, hide_index=True)
+
+    with b:
+        st.markdown("#### ❌ Bottom 5 Estados (mais fracos)")
+        # pega só estados que têm algum valor > 0 para evitar lista inútil
+        df_uf_pos = df_uf.copy()
+        df_uf_pos = df_uf_pos[df_uf_pos[["Receita", "Quantidade"]].sum(axis=1) > 0].copy()
+
+        if df_uf_pos.empty:
+            st.info("Não há estados com valor > 0 para mostrar pontos fracos.")
+        else:
+            bot5 = df_uf_pos.sort_values(by=color_col, ascending=True).head(5).copy()
+            show_bot5 = bot5[["UF", "Receita", "Quantidade", "Share_Receita_no_Estado", "Share_Qtd_no_Estado"]].copy()
+            show_bot5["Receita"] = show_bot5["Receita"].apply(_fmt_brl)
+            show_bot5["Quantidade"] = show_bot5["Quantidade"].apply(_fmt_int)
+            show_bot5["% Receita da Hierarquia no Estado"] = show_bot5["Share_Receita_no_Estado"].apply(_fmt_pct)
+            show_bot5["% Qtd da Hierarquia no Estado"] = show_bot5["Share_Qtd_no_Estado"].apply(_fmt_pct)
+            show_bot5 = show_bot5.drop(columns=["Share_Receita_no_Estado", "Share_Qtd_no_Estado"])
+            st.dataframe(show_bot5, use_container_width=True, hide_index=True)
+
+    # ============================
+    # 15) Tabela completa por UF + % no Estado (quando hierarquia selecionada)
+    # ============================
+    if hier_sel != "(Todas)":
+        st.markdown("### 📊 Participação da Hierarquia dentro de cada Estado (share %)")
+        tabela = df_uf[["UF", "Receita", "Quantidade", "Share_Receita_no_Estado", "Share_Qtd_no_Estado"]].copy()
+        tabela = tabela.sort_values(by="Receita", ascending=False)
+
+        tabela["Receita"] = tabela["Receita"].apply(_fmt_brl)
+        tabela["Quantidade"] = tabela["Quantidade"].apply(_fmt_int)
+        tabela["% Receita da Hierarquia no Estado"] = tabela["Share_Receita_no_Estado"].apply(_fmt_pct)
+        tabela["% Qtd da Hierarquia no Estado"] = tabela["Share_Qtd_no_Estado"].apply(_fmt_pct)
+        tabela = tabela.drop(columns=["Share_Receita_no_Estado", "Share_Qtd_no_Estado"])
+
+        st.dataframe(tabela, use_container_width=True, hide_index=True)
+
+    # ============================
+    # 16) Ranking de vendedor / analista (mantém)
     # ============================
     st.markdown("### 📌 Rankings (com os filtros aplicados)")
 
     r1, r2 = st.columns(2)
 
-    # Top 5 Estados (por indicador escolhido)
     with r1:
-        st.markdown("#### Top 5 Estados")
+        st.markdown("#### Top 5 Estados (pelo indicador escolhido)")
         top_est = df_uf.sort_values(by=color_col, ascending=False).head(5).copy()
-        top_est["Receita"] = top_est["Receita"].apply(_fmt_money)
-        top_est["Quantidade"] = top_est["Quantidade"].apply(_fmt_int)
-        st.dataframe(top_est, use_container_width=True, hide_index=True)
+        top_est_show = top_est[["UF", "Receita", "Quantidade"]].copy()
+        top_est_show["Receita"] = top_est_show["Receita"].apply(_fmt_brl)
+        top_est_show["Quantidade"] = top_est_show["Quantidade"].apply(_fmt_int)
+        st.dataframe(top_est_show, use_container_width=True, hide_index=True)
 
-    # Top Vendedor (Região de vendas)
     with r2:
         if col_vend and col_vend in df_faturado.columns:
             st.markdown("#### Top Vendedor (Região de vendas)")
             df_vend = (
-                df_faturado.groupby(col_vend, as_index=False)
+                df_hier.groupby(col_vend, as_index=False)
                 .agg(Receita=("_REC_", "sum"), Quantidade=("_QTD_", "sum"))
             )
+
             top_v_r = df_vend.sort_values("Receita", ascending=False).head(1)
             top_v_q = df_vend.sort_values("Quantidade", ascending=False).head(1)
 
@@ -5288,22 +5405,21 @@ elif menu == "🗺️ MAPA FATURADO":
             vqtd_nome = str(top_v_q.iloc[0][col_vend]) if not top_v_q.empty else "-"
             vqtd_val  = float(top_v_q.iloc[0]["Quantidade"]) if not top_v_q.empty else 0.0
 
-            st.write(f"**Maior em Receita:** {vrec_nome} — {_fmt_money(vrec_val)}")
+            st.write(f"**Maior em Receita:** {vrec_nome} — {_fmt_brl(vrec_val)}")
             st.write(f"**Maior em Quantidade:** {vqtd_nome} — {_fmt_int(vqtd_val)}")
 
-            st.markdown("##### Top 10 Vendedores")
+            st.markdown("##### Top 10 Vendedores (por Receita)")
             df_vend_show = df_vend.sort_values("Receita", ascending=False).head(10).copy()
-            df_vend_show["Receita"] = df_vend_show["Receita"].apply(_fmt_money)
+            df_vend_show["Receita"] = df_vend_show["Receita"].apply(_fmt_brl)
             df_vend_show["Quantidade"] = df_vend_show["Quantidade"].apply(_fmt_int)
             st.dataframe(df_vend_show, use_container_width=True, hide_index=True)
         else:
             st.info("Coluna 'Região de vendas' não encontrada no FATURADO para ranking de vendedor.")
 
-    # Top Analista
     if col_ana and col_ana in df_faturado.columns:
         st.markdown("### 🧠 Analistas (performance no filtro)")
         df_ana = (
-            df_faturado.groupby(col_ana, as_index=False)
+            df_hier.groupby(col_ana, as_index=False)
             .agg(Receita=("_REC_", "sum"), Quantidade=("_QTD_", "sum"))
         )
 
@@ -5312,44 +5428,17 @@ elif menu == "🗺️ MAPA FATURADO":
         top_a_q = df_ana.sort_values("Quantidade", ascending=False).head(1)
 
         a1.metric("Top Analista (Receita)", str(top_a_r.iloc[0][col_ana]) if not top_a_r.empty else "-")
-        a2.metric("Receita do Top", _fmt_money(float(top_a_r.iloc[0]["Receita"])) if not top_a_r.empty else _fmt_money(0))
-        a3.metric("Top Analista (Qtd)", f"{str(top_a_q.iloc[0][col_ana]) if not top_a_q.empty else '-'} | {_fmt_int(float(top_a_q.iloc[0]['Quantidade'])) if not top_a_q.empty else _fmt_int(0)}")
+        a2.metric("Receita do Top", _fmt_brl(float(top_a_r.iloc[0]["Receita"])) if not top_a_r.empty else _fmt_brl(0))
+        a3.metric(
+            "Top Analista (Qtd)",
+            f"{str(top_a_q.iloc[0][col_ana]) if not top_a_q.empty else '-'} | {_fmt_int(float(top_a_q.iloc[0]['Quantidade'])) if not top_a_q.empty else _fmt_int(0)}"
+        )
 
         st.markdown("#### Top 10 Analistas (por Receita)")
         df_ana_show = df_ana.sort_values("Receita", ascending=False).head(10).copy()
-        df_ana_show["Receita"] = df_ana_show["Receita"].apply(_fmt_money)
+        df_ana_show["Receita"] = df_ana_show["Receita"].apply(_fmt_brl)
         df_ana_show["Quantidade"] = df_ana_show["Quantidade"].apply(_fmt_int)
         st.dataframe(df_ana_show, use_container_width=True, hide_index=True)
-
-    # ============================
-    # 13) Estados mais fortes por Hierarquia (se selecionou uma)
-    # ============================
-    if col_hier and col_hier in df_faturado.columns and hier_sel != "(Todas)":
-        st.markdown("### 🧩 Onde essa Hierarquia é mais forte (Estados)")
-        df_h_uf = (
-            df_faturado.groupby("UF", as_index=False)
-            .agg(Receita=("_REC_", "sum"), Quantidade=("_QTD_", "sum"))
-            .sort_values("Receita", ascending=False)
-            .head(10)
-            .copy()
-        )
-        df_h_uf["Receita"] = df_h_uf["Receita"].apply(_fmt_money)
-        df_h_uf["Quantidade"] = df_h_uf["Quantidade"].apply(_fmt_int)
-        st.dataframe(df_h_uf, use_container_width=True, hide_index=True)
-    else:
-        # opcional leve: mostra quais hierarquias puxam mais no geral do filtro
-        if col_hier and col_hier in df_faturado.columns:
-            with st.expander("📦 Top Hierarquias (no filtro atual)"):
-                df_h = (
-                    df_faturado.groupby(col_hier, as_index=False)
-                    .agg(Receita=("_REC_", "sum"), Quantidade=("_QTD_", "sum"))
-                    .sort_values("Receita", ascending=False)
-                    .head(15)
-                    .copy()
-                )
-                df_h["Receita"] = df_h["Receita"].apply(_fmt_money)
-                df_h["Quantidade"] = df_h["Quantidade"].apply(_fmt_int)
-                st.dataframe(df_h, use_container_width=True, hide_index=True)
 
 
                     
