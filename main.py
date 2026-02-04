@@ -5104,7 +5104,7 @@ elif menu == "🗺️ MAPA FATURADO":
         st.info("Sem dados após aplicar o filtro.")
         st.stop()
 
-    # ============================
+       # ============================
     # 6) Escolha do indicador (Receita x Quantidade)
     # ============================
     modo = st.radio(
@@ -5113,8 +5113,13 @@ elif menu == "🗺️ MAPA FATURADO":
         horizontal=True
     )
 
-    valor_col = "_REC_" if modo == "Receita" else "_QTD_"
-    label_val = "Receita" if modo == "Receita" else "Qtd Vendida"
+    # Coluna que vai pintar no mapa (TEM QUE EXISTIR no df_uf)
+    if modo == "Receita":
+        color_col = "Receita"
+        titulo_col = "Receita"
+    else:
+        color_col = "Quantidade"
+        titulo_col = "Quantidade Vendida"
 
     # ============================
     # 7) Agrega por UF
@@ -5132,8 +5137,6 @@ elif menu == "🗺️ MAPA FATURADO":
     # ============================
     @st.cache_data(ttl=60 * 60 * 24)  # 24h
     def _load_brazil_states_geojson():
-        # GeoJSON de estados do Brasil (UF). Fonte pública em GitHub.
-        # Se um link cair, troque a URL aqui.
         url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson"
         r = requests.get(url, timeout=30)
         r.raise_for_status()
@@ -5146,19 +5149,16 @@ elif menu == "🗺️ MAPA FATURADO":
         st.stop()
 
     # ============================
-    # 9) Descobre qual propriedade do GeoJSON tem a UF (ex: 'sigla', 'abbr', etc.)
+    # 9) Descobre qual propriedade do GeoJSON tem a UF
     # ============================
-    # Vamos tentar casar automaticamente pra não quebrar.
     sample_props = {}
     try:
         sample_props = geojson["features"][0]["properties"]
     except Exception:
         sample_props = {}
 
-    # Chaves comuns onde pode estar a UF
     possible_keys = ["sigla", "uf", "abbr", "state", "name", "nome"]
 
-    # Escolhe a primeira que exista
     chosen_key = None
     for k in possible_keys:
         if k in sample_props:
@@ -5166,8 +5166,6 @@ elif menu == "🗺️ MAPA FATURADO":
             break
 
     if not chosen_key:
-        # fallback: tenta achar qualquer campo string que tenha "SP" / "RJ" etc
-        # (bem tolerante)
         for k, v in sample_props.items():
             if isinstance(v, str) and len(v.strip()) == 2 and v.strip().isalpha():
                 chosen_key = k
@@ -5187,13 +5185,16 @@ elif menu == "🗺️ MAPA FATURADO":
         geojson=geojson,
         locations="UF",
         featureidkey=feature_key,
-        color=label_val,
-        hover_data={"UF": True, "Receita": ":,.2f", "Quantidade": ":,.0f"},
+        color=color_col,  # ✅ AGORA SEM ERRO
+        hover_data={
+            "UF": True,
+            "Receita": ":,.2f",
+            "Quantidade": ":,.0f",
+        },
         scope="south america",
-        title=f"{label_val} por Estado (UF)"
+        title=f"{titulo_col} por Estado (UF)"
     )
 
-    # Ajustes para “ficar só Brasil”
     fig.update_geos(
         fitbounds="locations",
         visible=False
@@ -5204,7 +5205,6 @@ elif menu == "🗺️ MAPA FATURADO":
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
     # ============================
     # 11) Cards de resumo (insights rápidos)
     # ============================
