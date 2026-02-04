@@ -1014,11 +1014,11 @@ with st.sidebar:
 
     if is_admin: 
         opcoes_menu.append("🧪 TESTES")
-
+        opcoes_menu.append("📊 KPI Aprovação Analistas")
     
     if eh_gestao:
         opcoes_menu.append("📊 Dashboard de Controle")
-        opcoes_menu.append("📊 KPI Aprovação Analistas")  # ✅ NOVA OPÇÃO
+          # ✅ NOVA OPÇÃO
     
     # ✅ ALTERAÇÃO AQUI: selectbox -> radio (menu moderno)
     menu = st.radio(
