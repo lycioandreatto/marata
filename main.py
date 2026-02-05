@@ -6237,7 +6237,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             time.sleep(1)
                             st.rerun()
 
-            # ============================
+                       # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
             # ============================
             st.markdown("---")
@@ -6334,9 +6334,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
                     )
 
-                    # Círculo 1km (cinza) - mantido (não removi)
-                    df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
-
                     # --- TOOLTIP ---
                     # ✅ mostra também de onde veio a coordenada (VENDEDOR vs BASE) pra você validar
                     def _origem_coord(row):
@@ -6363,7 +6360,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                     # --- ÍCONES ---
                     icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-                    icone_verde = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+                    icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
 
                     def _icon_por_status(s):
                         s = str(s).strip().upper()
@@ -6373,7 +6370,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
                     # --- DADOS PARA O MAPA ---
-                    dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
+                    dados_mapa = df_map[["LON", "LAT", "COR_PINO", "ICON", "TOOLTIP"]].to_dict(orient="records")
 
                     # --- CENTRO ---
                     lat_center = float(df_map["LAT"].mean())
@@ -6381,26 +6378,30 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                     import pydeck as pdk
 
-                    # --- CÍRCULO 1 KM (mais confiável com ScatterplotLayer) ---
+                    # ✅ prepara dados com raio e cores do círculo (bem leve)
                     dados_mapa2 = []
                     for d in dados_mapa:
                         d2 = d.copy()
                         d2["RAIO_M"] = 1000  # 1km
-                        d2["COR_RAIO_FILL"] = [120, 120, 120, 90]   # preenchimento (mais visível)
-                        d2["COR_RAIO_LINE"] = [80, 80, 80, 180]     # borda
+                        d2["COR_RAIO_FILL"] = [120, 120, 120, 35]
+                        d2["COR_RAIO_LINE"] = [80, 80, 80, 120]
                         dados_mapa2.append(d2)
 
+                    # ✅ RAIO 1KM (CircleLayer com limites pra não “explodir”)
                     layer_raio = pdk.Layer(
-                        "ScatterplotLayer",
+                        "CircleLayer",
                         data=dados_mapa2,
                         get_position="[LON, LAT]",
                         get_radius="RAIO_M",
                         radius_units="meters",
+                        radius_scale=1,
+                        radius_min_pixels=6,
+                        radius_max_pixels=200,
                         get_fill_color="COR_RAIO_FILL",
                         get_line_color="COR_RAIO_LINE",
                         line_width_min_pixels=2,
-                        stroked=True,
                         filled=True,
+                        stroked=True,
                         pickable=False,
                     )
 
@@ -6436,6 +6437,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
+
 
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
