@@ -6135,202 +6135,83 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 with c_dt1:
                     st.info("Sem datas válidas para filtrar no modo selecionado.")
 
-                      # ============================
-            # ✅ PUXA CIDADE/ESTADO DA BASE (robusto)
+                       # ============================
+            # ✅ PUXA CIDADE/ESTADO DA BASE (SEM DEPENDER DO NOME EXATO)
             # BASE: Cliente | Local | Estado
-            # AGENDA: CÓDIGO CLIENTE
+            # AGENDA: CÓDIGO CLIENTE (pode variar nome/acentos/espaço)
             # ============================
             try:
-                # garante colunas no df_user (pra tabela aparecer mesmo se não der merge)
+                # garante colunas finais (pra aparecer na tabela mesmo se der tudo vazio)
                 if "LOCAL" not in df_user.columns:
                     df_user["LOCAL"] = ""
                 if "ESTADO" not in df_user.columns:
                     df_user["ESTADO"] = ""
 
-                if df_base is not None and not df_base.empty and ("CÓDIGO CLIENTE" in df_user.columns):
-                    # normaliza chave no df_user
-                    df_user["CÓDIGO CLIENTE"] = (
-                        df_user["CÓDIGO CLIENTE"]
-                        .astype(str)
-                        .str.strip()
-                        .str.replace(r"\.0$", "", regex=True)
+                if df_base is not None and not df_base.empty and df_user is not None and not df_user.empty:
+                    # --- mapeia colunas da BASE de forma robusta ---
+                    base_cols = {str(c).strip().upper(): c for c in df_base.columns}
+                    col_cliente_base = base_cols.get("CLIENTE")
+                    col_local_base   = base_cols.get("LOCAL")
+                    col_estado_base  = base_cols.get("ESTADO")
+
+                    # --- mapeia a coluna "CÓDIGO CLIENTE" da AGENDA de forma robusta ---
+                    user_cols = {str(c).strip().upper(): c for c in df_user.columns}
+                    col_cod_agenda = (
+                        user_cols.get("CÓDIGO CLIENTE")
+                        or user_cols.get("CODIGO CLIENTE")
+                        or user_cols.get("COD CLIENTE")
+                        or user_cols.get("CLIENTE")  # fallback (caso sua agenda use "CLIENTE" como código)
                     )
 
-                    # normaliza chave na BASE
-                    df_loc = df_base[["Cliente", "Local", "Estado"]].drop_duplicates(subset=["Cliente"]).copy()
-                    df_loc["Cliente"] = (
-                        df_loc["Cliente"]
-                        .astype(str)
-                        .str.strip()
-                        .str.replace(r"\.0$", "", regex=True)
-                    )
+                    # DEBUG (aparece na tela pra confirmar o que ele achou)
+                    # st.caption(f"DEBUG BASE: {col_cliente_base=} | {col_local_base=} | {col_estado_base=}")
+                    # st.caption(f"DEBUG AGENDA: {col_cod_agenda=}")
 
-                    # merge
-                    df_user = df_user.merge(
-                        df_loc,
-                        left_on="CÓDIGO CLIENTE",
-                        right_on="Cliente",
-                        how="left"
-                    )
+                    if col_cliente_base and col_local_base and col_estado_base and col_cod_agenda:
+                        df_loc = df_base[[col_cliente_base, col_local_base, col_estado_base]].drop_duplicates(
+                            subset=[col_cliente_base]
+                        ).copy()
 
-                    # joga nas colunas finais que você usa na tabela (MAIÚSCULAS)
-                    df_user["LOCAL"] = df_user["Local"].astype(str).fillna("")
-                    df_user["ESTADO"] = df_user["Estado"].astype(str).fillna("")
+                        # normaliza chave BASE
+                        df_loc[col_cliente_base] = (
+                            df_loc[col_cliente_base]
+                            .astype(str)
+                            .str.strip()
+                            .str.replace(r"\.0$", "", regex=True)
+                        )
 
-                    # remove colunas extras do merge
-                    df_user = df_user.drop(columns=["Cliente", "Local", "Estado"], errors="ignore")
+                        # normaliza chave AGENDA
+                        df_user[col_cod_agenda] = (
+                            df_user[col_cod_agenda]
+                            .astype(str)
+                            .str.strip()
+                            .str.replace(r"\.0$", "", regex=True)
+                        )
 
+                        df_loc = df_loc.rename(
+                            columns={
+                                col_cliente_base: "_BASE_CLIENTE",
+                                col_local_base: "_BASE_LOCAL",
+                                col_estado_base: "_BASE_ESTADO",
+                            }
+                        )
+
+                        df_user = df_user.merge(
+                            df_loc,
+                            left_on=col_cod_agenda,
+                            right_on="_BASE_CLIENTE",
+                            how="left"
+                        )
+
+                        # grava nas colunas finais (que você usa na tabela)
+                        df_user["LOCAL"] = df_user["_BASE_LOCAL"].astype(str).fillna("").replace(["nan", "None"], "")
+                        df_user["ESTADO"] = df_user["_BASE_ESTADO"].astype(str).fillna("").replace(["nan", "None"], "")
+
+                        # limpa extras
+                        df_user = df_user.drop(columns=["_BASE_CLIENTE", "_BASE_LOCAL", "_BASE_ESTADO"], errors="ignore")
             except Exception as e:
                 st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
 
-            # --- 5. MÉTRICAS ---
-            # ✅ (NOVO) Card de "fora do raio" > 50 metros
-            fora_raio_50m = int((df_user['DISTANCIA_LOG'] > 50).sum()) if 'DISTANCIA_LOG' in df_user.columns else 0
-
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("📅 Total Agendado", len(df_user))
-            # Ajustado para mostrar o que está planejado (já aprovado)
-            m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Agendado"]))
-            m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
-            m4.metric("📍 Fora do Raio (+50m)", fora_raio_50m, delta_color="inverse")
-            st.markdown("---")
-
-            # --- 6. APROVAÇÃO EM MASSA (GESTÃO) ---
-            if (is_admin or is_diretoria or is_analista):
-                with st.expander("⚖️ Painel de Aprovação de Agendas", expanded=False):
-                    col_ap1, col_ap2, col_ap3 = st.columns([2, 2, 3])
-                    vends_na_lista = sorted([str(x) for x in df_user['VENDEDOR'].unique() if x])
-                    vend_alvo = col_ap1.selectbox("Vendedor:", ["Todos"] + vends_na_lista, key="sel_massa_v")
-                    status_massa = col_ap2.selectbox("Definir:", ["Aprovado", "Reprovado"], key="sel_massa_s")
-                    obs_massa = col_ap3.text_input("Observação:", key="obs_massa_input")
-
-                    if st.button("🚀 Aplicar Decisão em Massa"):
-                        mask = df_agenda['VENDEDOR'] == vend_alvo if vend_alvo != "Todos" else df_agenda['VENDEDOR'].isin(vends_na_lista)
-                        df_agenda.loc[mask, 'APROVACAO'] = status_massa
-                        df_agenda.loc[mask, 'OBS_GESTAO'] = obs_massa
-                        if status_massa == "Reprovado":
-                            df_agenda.loc[mask, 'STATUS'] = "Reprovado"
-                        else:
-                            # Se aprovado em massa, muda de Pendente para Planejado
-                            df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Agendado"
-
-                        df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
-                        conn.update(
-                            spreadsheet=url_planilha,
-                            worksheet="AGENDA",
-                            data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
-                        )
-                        st.cache_data.clear()
-                        st.success("Atualizado!")
-                        time.sleep(1)
-                        st.rerun()
-
-            # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
-            df_user["AÇÃO"] = False
-
-            # ✅ agora usando "Estado" e "Local" (EXATOS)
-            cols_display = [
-                'AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA',
-                'ANALISTA', 'SUPERVISOR', 'VENDEDOR',
-                'CLIENTE', 'Estado', 'Local', 'KM_PREVISTO',
-                'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO',
-                'HIERARQUIAS_VENDIDAS'
-            ]
-            df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
-
-            # ============================
-            # ✅ EXPORTAR (EXCEL + PDF) — TABELA COMO NA TELA
-            # ============================
-            try:
-                st.markdown("### 📤 Exportar tabela (como aparece na tela)")
-                col_exp1, col_exp2 = st.columns(2)
-
-                df_export = df_display.drop(columns=["AÇÃO"], errors="ignore").copy()
-
-                # --- Excel ---
-                with col_exp1:
-                    import io as _io
-
-                    buffer_xlsx = _io.BytesIO()
-                    with pd.ExcelWriter(buffer_xlsx, engine="xlsxwriter") as writer:
-                        df_export.to_excel(writer, index=False, sheet_name="Minha Agenda")
-
-                        # Ajuste simples de largura (não muda dados)
-                        workbook = writer.book
-                        worksheet = writer.sheets["Minha Agenda"]
-                        for i, col_name in enumerate(df_export.columns):
-                            try:
-                                max_len = max(
-                                    [len(str(col_name))] + [len(str(v)) for v in df_export[col_name].astype(str).fillna("").tolist()]
-                                )
-                                worksheet.set_column(i, i, min(max_len + 2, 45))
-                            except:
-                                pass
-
-                    st.download_button(
-                        "📥 Baixar Excel (Agenda)",
-                        data=buffer_xlsx.getvalue(),
-                        file_name="minha_agenda.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_export_excel_minha_agenda"
-                    )
-
-                # --- PDF ---
-                with col_exp2:
-                    import io as _io
-                    from fpdf import FPDF as _FPDF
-
-                    def _pdf_table_bytes(df_pdf):
-                        pdf = _FPDF(orientation="L", unit="mm", format="A4")
-                        pdf.set_auto_page_break(auto=True, margin=10)
-                        pdf.add_page()
-                        pdf.set_font("Arial", size=8)
-
-                        # Título
-                        pdf.set_font("Arial", "B", 10)
-                        pdf.cell(0, 8, "Minha Agenda (export)", ln=True)
-                        pdf.ln(1)
-                        pdf.set_font("Arial", size=7)
-
-                        # Larguras (distribui na página)
-                        page_w = 297 - 20  # A4 landscape - margens aprox
-                        n_cols = max(len(df_pdf.columns), 1)
-                        col_w = max(page_w / n_cols, 18)
-
-                        # Cabeçalho
-                        pdf.set_font("Arial", "B", 7)
-                        for c in df_pdf.columns:
-                            txt = str(c)[:25]
-                            pdf.cell(col_w, 6, txt, border=1)
-                        pdf.ln()
-
-                        # Linhas
-                        pdf.set_font("Arial", size=7)
-                        for _, row in df_pdf.iterrows():
-                            for c in df_pdf.columns:
-                                v = row.get(c, "")
-                                s = "" if pd.isna(v) else str(v)
-                                s = s.replace("\n", " ").strip()
-                                s = s[:35]  # corta pra não estourar
-                                pdf.cell(col_w, 6, s, border=1)
-                            pdf.ln()
-
-                        out = _io.BytesIO(pdf.output(dest="S").encode("latin-1"))
-                        return out.getvalue()
-
-                    pdf_bytes = _pdf_table_bytes(df_export)
-
-                    st.download_button(
-                        "🧾 Baixar PDF (Agenda)",
-                        data=pdf_bytes,
-                        file_name="minha_agenda.pdf",
-                        mime="application/pdf",
-                        key="btn_export_pdf_minha_agenda"
-                    )
-
-                st.markdown("---")
-            except Exception as e:
-                st.warning(f"Não foi possível exportar (Excel/PDF): {e}")
             # ============================
 
             edicao_user = st.data_editor(
