@@ -819,7 +819,7 @@ df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 # --- CONFIGURAÇÃO DE ACESSOS (EDITE AQUI) ---
 NOME_ADMIN = "lycio"         # Você (Admin)
 NOME_DIRETORIA = "aldo"         # Aldo
-LISTA_ANALISTA = ["Barbara", "Thais","Allana","Roberio","Regiane","Carol"] 
+LISTA_ANALISTA = ["BÁRBARA COSTA", "THAIS OLIVEIRA","ALLANA ANDRADE","Roberio","Regiane","Carol"] 
 LISTA_SUPERVISORES = ["Francisco", "Teste"] 
 LISTA_VENDEDORES = ["Carlos Antonio", "Rita", "Saraiva","Jose Carlos"]     
 
