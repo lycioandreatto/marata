@@ -6360,52 +6360,61 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     lat_center = float(df_map["LAT"].mean())
                     lon_center = float(df_map["LON"].mean())
 
-                    import pydeck as pdk
+                                           import pydeck as pdk
 
-                    # --- CÍRCULO 1 KM ---
-                    layer_raio = pdk.Layer(
-                        "CircleLayer",
-                        data=dados_mapa,
-                        get_position="[LON, LAT]",
-                        get_radius=1000,
-                        radius_units="meters",
-                        get_fill_color="COR_RAIO",
-                        get_line_color=[120, 120, 120, 180],
-                        line_width_min_pixels=2,
-                        filled=True,
-                        stroked=True,
-                        pickable=False,
-                    )
+                        # --- CÍRCULO 1 KM (mais confiável com ScatterplotLayer) ---
+                        dados_mapa2 = []
+                        for d in dados_mapa:
+                            d2 = d.copy()
+                            d2["RAIO_M"] = 1000  # 1km
+                            d2["COR_RAIO_FILL"] = [120, 120, 120, 90]   # preenchimento (mais visível)
+                            d2["COR_RAIO_LINE"] = [80, 80, 80, 180]     # borda
+                            dados_mapa2.append(d2)
 
-                    # --- PINOS ---
-                    layer_pinos = pdk.Layer(
-                        "IconLayer",
-                        data=dados_mapa,
-                        get_position="[LON, LAT]",
-                        get_icon="ICON",
-                        get_size=4,
-                        size_scale=10,
-                        pickable=True,
-                    )
+                        layer_raio = pdk.Layer(
+                            "ScatterplotLayer",
+                            data=dados_mapa2,
+                            get_position="[LON, LAT]",
+                            get_radius="RAIO_M",
+                            radius_units="meters",
+                            get_fill_color="COR_RAIO_FILL",
+                            get_line_color="COR_RAIO_LINE",
+                            line_width_min_pixels=2,
+                            stroked=True,
+                            filled=True,
+                            pickable=False,
+                        )
 
-                    view_state = pdk.ViewState(
-                        latitude=lat_center,
-                        longitude=lon_center,
-                        zoom=11,
-                        pitch=0
-                    )
+                        # --- PINOS ---
+                        layer_pinos = pdk.Layer(
+                            "IconLayer",
+                            data=dados_mapa2,
+                            get_position="[LON, LAT]",
+                            get_icon="ICON",
+                            get_size=4,
+                            size_scale=10,
+                            pickable=True,
+                        )
 
-                    tooltip = {"text": "{TOOLTIP}"}
+                        view_state = pdk.ViewState(
+                            latitude=lat_center,
+                            longitude=lon_center,
+                            zoom=11,
+                            pitch=0
+                        )
 
-                    st.pydeck_chart(
-                        pdk.Deck(
-                            layers=[layer_raio, layer_pinos],
-                            initial_view_state=view_state,
-                            tooltip=tooltip,
-                            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                        ),
-                        use_container_width=True
-                    )
+                        tooltip = {"text": "{TOOLTIP}"}
+
+                        st.pydeck_chart(
+                            pdk.Deck(
+                                layers=[layer_raio, layer_pinos],
+                                initial_view_state=view_state,
+                                tooltip=tooltip,
+                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                            ),
+                            use_container_width=True
+                        )
+
 
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
