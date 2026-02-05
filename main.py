@@ -1205,6 +1205,12 @@ if menu == "📅 Agendamentos do Dia":
         if col_just not in df_agenda.columns:
             df_agenda[col_just] = ""
 
+        # ✅ NOVO: coluna para hierarquias vendidas na visita
+        col_hier_vend = "HIERARQUIAS_VENDIDAS"
+        if col_hier_vend not in df_agenda.columns:
+            df_agenda[col_hier_vend] = ""
+
+
         # ✅ NOVO: coluna para observação da gestão na validação diária (sem mexer no botão do vendedor)
         col_obs_rotina = "OBS_VALIDACAO_GESTAO"
         if col_obs_rotina not in df_agenda.columns:
@@ -1644,16 +1650,25 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                             distancia_m = 0.0
                             st.warning(f"Falha ao calcular distância: {e}")
 
-                        df_agenda.loc[
-                            df_agenda["ID"].astype(str) == str(sel_row["ID"]),
-                            ["STATUS", col_aprov_exec, col_just, col_hier_vend, "COORDENADAS", "DISTANCIA_LOG"],
-                        ] = [
-                            novo_status,
-                            nova_val,
-                            nova_just,
-                            f"{lat_v}, {lon_v}",
-                            round(float(distancia_m), 1),
-                        ]
+                                                # garante string (evita lista/None)
+                        hier_vendidas_txt = "" if hier_vendidas_txt is None else str(hier_vendidas_txt)
+
+                        mask_id = df_agenda["ID"].astype(str) == str(sel_row["ID"])
+                        idxs = df_agenda.index[mask_id].tolist()
+
+                        if not idxs:
+                            st.warning("Não encontrei o ID para atualizar na planilha (AGENDA).")
+                        else:
+                            cols_upd = ["STATUS", col_aprov_exec, col_just, col_hier_vend, "COORDENADAS", "DISTANCIA_LOG"]
+                            vals_upd = [novo_status, nova_val, nova_just, hier_vendidas_txt, f"{lat_v}, {lon_v}", round(float(distancia_m), 1)]
+
+                            # ✅ atribuição robusta (não quebra se ID estiver duplicado)
+                            df_agenda.loc[idxs, cols_upd] = pd.DataFrame(
+                                [vals_upd] * len(idxs),
+                                columns=cols_upd,
+                                index=idxs
+                            )
+
 
                         conn.update(
                             spreadsheet=url_planilha,
