@@ -331,7 +331,7 @@ def enviar_excel_agenda_por_email(destinatarios, df_agenda_filtrada):
     from email.message import EmailMessage
 
     # ✅ garante colunas obrigatórias
-    colunas = ["DATA", "CLIENTE", "ESTADO", "LOCAL", "KM_PREVISTO"]
+    colunas = ["DATA","SUPERVISOR", "CLIENTE", "ESTADO", "LOCAL", "KM_PREVISTO"]
     df_tmp = df_agenda_filtrada.copy()
 
     for c in colunas:
