@@ -6141,17 +6141,14 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # AGENDA: CÓDIGO CLIENTE
             # ============================
             try:
-                # garante as colunas na agenda (pra aparecer mesmo se vier vazio)
                 if "LOCAL" not in df_user.columns:
                     df_user["LOCAL"] = ""
                 if "ESTADO" not in df_user.columns:
                     df_user["ESTADO"] = ""
 
                 if df_base is not None and not df_base.empty and "CÓDIGO CLIENTE" in df_user.columns:
-                    # usa o Cliente (código) como chave
                     df_loc = df_base[["Cliente", "Local", "Estado"]].drop_duplicates(subset=["Cliente"]).copy()
 
-                    # normaliza chaves
                     df_loc["Cliente"] = (
                         df_loc["Cliente"]
                         .astype(str)
@@ -6166,7 +6163,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         .str.replace(r"\.0$", "", regex=True)
                     )
 
-                    # merge e preenche
                     df_user = df_user.merge(
                         df_loc.rename(columns={"Local": "_LOCAL_BASE", "Estado": "_ESTADO_BASE"}),
                         left_on="CÓDIGO CLIENTE",
@@ -6177,7 +6173,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     df_user["LOCAL"] = df_user["_LOCAL_BASE"].fillna("").astype(str).replace(["nan", "None"], "")
                     df_user["ESTADO"] = df_user["_ESTADO_BASE"].fillna("").astype(str).replace(["nan", "None"], "")
 
-                    # limpa sobras do merge
                     df_user = df_user.drop(columns=["Cliente", "_LOCAL_BASE", "_ESTADO_BASE"], errors="ignore")
 
             except Exception as e:
@@ -6239,6 +6234,101 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 "HIERARQUIAS_VENDIDAS"
             ]
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
+
+            # ============================
+            # ✅ EXPORTAR (EXCEL + PDF) — TABELA COMO NA TELA
+            # ============================
+            try:
+                st.markdown("### 📤 Exportar tabela (como aparece na tela)")
+                col_exp1, col_exp2 = st.columns(2)
+
+                df_export = df_display.drop(columns=["AÇÃO"], errors="ignore").copy()
+
+                # --- Excel ---
+                with col_exp1:
+                    import io as _io
+
+                    buffer_xlsx = _io.BytesIO()
+                    with pd.ExcelWriter(buffer_xlsx, engine="xlsxwriter") as writer:
+                        df_export.to_excel(writer, index=False, sheet_name="Minha Agenda")
+
+                        # Ajuste simples de largura (não muda dados)
+                        workbook = writer.book
+                        worksheet = writer.sheets["Minha Agenda"]
+                        for i, col_name in enumerate(df_export.columns):
+                            try:
+                                max_len = max(
+                                    [len(str(col_name))] + [len(str(v)) for v in df_export[col_name].astype(str).fillna("").tolist()]
+                                )
+                                worksheet.set_column(i, i, min(max_len + 2, 45))
+                            except Exception:
+                                pass
+
+                    st.download_button(
+                        "📥 Baixar Excel (Agenda)",
+                        data=buffer_xlsx.getvalue(),
+                        file_name="minha_agenda.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="btn_export_excel_minha_agenda"
+                    )
+
+                # --- PDF ---
+                with col_exp2:
+                    import io as _io
+                    from fpdf import FPDF as _FPDF
+
+                    def _pdf_table_bytes(df_pdf):
+                        pdf = _FPDF(orientation="L", unit="mm", format="A4")
+                        pdf.set_auto_page_break(auto=True, margin=10)
+                        pdf.add_page()
+                        pdf.set_font("Arial", size=8)
+
+                        # Título
+                        pdf.set_font("Arial", "B", 10)
+                        pdf.cell(0, 8, "Minha Agenda (export)", ln=True)
+                        pdf.ln(1)
+                        pdf.set_font("Arial", size=7)
+
+                        # Larguras (distribui na página)
+                        page_w = 297 - 20  # A4 landscape - margens aprox
+                        n_cols = max(len(df_pdf.columns), 1)
+                        col_w = max(page_w / n_cols, 18)
+
+                        # Cabeçalho
+                        pdf.set_font("Arial", "B", 7)
+                        for c in df_pdf.columns:
+                            txt = str(c)[:25]
+                            pdf.cell(col_w, 6, txt, border=1)
+                        pdf.ln()
+
+                        # Linhas
+                        pdf.set_font("Arial", size=7)
+                        for _, row in df_pdf.iterrows():
+                            for c in df_pdf.columns:
+                                v = row.get(c, "")
+                                s = "" if pd.isna(v) else str(v)
+                                s = s.replace("\n", " ").strip()
+                                s = s[:35]  # corta pra não estourar
+                                pdf.cell(col_w, 6, s, border=1)
+                            pdf.ln()
+
+                        out = _io.BytesIO(pdf.output(dest="S").encode("latin-1"))
+                        return out.getvalue()
+
+                    pdf_bytes = _pdf_table_bytes(df_export)
+
+                    st.download_button(
+                        "🧾 Baixar PDF (Agenda)",
+                        data=pdf_bytes,
+                        file_name="minha_agenda.pdf",
+                        mime="application/pdf",
+                        key="btn_export_pdf_minha_agenda"
+                    )
+
+                st.markdown("---")
+            except Exception as e:
+                st.warning(f"Não foi possível exportar (Excel/PDF): {e}")
+            # ============================
 
             edicao_user = st.data_editor(
                 df_display,
@@ -6325,8 +6415,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             st.success("Excluído")
                             time.sleep(1)
                             st.rerun()
-
-
 
 
                        # ============================
