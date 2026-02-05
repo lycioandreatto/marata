@@ -5923,6 +5923,12 @@ elif menu == "📋 Novo Agendamento":
             if "KM_PREVISTO" not in df_agenda.columns:
                 df_agenda["KM_PREVISTO"] = ""
 
+            # ✅ NOVO: garante colunas HOSPEDAGEM e TURNO_VISITA no df_agenda (pra salvar no Sheets)
+            if "HOSPEDAGEM" not in df_agenda.columns:
+                df_agenda["HOSPEDAGEM"] = ""
+            if "TURNO_VISITA" not in df_agenda.columns:
+                df_agenda["TURNO_VISITA"] = ""
+
             # Normalização para comparação
             df_agenda['CÓDIGO CLIENTE'] = df_agenda['CÓDIGO CLIENTE'].astype(str)
             clientes_f['Cliente'] = clientes_f['Cliente'].astype(str)
@@ -5963,34 +5969,54 @@ elif menu == "📋 Novo Agendamento":
                     qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
 
                     with st.form("form_novo_v", clear_on_submit=True):
-                        # ✅ NOVO: KM previsto (formatado)
-                        km_previsto = st.text_input(
-                            "KM previsto para a visita (ex: 80 km):",
+                        # ✅ NOVO: KM previsto (salvar SOMENTE número no Sheets)
+                        km_previsto_txt = st.text_input(
+                            "KM previsto para a visita (ex: 80):",
                             value="",
-                            placeholder="80 km",
+                            placeholder="80",
                             key="km_previsto_novo_ag"
                         ).strip()
 
-                        def _padroniza_km(txt):
+                        # ✅ NOVO: Hospedagem (SIM/NÃO)
+                        hospedagem = st.selectbox(
+                            "Hospedagem:",
+                            ["Não", "Sim"],
+                            index=0,
+                            key="hospedagem_novo_ag"
+                        )
+
+                        # ✅ NOVO: Turno da visita (MANHÃ/TARDE)
+                        turno_visita = st.selectbox(
+                            "Turno da visita:",
+                            ["MANHÃ", "TARDE"],
+                            index=0,
+                            key="turno_visita_novo_ag"
+                        )
+
+                        def _padroniza_km_numero(txt):
+                            """
+                            Retorna somente número (string) para facilitar cálculos no Excel.
+                            Exemplos:
+                            "80 KM" -> "80"
+                            "50km"  -> "50"
+                            "12,5"  -> "12.5"
+                            """
                             t = str(txt or "").strip().lower()
-                            t = t.replace("kms", "km").replace("kilometros", "km").replace("kilômetros", "km")
-                            t = t.replace(" ", "")
                             if not t:
                                 return ""
                             import re
                             num = re.findall(r"[\d]+(?:[.,]\d+)?", t)
                             if not num:
                                 return ""
-                            v = num[0].replace(",", ".")
+                            v = num[0].replace(",", ".").strip()
+                            # opcional: se for inteiro, remove .0
                             try:
                                 f = float(v)
                                 if f.is_integer():
-                                    return f"{int(f)} km"
-                                else:
-                                    s = f"{f:.1f}".replace(".", ",")
-                                    return f"{s} km"
-                            except:
-                                return ""
+                                    return str(int(f))
+                                return str(f)
+                            except Exception:
+                                return v
 
                         cols_datas = st.columns(qtd_visitas)
                         hoje_dt = datetime.now(fuso_br).date()
@@ -6008,7 +6034,7 @@ elif menu == "📋 Novo Agendamento":
                             agora = datetime.now(fuso_br)
                             novas_linhas = []
 
-                            km_fmt = _padroniza_km(km_previsto)
+                            km_num = _padroniza_km_numero(km_previsto_txt)
 
                             for j, cliente_item in enumerate(clientes_sel):
                                 cod_c, nom_c = cliente_item.split(" - ", 1)
@@ -6027,7 +6053,9 @@ elif menu == "📋 Novo Agendamento":
                                         "JUSTIFICATIVA": "-", 
                                         "STATUS": "Pendente",  # <--- AQUI ESTÁ A MUDANÇA PARA O WORKFLOW
                                         "AGENDADO POR": user_atual,
-                                        "KM_PREVISTO": km_fmt
+                                        "KM_PREVISTO": km_num,          # ✅ agora vai só número
+                                        "HOSPEDAGEM": hospedagem,       # ✅ novo
+                                        "TURNO_VISITA": turno_visita    # ✅ novo
                                     })
                             
                             df_antigo = df_agenda.drop(columns=['LINHA'], errors='ignore').copy()
@@ -6042,6 +6070,7 @@ elif menu == "📋 Novo Agendamento":
                             st.info("🔔 Agendamento enviado! Aguardando aprovação na tela de Aprovações.")
                             time.sleep(2)
                             st.rerun()
+
 
 
       
