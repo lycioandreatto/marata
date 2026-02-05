@@ -6234,7 +6234,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             cols_display = [
                 "AÇÃO", "REGISTRO", "AGENDADO POR", "DATA",
                 "ANALISTA", "SUPERVISOR", "VENDEDOR",
-                "CLIENTE", "ESTADO", "LOCAL", "KM_PREVISTO",
+                "CLIENTE", "ESTADO", "CIDADE", "KM_PREVISTO",
                 "STATUS", "APROVACAO", "DISTANCIA_LOG", "OBS_GESTAO",
                 "HIERARQUIAS_VENDIDAS"
             ]
