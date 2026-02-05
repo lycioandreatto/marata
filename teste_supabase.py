@@ -1,8 +1,9 @@
 import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
 
-st.set_page_config(page_title="Teste Supabase", layout="wide")
+if str(st.secrets.get("RUN_SUPABASE_TEST", "0")) == "1":
+    import teste_supabase  # precisa existir teste_supabase.py
+    raise SystemExit
+
 
 @st.cache_resource
 def get_engine():
