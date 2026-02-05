@@ -1215,6 +1215,34 @@ if menu == "📅 Agendamentos do Dia":
         if "COORDENADAS" not in df_agenda.columns:
             df_agenda["COORDENADAS"] = ""
 
+                # ✅ NOVO: coluna para salvar as hierarquias vendidas (em uma única linha)
+        col_hier_vend = "HIERARQUIAS_VENDIDAS"
+        if col_hier_vend not in df_agenda.columns:
+            df_agenda[col_hier_vend] = ""
+
+        # ✅ NOVO: carrega opções da aba PRODUTOS (coluna "HIERARQUIA DE PRODUTOS")
+        hierarquia_opcoes = []
+        try:
+            df_produtos = conn.read(spreadsheet=url_planilha, worksheet="PRODUTOS")
+            if df_produtos is not None and not df_produtos.empty:
+                df_produtos.columns = [str(c).strip() for c in df_produtos.columns]
+                col_hp = next(
+                    (c for c in df_produtos.columns if str(c).strip().upper() == "HIERARQUIA DE PRODUTOS"),
+                    None
+                )
+                if col_hp:
+                    hierarquia_opcoes = sorted(
+                        [
+                            str(x).strip()
+                            for x in df_produtos[col_hp].dropna().unique().tolist()
+                            if str(x).strip() and str(x).strip().lower() != "nan"
+                        ]
+                    )
+        except Exception:
+            hierarquia_opcoes = []
+
+
+
         # --- FILTRO DO DIA ---
         df_dia = df_agenda[df_agenda["DATA"] == hoje_str].copy()
         df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
@@ -1449,6 +1477,30 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                 else:
                     nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
 
+                                # ✅ NOVO: Hierarquias vendidas (multi-select)
+                hier_atual_txt = str(sel_row.get(col_hier_vend, "") or "").strip()
+                hier_atual_lista = []
+
+                if hier_atual_txt:
+                    if " | " in hier_atual_txt:
+                        hier_atual_lista = [x.strip() for x in hier_atual_txt.split(" | ") if x.strip()]
+                    elif ";" in hier_atual_txt:
+                        hier_atual_lista = [x.strip() for x in hier_atual_txt.split(";") if x.strip()]
+                    elif "," in hier_atual_txt:
+                        hier_atual_lista = [x.strip() for x in hier_atual_txt.split(",") if x.strip()]
+                    else:
+                        hier_atual_lista = [hier_atual_txt]
+
+                hier_vendidas = st.multiselect(
+                    "Hierarquias vendidas (selecione uma ou mais):",
+                    options=hierarquia_opcoes,
+                    default=[h for h in hier_atual_lista if h in hierarquia_opcoes],
+                    key="hier_multiselect_vendidas"
+                )
+
+                hier_vendidas_txt = " | ".join([str(x).strip() for x in hier_vendidas if str(x).strip()])
+
+
                 # ✅ NOVO: BLOCO SEPARADO DA GESTÃO PARA VALIDAR A ROTINA + OBSERVAÇÃO (SEM MEXER NO BOTÃO DO VENDEDOR)
                 if pode_validar:
                     st.markdown("#### ✅ Validação da Rotina (Gestão)")
@@ -1594,7 +1646,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
 
                         df_agenda.loc[
                             df_agenda["ID"].astype(str) == str(sel_row["ID"]),
-                            ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
+                            ["STATUS", col_aprov_exec, col_just, col_hier_vend, "COORDENADAS", "DISTANCIA_LOG"],
                         ] = [
                             novo_status,
                             nova_val,
