@@ -6213,139 +6213,198 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
                             st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
 
-            # ============================
+                       # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
             # ============================
             st.markdown("---")
             st.markdown("### 🗺️ Mapa da Minha Agenda")
 
             try:
-                if df_base is not None and ("COORDENADAS" in df_base.columns):
+                # ----------------------------
+                # 1) Prepara DF do mapa
+                # ----------------------------
+                df_map = df_user.copy()
 
-                    # 🔧 COORDENADAS DA BASE
-                    df_coords = df_base[['Cliente', 'COORDENADAS']].drop_duplicates(subset='Cliente').copy()
+                # garante colunas
+                if "CÓDIGO CLIENTE" in df_map.columns:
+                    df_map["CÓDIGO CLIENTE"] = df_map["CÓDIGO CLIENTE"].astype(str).str.strip()
+
+                # ✅ aqui está a localização REAL do vendedor quando marcou "Realizado"
+                # (coluna COORDENADAS da AGENDA)
+                if "COORDENADAS" not in df_map.columns:
+                    df_map["COORDENADAS"] = ""
+
+                df_map["COORDENADAS"] = df_map["COORDENADAS"].astype(str).fillna("").str.strip()
+
+                # ----------------------------
+                # 2) Puxa coordenadas da BASE (cliente) como fallback
+                # ----------------------------
+                if df_base is not None and (not df_base.empty) and ("COORDENADAS" in df_base.columns):
+                    df_coords = df_base[["Cliente", "COORDENADAS"]].drop_duplicates(subset="Cliente").copy()
                     df_coords = df_coords.rename(columns={"COORDENADAS": "COORDENADAS_BASE"})
-                    df_coords['Cliente'] = df_coords['Cliente'].astype(str).str.strip()
-
-                    df_map = df_user.copy()
-                    df_map['CÓDIGO CLIENTE'] = df_map['CÓDIGO CLIENTE'].astype(str).str.strip()
+                    df_coords["Cliente"] = df_coords["Cliente"].astype(str).str.strip()
 
                     df_map = df_map.merge(
                         df_coords,
-                        left_on='CÓDIGO CLIENTE',
-                        right_on='Cliente',
-                        how='left'
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left"
+                    )
+                else:
+                    df_map["COORDENADAS_BASE"] = ""
+
+                # ----------------------------
+                # 3) Decide qual coordenada usar no mapa:
+                #    - Realizado -> COORDENADAS (vendedor)
+                #    - Outros    -> COORDENADAS_BASE (cliente)
+                #    - fallback automático se estiver vazio
+                # ----------------------------
+                def _coord_escolhida(row):
+                    status = str(row.get("STATUS", "") or "").strip().upper()
+                    coord_vend = str(row.get("COORDENADAS", "") or "").strip()
+                    coord_base = str(row.get("COORDENADAS_BASE", "") or "").strip()
+
+                    if status == "REALIZADO":
+                        # prioridade vendedor; se não tiver, cai na base
+                        return coord_vend if coord_vend else coord_base
+                    else:
+                        # prioridade base; se não tiver, cai no vendedor
+                        return coord_base if coord_base else coord_vend
+
+                df_map["COORD_USADA"] = df_map.apply(_coord_escolhida, axis=1)
+
+                # ----------------------------
+                # 4) Extrai LAT / LON da coord escolhida
+                # ----------------------------
+                def _parse_coord(x):
+                    try:
+                        if isinstance(x, str):
+                            s = x.strip()
+                            if "," in s:
+                                lat, lon = s.split(",", 1)
+                                lat = float(lat.strip().replace(" ", ""))
+                                lon = float(lon.strip().replace(" ", ""))
+                                # valida simples
+                                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                                    return lat, lon
+                    except:
+                        pass
+                    return None, None
+
+                df_map["LAT"] = df_map["COORD_USADA"].apply(lambda v: _parse_coord(v)[0])
+                df_map["LON"] = df_map["COORD_USADA"].apply(lambda v: _parse_coord(v)[1])
+
+                # Remove sem coordenadas válidas
+                df_map = df_map.dropna(subset=["LAT", "LON"]).copy()
+
+                if df_map.empty:
+                    st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
+                else:
+                    # --- LIMPEZA EXTRA ---
+                    for c in ["VENDEDOR", "CLIENTE", "STATUS"]:
+                        if c in df_map.columns:
+                            df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
+
+                    # --- CORES ---
+                    df_map["COR_PINO"] = df_map["STATUS"].astype(str).str.upper().apply(
+                        lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
                     )
 
-                    # --- EXTRAI LAT / LON DA BASE ---
-                    def _parse_coord(x):
-                        try:
-                            if isinstance(x, str) and ',' in x:
-                                lat, lon = x.split(',', 1)
-                                return float(lat.strip()), float(lon.strip())
-                        except:
-                            pass
-                        return None, None
+                    # Círculo 1km (cinza)
+                    df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
 
-                    df_map['LAT'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[0])
-                    df_map['LON'] = df_map['COORDENADAS_BASE'].apply(lambda v: _parse_coord(v)[1])
+                    # --- TOOLTIP ---
+                    # ✅ mostra também de onde veio a coordenada (VENDEDOR vs BASE) pra você validar
+                    def _origem_coord(row):
+                        status = str(row.get("STATUS", "") or "").strip().upper()
+                        coord_vend = str(row.get("COORDENADAS", "") or "").strip()
+                        coord_base = str(row.get("COORDENADAS_BASE", "") or "").strip()
 
-                    # Remove sem coordenadas válidas
-                    df_map = df_map.dropna(subset=['LAT', 'LON']).copy()
+                        if status == "REALIZADO":
+                            return "Vendedor (Realizado)" if coord_vend else "Base (fallback)"
+                        else:
+                            return "Base (Agendado)" if coord_base else "Vendedor (fallback)"
 
-                    if df_map.empty:
-                        st.info("Nenhuma coordenada válida encontrada para exibir no mapa.")
-                    else:
-                        # --- LIMPEZA EXTRA ---
-                        for c in ['VENDEDOR', 'CLIENTE', 'STATUS']:
-                            if c in df_map.columns:
-                                df_map[c] = df_map[c].astype(str).replace(["nan", "None"], "").fillna("")
+                    df_map["ORIGEM_COORD"] = df_map.apply(_origem_coord, axis=1)
 
-                        # --- CORES ---
-                        # Pino (verde / vermelho)
-                        df_map['COR_PINO'] = df_map['STATUS'].astype(str).str.upper().apply(
-                            lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
-                        )
+                    df_map["TOOLTIP"] = df_map.apply(
+                        lambda r: (
+                            f"Vendedor: {r.get('VENDEDOR','')} | "
+                            f"Cliente: {r.get('CLIENTE','')} | "
+                            f"Status: {r.get('STATUS','')} | "
+                            f"Origem: {r.get('ORIGEM_COORD','')}"
+                        ),
+                        axis=1
+                    )
 
-                        # Círculo 1km (cinza)
-                        df_map['COR_RAIO'] = [[160, 160, 160, 70]] * len(df_map)
+                    # --- ÍCONES ---
+                    icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+                    icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
 
-                        # --- TOOLTIP ---
-                        df_map['TOOLTIP'] = df_map.apply(
-                            lambda r: f"Vendedor: {r.get('VENDEDOR','')} | Cliente: {r.get('CLIENTE','')} | Status: {r.get('STATUS','')}",
-                            axis=1
-                        )
+                    def _icon_por_status(s):
+                        s = str(s).strip().upper()
+                        url = icone_verde if s == "REALIZADO" else icone_vermelho
+                        return {"url": url, "width": 25, "height": 41, "anchorY": 41}
 
-                        # --- ÍCONES ---
-                        icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-                        icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+                    df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
-                        def _icon_por_status(s):
-                            s = str(s).strip().upper()
-                            url = icone_verde if s == "REALIZADO" else icone_vermelho
-                            return {"url": url, "width": 25, "height": 41, "anchorY": 41}
+                    # --- DADOS PARA O MAPA ---
+                    dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
 
-                        df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
+                    # --- CENTRO ---
+                    lat_center = float(df_map["LAT"].mean())
+                    lon_center = float(df_map["LON"].mean())
 
-                        # --- DADOS PARA O MAPA ---
-                        dados_mapa = df_map[['LON', 'LAT', 'COR_PINO', 'COR_RAIO', 'ICON', 'TOOLTIP']].to_dict(orient="records")
+                    import pydeck as pdk
 
-                        # --- CENTRO ---
-                        lat_center = float(df_map['LAT'].mean())
-                        lon_center = float(df_map['LON'].mean())
+                    # --- CÍRCULO 1 KM ---
+                    layer_raio = pdk.Layer(
+                        "CircleLayer",
+                        data=dados_mapa,
+                        get_position="[LON, LAT]",
+                        get_radius=1000,
+                        radius_units="meters",
+                        get_fill_color="COR_RAIO",
+                        get_line_color=[120, 120, 120, 180],
+                        line_width_min_pixels=2,
+                        filled=True,
+                        stroked=True,
+                        pickable=False,
+                    )
 
-                        import pydeck as pdk
+                    # --- PINOS ---
+                    layer_pinos = pdk.Layer(
+                        "IconLayer",
+                        data=dados_mapa,
+                        get_position="[LON, LAT]",
+                        get_icon="ICON",
+                        get_size=4,
+                        size_scale=10,
+                        pickable=True,
+                    )
 
-                        # --- CÍRCULO 1 KM ---
-                        layer_raio = pdk.Layer(
-                            "CircleLayer",
-                            data=dados_mapa,
-                            get_position='[LON, LAT]',
-                            get_radius=1000,
-                            radius_units='meters',
-                            get_fill_color="COR_RAIO",
-                            get_line_color=[120, 120, 120, 180],
-                            line_width_min_pixels=2,
-                            filled=True,
-                            stroked=True,
-                            pickable=False,
-                        )
+                    view_state = pdk.ViewState(
+                        latitude=lat_center,
+                        longitude=lon_center,
+                        zoom=11,
+                        pitch=0
+                    )
 
-                        # --- PINOS ---
-                        layer_pinos = pdk.Layer(
-                            "IconLayer",
-                            data=dados_mapa,
-                            get_position='[LON, LAT]',
-                            get_icon="ICON",
-                            get_size=4,
-                            size_scale=10,
-                            pickable=True,
-                        )
+                    tooltip = {"text": "{TOOLTIP}"}
 
-                        view_state = pdk.ViewState(
-                            latitude=lat_center,
-                            longitude=lon_center,
-                            zoom=11,
-                            pitch=0
-                        )
-
-                        tooltip = {"text": "{TOOLTIP}"}
-
-                        st.pydeck_chart(
-                            pdk.Deck(
-                                layers=[layer_raio, layer_pinos],
-                                initial_view_state=view_state,
-                                tooltip=tooltip,
-                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                            ),
-                            use_container_width=True
-                        )
-
-                else:
-                    st.info("Coluna COORDENADAS não encontrada na BASE.")
+                    st.pydeck_chart(
+                        pdk.Deck(
+                            layers=[layer_raio, layer_pinos],
+                            initial_view_state=view_state,
+                            tooltip=tooltip,
+                            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                        ),
+                        use_container_width=True
+                    )
 
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
+
 
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
