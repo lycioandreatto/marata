@@ -258,10 +258,10 @@ MAPA_EMAIL_VENDEDORES = {
 
 # --- MAPEAMENTO DE CONTATOS (Fácil de alterar) ---
 MAPA_EMAILS = {
-    "BARBARA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br","marciajanaina@marata.com.br"],
-    "THAIS": ["thais.oliveira@marata.com.br","marciajanaina@marata.com.br"],
+    "BÁRBARA COSTA": ["barbara.costa@marata.com.br", "kaio.gomes@marata.com.br","marciajanaina@marata.com.br"],
+    "THAIS OLIVEIRA": ["thais.oliveira@marata.com.br","marciajanaina@marata.com.br"],
     "REGIANE": ["regiane.santana@marata.com.br","marciajanaina@marata.com.br"],
-    "ALLANA": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br","marciajanaina@marata.com.br"],
+    "ALLANA ANDRADE": ["allana.menezes@marata.com.br", "danilo.matos@marata.com.br","marciajanaina@marata.com.br"],
     "ROBERIO": ["roberio@marata.com.br", "dione.lima@marata.com.br","marciajanaina@marata.com.br"]
 }
 
@@ -676,7 +676,7 @@ fuso_br = pytz.timezone('America/Sao_Paulo')
 
 # Administrador e Analista Especial
 NOME_ADMIN = "LYCIO"
-LISTA_ANALISTA = ["BARBARA","THAIS","ROBERIO","CAROL","REGIANE","ALLANA"]
+LISTA_ANALISTA = ["BÁRBARA COSTA","THAIS OLIVEIRA","ROBERIO","CAROL","REGIANE","ALLANA ANDRADE"]
 NOME_DIRETORIA = "ALDO"
 
 # --- FUNÇÕES DE EXPORTAÇÃO ---
