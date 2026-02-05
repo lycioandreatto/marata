@@ -9,3 +9,4 @@ streamlit-js-eval
 folium
 streamlit-folium
 plotly
+openai>=1.0.0
