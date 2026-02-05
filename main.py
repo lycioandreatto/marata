@@ -6135,82 +6135,56 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 with c_dt1:
                     st.info("Sem datas válidas para filtrar no modo selecionado.")
 
-                       # ============================
-            # ✅ PUXA CIDADE/ESTADO DA BASE (SEM DEPENDER DO NOME EXATO)
-            # BASE: Cliente | Local | Estado
-            # AGENDA: CÓDIGO CLIENTE (pode variar nome/acentos/espaço)
+                      # ============================
+            # ✅ PUXA CIDADE (Local) E ESTADO (Estado) DA BASE
+            # BASE: Cliente (código) | Local (cidade) | Estado (UF)
+            # AGENDA: CÓDIGO CLIENTE
             # ============================
             try:
-                # garante colunas finais (pra aparecer na tabela mesmo se der tudo vazio)
+                # Garante que as colunas existam no df_user (pra tabela mostrar mesmo se ficar vazio)
                 if "LOCAL" not in df_user.columns:
                     df_user["LOCAL"] = ""
                 if "ESTADO" not in df_user.columns:
                     df_user["ESTADO"] = ""
 
-                if df_base is not None and not df_base.empty and df_user is not None and not df_user.empty:
-                    # --- mapeia colunas da BASE de forma robusta ---
-                    base_cols = {str(c).strip().upper(): c for c in df_base.columns}
-                    col_cliente_base = base_cols.get("CLIENTE")
-                    col_local_base   = base_cols.get("LOCAL")
-                    col_estado_base  = base_cols.get("ESTADO")
+                if df_base is not None and not df_base.empty and "CÓDIGO CLIENTE" in df_user.columns:
+                    # Normaliza chave da BASE (Cliente = código)
+                    df_loc = df_base[["Cliente", "Local", "Estado"]].drop_duplicates(subset=["Cliente"]).copy()
 
-                    # --- mapeia a coluna "CÓDIGO CLIENTE" da AGENDA de forma robusta ---
-                    user_cols = {str(c).strip().upper(): c for c in df_user.columns}
-                    col_cod_agenda = (
-                        user_cols.get("CÓDIGO CLIENTE")
-                        or user_cols.get("CODIGO CLIENTE")
-                        or user_cols.get("COD CLIENTE")
-                        or user_cols.get("CLIENTE")  # fallback (caso sua agenda use "CLIENTE" como código)
+                    df_loc["Cliente"] = (
+                        df_loc["Cliente"]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\.0$", "", regex=True)
                     )
 
-                    # DEBUG (aparece na tela pra confirmar o que ele achou)
-                    # st.caption(f"DEBUG BASE: {col_cliente_base=} | {col_local_base=} | {col_estado_base=}")
-                    # st.caption(f"DEBUG AGENDA: {col_cod_agenda=}")
+                    # Normaliza chave da AGENDA
+                    df_user["CÓDIGO CLIENTE"] = (
+                        df_user["CÓDIGO CLIENTE"]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\.0$", "", regex=True)
+                    )
 
-                    if col_cliente_base and col_local_base and col_estado_base and col_cod_agenda:
-                        df_loc = df_base[[col_cliente_base, col_local_base, col_estado_base]].drop_duplicates(
-                            subset=[col_cliente_base]
-                        ).copy()
+                    # Merge
+                    df_user = df_user.merge(
+                        df_loc.rename(columns={"Local": "_LOCAL_BASE", "Estado": "_ESTADO_BASE"}),
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left"
+                    )
 
-                        # normaliza chave BASE
-                        df_loc[col_cliente_base] = (
-                            df_loc[col_cliente_base]
-                            .astype(str)
-                            .str.strip()
-                            .str.replace(r"\.0$", "", regex=True)
-                        )
+                    # Preenche colunas finais
+                    df_user["LOCAL"] = df_user["_LOCAL_BASE"].fillna("").astype(str).replace(["nan", "None"], "")
+                    df_user["ESTADO"] = df_user["_ESTADO_BASE"].fillna("").astype(str).replace(["nan", "None"], "")
 
-                        # normaliza chave AGENDA
-                        df_user[col_cod_agenda] = (
-                            df_user[col_cod_agenda]
-                            .astype(str)
-                            .str.strip()
-                            .str.replace(r"\.0$", "", regex=True)
-                        )
+                    # Limpa colunas auxiliares do merge
+                    df_user = df_user.drop(columns=["Cliente", "_LOCAL_BASE", "_ESTADO_BASE"], errors="ignore")
 
-                        df_loc = df_loc.rename(
-                            columns={
-                                col_cliente_base: "_BASE_CLIENTE",
-                                col_local_base: "_BASE_LOCAL",
-                                col_estado_base: "_BASE_ESTADO",
-                            }
-                        )
-
-                        df_user = df_user.merge(
-                            df_loc,
-                            left_on=col_cod_agenda,
-                            right_on="_BASE_CLIENTE",
-                            how="left"
-                        )
-
-                        # grava nas colunas finais (que você usa na tabela)
-                        df_user["LOCAL"] = df_user["_BASE_LOCAL"].astype(str).fillna("").replace(["nan", "None"], "")
-                        df_user["ESTADO"] = df_user["_BASE_ESTADO"].astype(str).fillna("").replace(["nan", "None"], "")
-
-                        # limpa extras
-                        df_user = df_user.drop(columns=["_BASE_CLIENTE", "_BASE_LOCAL", "_BASE_ESTADO"], errors="ignore")
             except Exception as e:
                 st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
+
+            # ============================
 
             # ============================
 
