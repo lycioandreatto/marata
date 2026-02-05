@@ -310,6 +310,88 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
         st.error(f"Erro no envio do e-mail de validação: {e}")
         return False
 
+# ============================
+# ✅ E-MAILS FIXOS PARA RECEBER A TABELA DA AGENDA
+# (você pode editar depois quando quiser)
+# ============================
+EMAILS_ENVIO_AGENDA = [
+    "lycio.oliveira@marata.com.br",
+    # "financeiro@marata.com.br",
+    # "marciajanaina@marata.com.br",
+]
+
+def enviar_excel_agenda_por_email(destinatarios, df_agenda_filtrada):
+    """
+    Envia um Excel por e-mail com APENAS as colunas:
+    DATA, CLIENTE, ESTADO, LOCAL, KM_PREVISTO
+    """
+    import smtplib
+    import io
+    import pandas as pd
+    from email.message import EmailMessage
+
+    # ✅ garante colunas obrigatórias
+    colunas = ["DATA", "CLIENTE", "ESTADO", "LOCAL", "KM_PREVISTO"]
+    df_tmp = df_agenda_filtrada.copy()
+
+    for c in colunas:
+        if c not in df_tmp.columns:
+            df_tmp[c] = ""
+
+    df_envio = df_tmp[colunas].copy()
+
+    # ✅ limpa NaN
+    df_envio = df_envio.fillna("")
+
+    # ✅ gera Excel em memória
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_envio.to_excel(writer, index=False, sheet_name="AGENDA")
+
+        # Ajuste simples de largura
+        worksheet = writer.sheets["AGENDA"]
+        for i, col_name in enumerate(df_envio.columns):
+            try:
+                max_len = max([len(str(col_name))] + [len(str(v)) for v in df_envio[col_name].astype(str).tolist()])
+                worksheet.set_column(i, i, min(max_len + 2, 45))
+            except Exception:
+                pass
+
+    output.seek(0)
+
+    # ✅ credenciais do secrets
+    email_origem = st.secrets["email"]["sender_email"]
+    senha_origem = st.secrets["email"]["sender_password"]
+    smtp_server = st.secrets["email"]["smtp_server"]
+    smtp_port = st.secrets["email"]["smtp_port"]
+
+    # ✅ monta e-mail
+    msg = EmailMessage()
+    msg["From"] = f"MARATÁ-GVP <{email_origem}>"
+    msg["To"] = ", ".join(destinatarios)
+    msg["Subject"] = "📋 Agenda - Tabela (DATA, CLIENTE, ESTADO, LOCAL, KM_PREVISTO)"
+    msg.set_content(
+        "Olá,\n\nSegue em anexo a tabela da agenda com as colunas: DATA, CLIENTE, ESTADO, LOCAL, KM_PREVISTO.\n\nAtenciosamente,\nSistema Maratá GVP."
+    )
+
+    msg.add_attachment(
+        output.read(),
+        maintype="application",
+        subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="agenda_filtrada.xlsx"
+    )
+
+    # ✅ envia
+    server = smtplib.SMTP(smtp_server, smtp_port)
+    server.starttls()
+    server.login(email_origem, senha_origem)
+    server.send_message(msg)
+    server.quit()
+
+    return True
+
+
+
 
 
 def enviar_resumo_rota(destinatarios_lista, vendedor, dados_resumo, nome_analista, taxa, hora, link):
@@ -6234,6 +6316,44 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 "HIERARQUIAS_VENDIDAS"
             ]
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
+
+
+                        # ============================
+            # ✅ ENVIAR TABELA POR E-MAIL (APENAS 5 COLUNAS)
+            # ============================
+            with st.expander("📧 Enviar tabela por e-mail", expanded=False):
+                st.caption("Será enviado um Excel somente com: DATA, CLIENTE, ESTADO, LOCAL, KM_PREVISTO")
+
+                # ✅ lista base (editável no código)
+                emails_base = EMAILS_ENVIO_AGENDA if isinstance(EMAILS_ENVIO_AGENDA, list) else []
+
+                # ✅ permite escolher pra quem vai (e você pode adicionar no código depois)
+                emails_sel = st.multiselect(
+                    "Destinatários:",
+                    options=sorted(list(set(emails_base))),
+                    default=sorted(list(set(emails_base))),
+                    key="emails_envio_agenda"
+                )
+
+                col_e1, col_e2 = st.columns([0.7, 0.3])
+                with col_e1:
+                    st.info("Se quiser mudar os e-mails depois, edite a lista EMAILS_ENVIO_AGENDA no código.")
+                with col_e2:
+                    if st.button("📨 Enviar tabela por e-mail", use_container_width=True, key="btn_enviar_agenda_email"):
+                        try:
+                            if not emails_sel:
+                                st.warning("Selecione pelo menos 1 e-mail.")
+                            else:
+                                # ✅ manda o df_user (já filtrado) e a função escolhe só as 5 colunas
+                                ok = enviar_excel_agenda_por_email(emails_sel, df_user)
+
+                                if ok:
+                                    st.success(f"E-mail enviado para: {', '.join(emails_sel)}")
+                        except Exception as e:
+                            st.error(f"Falha ao enviar e-mail: {e}")
+
+            st.markdown("---")
+
 
             # ============================
             # ✅ EXPORTAR (EXCEL + PDF) — TABELA COMO NA TELA
