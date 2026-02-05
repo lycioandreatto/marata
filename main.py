@@ -6135,59 +6135,51 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 with c_dt1:
                     st.info("Sem datas válidas para filtrar no modo selecionado.")
 
-            # ============================
-            # ✅ PUXA CIDADE/ESTADO DA BASE
+                      # ============================
+            # ✅ PUXA CIDADE/ESTADO DA BASE (robusto)
             # BASE: Cliente | Local | Estado
             # AGENDA: CÓDIGO CLIENTE
             # ============================
             try:
-                # garante colunas COM O NOME EXATO que você quer mostrar na tabela
-                if "Local" not in df_user.columns:
-                    df_user["Local"] = ""
-                if "Estado" not in df_user.columns:
-                    df_user["Estado"] = ""
+                # garante colunas no df_user (pra tabela aparecer mesmo se não der merge)
+                if "LOCAL" not in df_user.columns:
+                    df_user["LOCAL"] = ""
+                if "ESTADO" not in df_user.columns:
+                    df_user["ESTADO"] = ""
 
-                if df_base is not None and not df_base.empty:
-                    # pega colunas exatamente como estão na BASE (case-insensitive)
-                    base_cols_map = {str(c).strip().upper(): c for c in df_base.columns}
-                    col_cliente_base = base_cols_map.get("CLIENTE")
-                    col_local_base = base_cols_map.get("LOCAL")
-                    col_estado_base = base_cols_map.get("ESTADO")
+                if df_base is not None and not df_base.empty and ("CÓDIGO CLIENTE" in df_user.columns):
+                    # normaliza chave no df_user
+                    df_user["CÓDIGO CLIENTE"] = (
+                        df_user["CÓDIGO CLIENTE"]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\.0$", "", regex=True)
+                    )
 
-                    if col_cliente_base and col_local_base and col_estado_base and ("CÓDIGO CLIENTE" in df_user.columns):
-                        df_loc = df_base[[col_cliente_base, col_local_base, col_estado_base]].drop_duplicates(
-                            subset=[col_cliente_base]
-                        ).copy()
+                    # normaliza chave na BASE
+                    df_loc = df_base[["Cliente", "Local", "Estado"]].drop_duplicates(subset=["Cliente"]).copy()
+                    df_loc["Cliente"] = (
+                        df_loc["Cliente"]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\.0$", "", regex=True)
+                    )
 
-                        # normaliza chave da BASE
-                        df_loc[col_cliente_base] = (
-                            df_loc[col_cliente_base]
-                            .astype(str)
-                            .str.strip()
-                            .str.replace(r"\.0$", "", regex=True)
-                        )
+                    # merge
+                    df_user = df_user.merge(
+                        df_loc,
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left"
+                    )
 
-                        # normaliza chave do df_user
-                        df_user["CÓDIGO CLIENTE"] = (
-                            df_user["CÓDIGO CLIENTE"]
-                            .astype(str)
-                            .str.strip()
-                            .str.replace(r"\.0$", "", regex=True)
-                        )
+                    # joga nas colunas finais que você usa na tabela (MAIÚSCULAS)
+                    df_user["LOCAL"] = df_user["Local"].astype(str).fillna("")
+                    df_user["ESTADO"] = df_user["Estado"].astype(str).fillna("")
 
-                        df_user = df_user.merge(
-                            df_loc,
-                            left_on="CÓDIGO CLIENTE",
-                            right_on=col_cliente_base,
-                            how="left"
-                        )
+                    # remove colunas extras do merge
+                    df_user = df_user.drop(columns=["Cliente", "Local", "Estado"], errors="ignore")
 
-                        # joga nos nomes finais EXATOS
-                        df_user["Local"] = df_user[col_local_base].astype(str).fillna("")
-                        df_user["Estado"] = df_user[col_estado_base].astype(str).fillna("")
-
-                        # limpa colunas extras do merge
-                        df_user = df_user.drop(columns=[col_cliente_base, col_local_base, col_estado_base], errors="ignore")
             except Exception as e:
                 st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
 
