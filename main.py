@@ -6135,48 +6135,61 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 with c_dt1:
                     st.info("Sem datas válidas para filtrar no modo selecionado.")
 
-            # ============================
-            # ✅ PUXA CIDADE (Local) + ESTADO (Estado) DA ABA BASE
-            # - BASE: Cliente | Local | Estado
-            # - AGENDA: CÓDIGO CLIENTE
-            # ============================
-            try:
-                if (
-                    df_base is not None
-                    and not df_base.empty
-                    and ("Cliente" in df_base.columns)
-                    and ("Local" in df_base.columns)
-                    and ("Estado" in df_base.columns)
-                ):
-                    df_loc = df_base[["Cliente", "Local", "Estado"]].drop_duplicates("Cliente").copy()
+           # ============================
+# ✅ PUXA CIDADE/ESTADO DA BASE (robusto)
+# BASE: Cliente | Local | Estado
+# AGENDA: CÓDIGO CLIENTE
+# ============================
+try:
+    # garante colunas no df_user (pra tabela aparecer mesmo se não der merge)
+    if "LOCAL" not in df_user.columns:
+        df_user["LOCAL"] = ""
+    if "ESTADO" not in df_user.columns:
+        df_user["ESTADO"] = ""
 
-                    df_loc["Cliente"] = (
-                        df_loc["Cliente"]
-                        .astype(str)
-                        .str.strip()
-                        .str.replace(r"\.0$", "", regex=True)
-                    )
+    if df_base is not None and not df_base.empty:
+        # normaliza nomes de colunas da BASE (pra não depender de maiúsc/minúsc)
+        base_cols_map = {str(c).strip().upper(): c for c in df_base.columns}
 
-                    df_user["CÓDIGO CLIENTE"] = (
-                        df_user["CÓDIGO CLIENTE"]
-                        .astype(str)
-                        .str.strip()
-                        .str.replace(r"\.0$", "", regex=True)
-                    )
+        col_cliente_base = base_cols_map.get("CLIENTE")
+        col_local_base = base_cols_map.get("LOCAL")
+        col_estado_base = base_cols_map.get("ESTADO")
 
-                    df_user = df_user.merge(
-                        df_loc,
-                        left_on="CÓDIGO CLIENTE",
-                        right_on="Cliente",
-                        how="left"
-                    )
+        if col_cliente_base and col_local_base and col_estado_base and ("CÓDIGO CLIENTE" in df_user.columns):
+            df_loc = df_base[[col_cliente_base, col_local_base, col_estado_base]].drop_duplicates(subset=[col_cliente_base]).copy()
 
-                    # Mantém seus nomes pedidos: LOCAL e ESTADO
-                    # (LOCAL = cidade; ESTADO = estado)
-                    df_user = df_user.rename(columns={"Local": "LOCAL", "Estado": "ESTADO"})
-                    df_user = df_user.drop(columns=["Cliente"], errors="ignore")
-            except Exception as e:
-                st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
+            # normaliza chave da BASE
+            df_loc[col_cliente_base] = (
+                df_loc[col_cliente_base]
+                .astype(str)
+                .str.strip()
+                .str.replace(r"\.0$", "", regex=True)
+            )
+
+            # normaliza chave do df_user
+            df_user["CÓDIGO CLIENTE"] = (
+                df_user["CÓDIGO CLIENTE"]
+                .astype(str)
+                .str.strip()
+                .str.replace(r"\.0$", "", regex=True)
+            )
+
+            df_user = df_user.merge(
+                df_loc,
+                left_on="CÓDIGO CLIENTE",
+                right_on=col_cliente_base,
+                how="left"
+            )
+
+            # joga nos nomes finais que você quer na tabela
+            df_user["LOCAL"] = df_user[col_local_base].astype(str).fillna("")
+            df_user["ESTADO"] = df_user[col_estado_base].astype(str).fillna("")
+
+            # limpa colunas extras do merge (evita poluir)
+            df_user = df_user.drop(columns=[col_cliente_base, col_local_base, col_estado_base], errors="ignore")
+except Exception as e:
+    st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
+
 
             # --- 5. MÉTRICAS ---
             # ✅ (NOVO) Card de "fora do raio" > 50 metros
@@ -6227,7 +6240,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             cols_display = [
                 'AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA',
                 'ANALISTA', 'SUPERVISOR', 'VENDEDOR',
-                'CLIENTE', 'LOCAL', 'ESTADO', 'KM_PREVISTO',
+                'CLIENTE','ESTADO', 'LOCAL', 'KM_PREVISTO',
                 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO',
                 'HIERARQUIAS_VENDIDAS'
             ]
