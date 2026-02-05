@@ -1221,6 +1221,10 @@ if menu == "📅 Agendamentos do Dia":
         if "COORDENADAS" not in df_agenda.columns:
             df_agenda["COORDENADAS"] = ""
 
+        if "KM_PREVISTO" not in df_agenda.columns:
+            df_agenda["KM_PREVISTO"] = ""
+
+
                 # ✅ NOVO: coluna para salvar as hierarquias vendidas (em uma única linha)
         col_hier_vend = "HIERARQUIAS_VENDIDAS"
         if col_hier_vend not in df_agenda.columns:
@@ -5833,6 +5837,10 @@ elif menu == "📋 Novo Agendamento":
             if 'VENDEDOR' not in df_agenda.columns: 
                 df_agenda['VENDEDOR'] = ""
 
+            # ✅ NOVO: garante coluna de KM no df_agenda (pra salvar no Sheets)
+            if "KM_PREVISTO" not in df_agenda.columns:
+                df_agenda["KM_PREVISTO"] = ""
+
             # Normalização para comparação
             df_agenda['CÓDIGO CLIENTE'] = df_agenda['CÓDIGO CLIENTE'].astype(str)
             clientes_f['Cliente'] = clientes_f['Cliente'].astype(str)
@@ -5871,8 +5879,37 @@ elif menu == "📋 Novo Agendamento":
 
                 if clientes_sel:
                     qtd_visitas = st.number_input("Quantidade de visitas (Máx 4):", min_value=1, max_value=4, value=1)
-                    
+
                     with st.form("form_novo_v", clear_on_submit=True):
+                        # ✅ NOVO: KM previsto (formatado)
+                        km_previsto = st.text_input(
+                            "KM previsto para a visita (ex: 80 km):",
+                            value="",
+                            placeholder="80 km",
+                            key="km_previsto_novo_ag"
+                        ).strip()
+
+                        def _padroniza_km(txt):
+                            t = str(txt or "").strip().lower()
+                            t = t.replace("kms", "km").replace("kilometros", "km").replace("kilômetros", "km")
+                            t = t.replace(" ", "")
+                            if not t:
+                                return ""
+                            import re
+                            num = re.findall(r"[\d]+(?:[.,]\d+)?", t)
+                            if not num:
+                                return ""
+                            v = num[0].replace(",", ".")
+                            try:
+                                f = float(v)
+                                if f.is_integer():
+                                    return f"{int(f)} km"
+                                else:
+                                    s = f"{f:.1f}".replace(".", ",")
+                                    return f"{s} km"
+                            except:
+                                return ""
+
                         cols_datas = st.columns(qtd_visitas)
                         hoje_dt = datetime.now(fuso_br).date()
                         datas_sel = [
@@ -5888,6 +5925,8 @@ elif menu == "📋 Novo Agendamento":
                         if st.form_submit_button("💾 ENVIAR PARA APROVAÇÃO"):
                             agora = datetime.now(fuso_br)
                             novas_linhas = []
+
+                            km_fmt = _padroniza_km(km_previsto)
 
                             for j, cliente_item in enumerate(clientes_sel):
                                 cod_c, nom_c = cliente_item.split(" - ", 1)
@@ -5905,7 +5944,8 @@ elif menu == "📋 Novo Agendamento":
                                         "CLIENTE": nom_c, 
                                         "JUSTIFICATIVA": "-", 
                                         "STATUS": "Pendente",  # <--- AQUI ESTÁ A MUDANÇA PARA O WORKFLOW
-                                        "AGENDADO POR": user_atual 
+                                        "AGENDADO POR": user_atual,
+                                        "KM_PREVISTO": km_fmt
                                     })
                             
                             df_antigo = df_agenda.drop(columns=['LINHA'], errors='ignore').copy()
