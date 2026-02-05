@@ -5936,6 +5936,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- 4. FILTROS DINÂMICOS ---
             with st.expander("🎯 Filtros de Visualização", expanded=False):
                 f_col1, f_col2, f_col3 = st.columns(3)
+
                 def get_options(df, col):
                     return ["Todos"] + sorted([str(x) for x in df[col].unique() if x and str(x).lower() != 'nan'])
 
@@ -5947,9 +5948,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                 vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, 'VENDEDOR'))
 
-                if ana_f != "Todos": df_user = df_user[df_user['ANALISTA'] == ana_f]
-                if sup_f != "Todos": df_user = df_user[df_user['SUPERVISOR'] == sup_f]
-                if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
+                if ana_f != "Todos":
+                    df_user = df_user[df_user['ANALISTA'] == ana_f]
+                if sup_f != "Todos":
+                    df_user = df_user[df_user['SUPERVISOR'] == sup_f]
+                if vend_f != "Todos":
+                    df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
             # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR EM VENDEDOR / TROCA DE MODO / STATE VELHO
@@ -5999,9 +6003,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         a, b = dt_min, dt_max
 
                     # clamp
-                    if a < dt_min: a = dt_min
-                    if b > dt_max: b = dt_max
-                    if a > b: a, b = dt_min, dt_max
+                    if a < dt_min:
+                        a = dt_min
+                    if b > dt_max:
+                        b = dt_max
+                    if a > b:
+                        a, b = dt_min, dt_max
 
                     with c_dt1:
                         dt_ini, dt_fim = st.slider(
@@ -6052,11 +6059,14 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                         df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                        st.cache_data.clear()
+                        st.success("Atualizado!")
+                        time.sleep(1)
+                        st.rerun()
 
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
-            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
+            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             # ============================
@@ -6196,8 +6206,11 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                                 # Se aprovado individualmente, muda de Pendente para Planejado
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Agendado"
 
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
-                            st.cache_data.clear(); st.success("Salvo!"); time.sleep(1); st.rerun()
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
+                            st.cache_data.clear()
+                            st.success("Salvo!")
+                            time.sleep(1)
+                            st.rerun()
                     else:
                         st.warning("Apenas gestores podem alterar a aprovação.")
 
@@ -6207,18 +6220,24 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         # Reagendamento volta para Planejado ou Pendente?
                         # Aqui mantive Planejado como estava no seu código original
                         df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Agendado", "Pendente"]
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
+                        st.cache_data.clear()
+                        st.success("Reagendado!")
+                        time.sleep(1)
+                        st.rerun()
 
                 if is_admin:
                     with t3:
                         st.error("Atenção: Esta ação excluirá o registro permanentemente.")
                         if st.button("🗑️ CONFIRMAR EXCLUSÃO"):
                             df_agenda = df_agenda[df_agenda['ID'] != sel_row['ID']]
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
-                            st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
+                            st.cache_data.clear()
+                            st.success("Excluído")
+                            time.sleep(1)
+                            st.rerun()
 
-                       # ============================
+            # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
             # ============================
             st.markdown("---")
@@ -6315,7 +6334,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
                     )
 
-                    # Círculo 1km (cinza)
+                    # Círculo 1km (cinza) - mantido (não removi)
                     df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
 
                     # --- TOOLTIP ---
@@ -6344,7 +6363,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                     # --- ÍCONES ---
                     icone_vermelho = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-                    icone_verde    = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
+                    icone_verde = "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png"
 
                     def _icon_por_status(s):
                         s = str(s).strip().upper()
@@ -6360,68 +6379,67 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     lat_center = float(df_map["LAT"].mean())
                     lon_center = float(df_map["LON"].mean())
 
-                                           import pydeck as pdk
+                    import pydeck as pdk
 
-                        # --- CÍRCULO 1 KM (mais confiável com ScatterplotLayer) ---
-                        dados_mapa2 = []
-                        for d in dados_mapa:
-                            d2 = d.copy()
-                            d2["RAIO_M"] = 1000  # 1km
-                            d2["COR_RAIO_FILL"] = [120, 120, 120, 90]   # preenchimento (mais visível)
-                            d2["COR_RAIO_LINE"] = [80, 80, 80, 180]     # borda
-                            dados_mapa2.append(d2)
+                    # --- CÍRCULO 1 KM (mais confiável com ScatterplotLayer) ---
+                    dados_mapa2 = []
+                    for d in dados_mapa:
+                        d2 = d.copy()
+                        d2["RAIO_M"] = 1000  # 1km
+                        d2["COR_RAIO_FILL"] = [120, 120, 120, 90]   # preenchimento (mais visível)
+                        d2["COR_RAIO_LINE"] = [80, 80, 80, 180]     # borda
+                        dados_mapa2.append(d2)
 
-                        layer_raio = pdk.Layer(
-                            "ScatterplotLayer",
-                            data=dados_mapa2,
-                            get_position="[LON, LAT]",
-                            get_radius="RAIO_M",
-                            radius_units="meters",
-                            get_fill_color="COR_RAIO_FILL",
-                            get_line_color="COR_RAIO_LINE",
-                            line_width_min_pixels=2,
-                            stroked=True,
-                            filled=True,
-                            pickable=False,
-                        )
+                    layer_raio = pdk.Layer(
+                        "ScatterplotLayer",
+                        data=dados_mapa2,
+                        get_position="[LON, LAT]",
+                        get_radius="RAIO_M",
+                        radius_units="meters",
+                        get_fill_color="COR_RAIO_FILL",
+                        get_line_color="COR_RAIO_LINE",
+                        line_width_min_pixels=2,
+                        stroked=True,
+                        filled=True,
+                        pickable=False,
+                    )
 
-                        # --- PINOS ---
-                        layer_pinos = pdk.Layer(
-                            "IconLayer",
-                            data=dados_mapa2,
-                            get_position="[LON, LAT]",
-                            get_icon="ICON",
-                            get_size=4,
-                            size_scale=10,
-                            pickable=True,
-                        )
+                    # --- PINOS ---
+                    layer_pinos = pdk.Layer(
+                        "IconLayer",
+                        data=dados_mapa2,
+                        get_position="[LON, LAT]",
+                        get_icon="ICON",
+                        get_size=4,
+                        size_scale=10,
+                        pickable=True,
+                    )
 
-                        view_state = pdk.ViewState(
-                            latitude=lat_center,
-                            longitude=lon_center,
-                            zoom=11,
-                            pitch=0
-                        )
+                    view_state = pdk.ViewState(
+                        latitude=lat_center,
+                        longitude=lon_center,
+                        zoom=11,
+                        pitch=0
+                    )
 
-                        tooltip = {"text": "{TOOLTIP}"}
+                    tooltip = {"text": "{TOOLTIP}"}
 
-                        st.pydeck_chart(
-                            pdk.Deck(
-                                layers=[layer_raio, layer_pinos],
-                                initial_view_state=view_state,
-                                tooltip=tooltip,
-                                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                            ),
-                            use_container_width=True
-                        )
-
+                    st.pydeck_chart(
+                        pdk.Deck(
+                            layers=[layer_raio, layer_pinos],
+                            initial_view_state=view_state,
+                            tooltip=tooltip,
+                            map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                        ),
+                        use_container_width=True
+                    )
 
             except Exception as e:
                 st.warning(f"Não foi possível renderizar o mapa: {e}")
 
-
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
+
 
 
 
