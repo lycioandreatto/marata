@@ -10,3 +10,4 @@ folium
 streamlit-folium
 plotly
 openai>=1.0.0
+reportlab>=4.0.0
