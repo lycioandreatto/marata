@@ -1,8 +1,12 @@
 import streamlit as st
 
+st.write("RUN_SUPABASE_TEST =", st.secrets.get("RUN_SUPABASE_TEST", "0"))
+
 if str(st.secrets.get("RUN_SUPABASE_TEST", "0")) == "1":
     import teste_supabase
-    raise SystemExit
+    teste_supabase.run()
+    st.stop()
+
 
 
 import streamlit as st
