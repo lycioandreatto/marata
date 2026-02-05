@@ -1,7 +1,7 @@
-import os
+import streamlit as st
 
-if os.getenv("RUN_SUPABASE_TEST", "0") == "1":
-    import teste_supabase  # tem que existir teste_supabase.py
+if str(st.secrets.get("RUN_SUPABASE_TEST", "0")) == "1":
+    import teste_supabase
     raise SystemExit
 
 
