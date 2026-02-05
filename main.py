@@ -1,3 +1,10 @@
+import os
+
+if os.getenv("RUN_SUPABASE_TEST", "0") == "1":
+    import teste_supabase  # tem que existir teste_supabase.py
+    raise SystemExit
+
+
 import streamlit as st
 from geoloc import capturar_coordenadas
 import numpy as np
