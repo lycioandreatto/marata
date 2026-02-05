@@ -1052,7 +1052,7 @@ with st.sidebar:
         "📋 Novo Agendamento",
         texto_ver_agenda
     ]
-    opcoes_menu.append("🗺️ MAPA FATURADO")
+    
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     opcoes_menu.append("📚 Perfil do Cliente")
 
@@ -1060,6 +1060,9 @@ with st.sidebar:
         opcoes_menu.append("🧪 TESTES")
         opcoes_menu.append("📊 KPI Aprovação Analistas")
         opcoes_menu.append("🚚 Logística")
+        opcoes_menu.append("🔎 BUSCAS (IA + PDF)")
+        opcoes_menu.append("🗺️ MAPA FATURADO")
+
 
     
     if eh_gestao:
@@ -2456,6 +2459,461 @@ elif menu == "🚚 Logística":
 
                     except Exception as e:
                         st.warning(f"Não foi possível renderizar o mapa da logística: {e}")
+
+
+# ============================
+# 🔎 BUSCAS (IA + PDF) — FATURADO
+# Cole este bloco NO MESMO NÍVEL dos outros "elif menu == ..."
+# Requer: st.secrets["openai"]["api_key"]
+# ============================
+
+elif menu == "🔎 BUSCAS (IA + PDF)":
+    import re
+    import json
+    import io
+    import pandas as pd
+    from datetime import datetime
+    from openai import OpenAI
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import cm
+
+    st.header("🔎 Buscas Inteligentes — FATURADO (IA + PDF)")
+
+    # ============================
+    # Helpers (formatos / parsing)
+    # ============================
+    def _to_num(v):
+        try:
+            s = str(v).strip()
+            if s.lower() in ["nan", "none", ""]:
+                return 0.0
+            s = s.replace(".", "").replace(",", ".")
+            return float(s)
+        except Exception:
+            return 0.0
+
+    def _fmt_brl(v):
+        try:
+            x = float(v)
+        except Exception:
+            x = 0.0
+        s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"R$ {s}"
+
+    def _fmt_int(v):
+        try:
+            x = float(v)
+        except Exception:
+            x = 0.0
+        return f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def _uf_from_escrv(x):
+        # "SE1" -> "SE"
+        s = str(x).strip().upper()
+        m = re.match(r"^([A-Z]{2})", s)
+        return m.group(1) if m else ""
+
+    def _parse_date_any(v):
+        # aceita dd/mm/aaaa e coisas parecidas
+        return pd.to_datetime(v, dayfirst=True, errors="coerce")
+
+    # ============================
+    # 1) Ler FATURADO
+    # ============================
+    try:
+        df_faturado = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+    except Exception as e:
+        df_faturado = None
+        st.error(f"Erro ao ler a aba FATURADO: {e}")
+
+    if df_faturado is None or df_faturado.empty:
+        st.warning("A aba FATURADO está vazia ou não foi carregada.")
+        st.stop()
+
+    df_faturado = df_faturado.copy()
+    df_faturado.columns = [str(c).strip() for c in df_faturado.columns]
+
+    # ============================
+    # 2) Detectar colunas
+    # ============================
+    def _find_col(possiveis):
+        cols_upper = {str(c).strip().upper(): c for c in df_faturado.columns}
+        for p in possiveis:
+            k = str(p).strip().upper()
+            if k in cols_upper:
+                return cols_upper[k]
+        return None
+
+    col_cliente = _find_col(["Cliente", "CLIENTE"])
+    col_regiao_vendas = _find_col(["Região de vendas", "REGIÃO DE VENDAS", "REGIAO DE VENDAS"])
+    col_hier = _find_col(["Hierarquia de produtos", "HIERARQUIA DE PRODUTOS", "HIERARQUIA"])
+    col_data = _find_col(["Data fat.", "DATA FAT.", "DATA", "DATA FATURAMENTO", "DATA FATURADO"])
+    col_escrv = _find_col(["EscrV", "ESCRV"])
+    col_analista = _find_col(["ANALISTA", "Analista"])
+    col_qtd = _find_col(["Qtd Vendas (S/Dec)", "QTD VENDAS (S/DEC)", "Qtd Vendas", "QUANTIDADE"])
+    col_rec = _find_col(["Receita", "RECEITA", "FATURAMENTO", "VALOR"])
+
+    faltando = []
+    if not col_rec: faltando.append("Receita")
+    if not col_qtd: faltando.append("Qtd Vendas (S/Dec)")
+    if not col_escrv: faltando.append("EscrV")
+    if not col_data: faltando.append("Data fat.")
+    if faltando:
+        st.error(f"FATURADO sem colunas obrigatórias: {', '.join(faltando)}")
+        st.stop()
+
+    # ============================
+    # 3) Preparar colunas base (UF, numéricos, datas)
+    # ============================
+    df_faturado["_REC_"] = df_faturado[col_rec].apply(_to_num)
+    df_faturado["_QTD_"] = df_faturado[col_qtd].apply(_to_num)
+    df_faturado["_UF_"] = df_faturado[col_escrv].apply(_uf_from_escrv)
+    df_faturado["_DT_"] = df_faturado[col_data].apply(_parse_date_any)
+
+    df_faturado = df_faturado.dropna(subset=["_DT_"]).copy()
+    if df_faturado.empty:
+        st.warning("Sem datas válidas em 'Data fat.' após conversão.")
+        st.stop()
+
+    dt_min = df_faturado["_DT_"].min().date()
+    dt_max = df_faturado["_DT_"].max().date()
+
+    # ============================
+    # 4) UI: pedido do usuário
+    # ============================
+    st.markdown("### ✍️ Peça do seu jeito")
+    exemplo = (
+        "Exemplos:\n"
+        "- Quero o faturado dos últimos 3 meses do cliente BOMPREÇO.\n"
+        "- Quero o faturado do vendedor/região NORDESTE no mês 01/2026.\n"
+        "- Hierarquia FARINHA DE MILHO no estado SE.\n"
+    )
+    st.caption(exemplo)
+
+    user_query = st.text_area(
+        "Descreva o que você quer (em português):",
+        placeholder="Ex: faturado dos últimos 3 meses do cliente X, por receita, com resumo e top produtos…",
+        height=120
+    )
+
+    modo_valor = st.radio(
+        "Métrica principal do relatório:",
+        ["Receita", "Quantidade"],
+        horizontal=True
+    )
+
+    col_btn1, col_btn2 = st.columns([0.7, 0.3])
+    with col_btn2:
+        gerar = st.button("🧠 Gerar relatório", use_container_width=True)
+
+    # ============================
+    # 5) Função IA -> JSON filtros
+    # ============================
+    def _ai_to_filters(texto):
+        """
+        Retorna dict padronizado:
+        {
+          "periodo": {"tipo": "ultimos_meses"|"mes_ano"|"intervalo", "meses": 3, "mes": 1, "ano": 2026, "ini": "2026-01-01", "fim":"2026-01-31"},
+          "cliente": "..."|null,
+          "hierarquia": "..."|null,
+          "uf": ["SE","BA"]|null,
+          "regiao_vendas": "..."|null,
+          "analista": "..."|null
+        }
+        """
+        api_key = st.secrets.get("openai", {}).get("api_key", "")
+        if not api_key:
+            raise ValueError("Falta st.secrets['openai']['api_key'].")
+
+        client = OpenAI(api_key=api_key)
+
+        # lista de UFs pra ajudar o modelo
+        ufs_validas = [
+            "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
+            "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
+        ]
+
+        instrucoes = f"""
+Você é um parser. Converta o pedido do usuário em JSON PURO (sem markdown).
+Respeite exatamente este schema de chaves:
+- periodo: objeto com "tipo" (ultimos_meses | mes_ano | intervalo | nenhum)
+    - se tipo=ultimos_meses: incluir "meses" (int)
+    - se tipo=mes_ano: incluir "mes" (1-12) e "ano" (YYYY)
+    - se tipo=intervalo: incluir "ini" e "fim" no formato YYYY-MM-DD
+- cliente: string ou null
+- hierarquia: string ou null
+- uf: lista de strings (UF) ou null (use apenas UFs válidas: {ufs_validas})
+- regiao_vendas: string ou null
+- analista: string ou null
+
+Regras:
+- Se o usuário falar "últimos X meses", use ultimos_meses.
+- Se falar "mês 01/2026" ou "jan/2026", use mes_ano.
+- Se der datas, use intervalo.
+- Se não tiver período explícito, tipo=nenhum.
+- UF: se usuário mencionar "SE1" ou "Sergipe", normalize para "SE".
+Retorne SOMENTE JSON.
+"""
+
+        # Responses API (SDK oficial) :contentReference[oaicite:1]{index=1}
+        resp = client.responses.create(
+            model="gpt-4o-mini",
+            input=[
+                {"role": "system", "content": instrucoes},
+                {"role": "user", "content": texto}
+            ],
+        )
+        raw = (resp.output_text or "").strip()
+
+        # tenta extrair JSON mesmo se vier sujeira
+        try:
+            return json.loads(raw)
+        except Exception:
+            m = re.search(r"\{.*\}", raw, flags=re.S)
+            if not m:
+                raise ValueError("IA não retornou JSON válido.")
+            return json.loads(m.group(0))
+
+    # ============================
+    # 6) Aplicar filtros no df
+    # ============================
+    def _apply_filters(df, f):
+        out = df.copy()
+
+        # cliente
+        if col_cliente and f.get("cliente"):
+            val = str(f["cliente"]).strip()
+            out = out[out[col_cliente].astype(str).str.contains(val, case=False, na=False)]
+
+        # hierarquia
+        if col_hier and f.get("hierarquia"):
+            val = str(f["hierarquia"]).strip()
+            out = out[out[col_hier].astype(str).str.contains(val, case=False, na=False)]
+
+        # UF
+        if f.get("uf"):
+            ufs = [str(x).strip().upper() for x in f["uf"] if str(x).strip()]
+            if ufs:
+                out = out[out["_UF_"].isin(ufs)]
+
+        # região de vendas (vendedor)
+        if col_regiao_vendas and f.get("regiao_vendas"):
+            val = str(f["regiao_vendas"]).strip()
+            out = out[out[col_regiao_vendas].astype(str).str.contains(val, case=False, na=False)]
+
+        # analista
+        if col_analista and f.get("analista"):
+            val = str(f["analista"]).strip()
+            out = out[out[col_analista].astype(str).str.contains(val, case=False, na=False)]
+
+        # período
+        per = f.get("periodo", {}) or {}
+        tipo = str(per.get("tipo", "nenhum")).strip().lower()
+
+        if tipo == "ultimos_meses":
+            meses = int(per.get("meses", 3))
+            ref = out["_DT_"].max()
+            if pd.isna(ref):
+                return out.iloc[0:0]
+            # aproximação mensal simples: 30 dias * meses
+            ini = (ref - pd.Timedelta(days=30 * meses)).normalize()
+            out = out[(out["_DT_"] >= ini) & (out["_DT_"] <= ref)]
+
+        elif tipo == "mes_ano":
+            mes = int(per.get("mes", 0))
+            ano = int(per.get("ano", 0))
+            if mes >= 1 and mes <= 12 and ano >= 1900:
+                out = out[(out["_DT_"].dt.month == mes) & (out["_DT_"].dt.year == ano)]
+
+        elif tipo == "intervalo":
+            ini = pd.to_datetime(per.get("ini", ""), errors="coerce")
+            fim = pd.to_datetime(per.get("fim", ""), errors="coerce")
+            if not pd.isna(ini) and not pd.isna(fim):
+                out = out[(out["_DT_"] >= ini) & (out["_DT_"] <= fim)]
+
+        return out
+
+    # ============================
+    # 7) Gerar PDF
+    # ============================
+    def _pdf_bytes(titulo, filtros_txt, resumo_dict, tabelas):
+        buff = io.BytesIO()
+        c = canvas.Canvas(buff, pagesize=A4)
+        w, h = A4
+
+        x = 2.0 * cm
+        y = h - 2.0 * cm
+
+        def line(txt, dy=14):
+            nonlocal y
+            if y < 2.0 * cm:
+                c.showPage()
+                y = h - 2.0 * cm
+            c.drawString(x, y, txt)
+            y -= dy
+
+        c.setFont("Helvetica-Bold", 14)
+        line(titulo, dy=18)
+
+        c.setFont("Helvetica", 10)
+        line(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        line(" ")
+
+        c.setFont("Helvetica-Bold", 11)
+        line("Filtros aplicados:", dy=16)
+        c.setFont("Helvetica", 10)
+        for t in filtros_txt:
+            line(f"- {t}")
+
+        line(" ")
+        c.setFont("Helvetica-Bold", 11)
+        line("Resumo:", dy=16)
+        c.setFont("Helvetica", 10)
+        for k, v in resumo_dict.items():
+            line(f"- {k}: {v}")
+
+        for nome, df_tab in tabelas:
+            line(" ")
+            c.setFont("Helvetica-Bold", 11)
+            line(nome, dy=16)
+            c.setFont("Helvetica", 9)
+
+            # imprime só algumas linhas/colunas pra caber
+            df_small = df_tab.head(20).copy()
+
+            cols = list(df_small.columns)[:6]
+            df_small = df_small[cols]
+
+            line(" | ".join([str(c)[:18] for c in cols]), dy=14)
+            c.setFont("Helvetica", 8)
+            for _, row in df_small.iterrows():
+                vals = [str(row[c])[:18] for c in cols]
+                line(" | ".join(vals), dy=12)
+
+        c.showPage()
+        c.save()
+        buff.seek(0)
+        return buff.getvalue()
+
+    # ============================
+    # 8) Execução
+    # ============================
+    if gerar:
+        if not user_query.strip():
+            st.warning("Escreva o pedido para a IA.")
+            st.stop()
+
+        try:
+            filtros = _ai_to_filters(user_query.strip())
+        except Exception as e:
+            st.error(f"Falha na IA ao interpretar o pedido: {e}")
+            st.stop()
+
+        df_filtrado = _apply_filters(df_faturado, filtros)
+
+        if df_filtrado.empty:
+            st.warning("Sem dados com esses filtros.")
+            st.json(filtros)
+            st.stop()
+
+        # resumo
+        total_rec = float(df_filtrado["_REC_"].sum())
+        total_qtd = float(df_filtrado["_QTD_"].sum())
+        ticket = (total_rec / total_qtd) if total_qtd > 0 else 0.0
+
+        # principais tabelas
+        df_uf = (
+            df_filtrado.groupby("_UF_", as_index=False)
+            .agg(Receita=("_REC_", "sum"), Quantidade=("_QTD_", "sum"))
+            .rename(columns={"_UF_": "UF"})
+        )
+        df_uf = df_uf.sort_values("Receita" if modo_valor == "Receita" else "Quantidade", ascending=False)
+
+        df_vend = None
+        if col_regiao_vendas:
+            df_vend = (
+                df_filtrado.groupby(col_regiao_vendas, as_index=False)
+                .agg(Receita=("_REC_", "sum"), Quantidade=("_QTD_", "sum"))
+                .sort_values("Receita", ascending=False)
+            )
+
+        df_hier = None
+        if col_hier:
+            df_hier = (
+                df_filtrado.groupby(col_hier, as_index=False)
+                .agg(Receita=("_REC_", "sum"), Quantidade=("_QTD_", "sum"))
+                .sort_values("Receita", ascending=False)
+            )
+
+        # UI resumo
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Receita total (filtro)", _fmt_brl(total_rec))
+        c2.metric("Quantidade total (filtro)", _fmt_int(total_qtd))
+        c3.metric("Ticket médio (R$/un)", _fmt_brl(ticket))
+
+        st.markdown("### ✅ Filtros interpretados (IA)")
+        st.json(filtros)
+
+        st.markdown("### 🧾 Tabelas")
+        st.markdown("**Top Estados**")
+        df_show = df_uf.head(10).copy()
+        df_show["Receita"] = df_show["Receita"].apply(_fmt_brl)
+        df_show["Quantidade"] = df_show["Quantidade"].apply(_fmt_int)
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+        if df_vend is not None:
+            st.markdown("**Top Vendedores / Região de vendas**")
+            df_vshow = df_vend.head(10).copy()
+            df_vshow["Receita"] = df_vshow["Receita"].apply(_fmt_brl)
+            df_vshow["Quantidade"] = df_vshow["Quantidade"].apply(_fmt_int)
+            st.dataframe(df_vshow, use_container_width=True, hide_index=True)
+
+        if df_hier is not None:
+            st.markdown("**Top Hierarquias**")
+            df_hshow = df_hier.head(10).copy()
+            df_hshow["Receita"] = df_hshow["Receita"].apply(_fmt_brl)
+            df_hshow["Quantidade"] = df_hshow["Quantidade"].apply(_fmt_int)
+            st.dataframe(df_hshow, use_container_width=True, hide_index=True)
+
+        # montar PDF
+        filtros_txt = []
+        per = (filtros.get("periodo") or {})
+        filtros_txt.append(f"Período: {per.get('tipo','nenhum')}")
+        if filtros.get("cliente"): filtros_txt.append(f"Cliente: {filtros['cliente']}")
+        if filtros.get("hierarquia"): filtros_txt.append(f"Hierarquia: {filtros['hierarquia']}")
+        if filtros.get("uf"): filtros_txt.append(f"UF: {', '.join(filtros['uf'])}")
+        if filtros.get("regiao_vendas"): filtros_txt.append(f"Região de vendas: {filtros['regiao_vendas']}")
+        if filtros.get("analista"): filtros_txt.append(f"Analista: {filtros['analista']}")
+
+        resumo = {
+            "Receita total": _fmt_brl(total_rec),
+            "Quantidade total": _fmt_int(total_qtd),
+            "Ticket médio (R$/un)": _fmt_brl(ticket),
+            "Linhas no filtro": _fmt_int(len(df_filtrado)),
+        }
+
+        tabelas = []
+        tabelas.append(("Top Estados (UF)", df_uf.copy()))
+        if df_vend is not None:
+            tabelas.append(("Top Vendedores / Região de vendas", df_vend.copy()))
+        if df_hier is not None:
+            tabelas.append(("Top Hierarquias", df_hier.copy()))
+
+        pdf = _pdf_bytes(
+            titulo="Relatório FATURADO — Busca Inteligente (IA)",
+            filtros_txt=filtros_txt,
+            resumo_dict=resumo,
+            tabelas=tabelas
+        )
+
+        st.download_button(
+            "📥 Baixar relatório em PDF",
+            data=pdf,
+            file_name="relatorio_faturado_busca_ia.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
 
 
 
