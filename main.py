@@ -6007,7 +6007,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             df_agenda['DISTANCIA_LOG'] = pd.to_numeric(df_agenda['DISTANCIA_LOG'], errors='coerce').fillna(0)
 
         # Padronização de valores vazios
-        df_agenda['APROVACAO'] = df_agenda['APROVACAO'].fillna("Pendente").replace(["", "none", "None", "nan", "NaN"], "Pendente")
+        df_agenda['APROVACAO'] = df_agenda['APROVACAO'].fillna("Pendente").replace(
+            ["", "none", "None", "nan", "NaN"], "Pendente"
+        )
 
         # --- 2. PREPARAÇÃO DE DATAS ---
         df_agenda['DT_COMPLETA'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
@@ -6043,6 +6045,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- 4. FILTROS DINÂMICOS ---
             with st.expander("🎯 Filtros de Visualização", expanded=False):
                 f_col1, f_col2, f_col3 = st.columns(3)
+
                 def get_options(df, col):
                     return ["Todos"] + sorted([str(x) for x in df[col].unique() if x and str(x).lower() != 'nan'])
 
@@ -6054,9 +6057,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                 vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, 'VENDEDOR'))
 
-                if ana_f != "Todos": df_user = df_user[df_user['ANALISTA'] == ana_f]
-                if sup_f != "Todos": df_user = df_user[df_user['SUPERVISOR'] == sup_f]
-                if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
+                if ana_f != "Todos":
+                    df_user = df_user[df_user['ANALISTA'] == ana_f]
+                if sup_f != "Todos":
+                    df_user = df_user[df_user['SUPERVISOR'] == sup_f]
+                if vend_f != "Todos":
+                    df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
             # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR EM VENDEDOR / TROCA DE MODO / STATE VELHO
@@ -6106,9 +6112,12 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         a, b = dt_min, dt_max
 
                     # clamp
-                    if a < dt_min: a = dt_min
-                    if b > dt_max: b = dt_max
-                    if a > b: a, b = dt_min, dt_max
+                    if a < dt_min:
+                        a = dt_min
+                    if b > dt_max:
+                        b = dt_max
+                    if a > b:
+                        a, b = dt_min, dt_max
 
                     with c_dt1:
                         dt_ini, dt_fim = st.slider(
@@ -6125,6 +6134,49 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             else:
                 with c_dt1:
                     st.info("Sem datas válidas para filtrar no modo selecionado.")
+
+            # ============================
+            # ✅ PUXA CIDADE (Local) + ESTADO (Estado) DA ABA BASE
+            # - BASE: Cliente | Local | Estado
+            # - AGENDA: CÓDIGO CLIENTE
+            # ============================
+            try:
+                if (
+                    df_base is not None
+                    and not df_base.empty
+                    and ("Cliente" in df_base.columns)
+                    and ("Local" in df_base.columns)
+                    and ("Estado" in df_base.columns)
+                ):
+                    df_loc = df_base[["Cliente", "Local", "Estado"]].drop_duplicates("Cliente").copy()
+
+                    df_loc["Cliente"] = (
+                        df_loc["Cliente"]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\.0$", "", regex=True)
+                    )
+
+                    df_user["CÓDIGO CLIENTE"] = (
+                        df_user["CÓDIGO CLIENTE"]
+                        .astype(str)
+                        .str.strip()
+                        .str.replace(r"\.0$", "", regex=True)
+                    )
+
+                    df_user = df_user.merge(
+                        df_loc,
+                        left_on="CÓDIGO CLIENTE",
+                        right_on="Cliente",
+                        how="left"
+                    )
+
+                    # Mantém seus nomes pedidos: LOCAL e ESTADO
+                    # (LOCAL = cidade; ESTADO = estado)
+                    df_user = df_user.rename(columns={"Local": "LOCAL", "Estado": "ESTADO"})
+                    df_user = df_user.drop(columns=["Cliente"], errors="ignore")
+            except Exception as e:
+                st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
 
             # --- 5. MÉTRICAS ---
             # ✅ (NOVO) Card de "fora do raio" > 50 metros
@@ -6158,12 +6210,27 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Agendado"
 
                         df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                        )
+                        st.cache_data.clear()
+                        st.success("Atualizado!")
+                        time.sleep(1)
+                        st.rerun()
 
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
-            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'SUPERVISOR', 'VENDEDOR', 'CLIENTE','LOCAL','KM_PREVISTO' ,'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO', 'HIERARQUIAS_VENDIDAS']
+
+            # ✅ Mantive sua lista original e apenas GARANTI que LOCAL/ESTADO existam no df_user via merge acima.
+            cols_display = [
+                'AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA',
+                'ANALISTA', 'SUPERVISOR', 'VENDEDOR',
+                'CLIENTE', 'LOCAL', 'ESTADO', 'KM_PREVISTO',
+                'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO',
+                'HIERARQUIAS_VENDIDAS'
+            ]
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             # ============================
@@ -6303,8 +6370,15 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                                 # Se aprovado individualmente, muda de Pendente para Planejado
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Agendado"
 
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
-                            st.cache_data.clear(); st.success("Salvo!"); time.sleep(1); st.rerun()
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                            )
+                            st.cache_data.clear()
+                            st.success("Salvo!")
+                            time.sleep(1)
+                            st.rerun()
                     else:
                         st.warning("Apenas gestores podem alterar a aprovação.")
 
@@ -6313,17 +6387,35 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     if st.button("Confirmar Reagendamento"):
                         # Reagendamento volta para Planejado ou Pendente?
                         # Aqui mantive Planejado como estava no seu código original
-                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Agendado", "Pendente"]
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
-                        st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
+                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [
+                            n_data.strftime('%d/%m/%Y'),
+                            "Agendado",
+                            "Pendente"
+                        ]
+                        conn.update(
+                            spreadsheet=url_planilha,
+                            worksheet="AGENDA",
+                            data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                        )
+                        st.cache_data.clear()
+                        st.success("Reagendado!")
+                        time.sleep(1)
+                        st.rerun()
 
                 if is_admin:
                     with t3:
                         st.error("Atenção: Esta ação excluirá o registro permanentemente.")
                         if st.button("🗑️ CONFIRMAR EXCLUSÃO"):
                             df_agenda = df_agenda[df_agenda['ID'] != sel_row['ID']]
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
-                            st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
+                            conn.update(
+                                spreadsheet=url_planilha,
+                                worksheet="AGENDA",
+                                data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                            )
+                            st.cache_data.clear()
+                            st.success("Excluído")
+                            time.sleep(1)
+                            st.rerun()
 
                        # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
