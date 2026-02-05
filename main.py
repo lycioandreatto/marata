@@ -5986,57 +5986,78 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
     if df_agenda is not None and not df_agenda.empty:
         # --- 1. LIMPEZA DE DUPLICADOS E RESET DE ÍNDICE ---
         df_agenda = df_agenda.drop_duplicates(
-            subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'],
-            keep='first'
+            subset=["DATA", "VENDEDOR", "CÓDIGO CLIENTE", "STATUS"],
+            keep="first",
         ).reset_index(drop=True)
 
         # Garantir que colunas essenciais existam
-        colunas_necessarias = ['APROVACAO', 'OBS_GESTAO', 'ANALISTA', 'SUPERVISOR', 'VENDEDOR', 'DISTANCIA_LOG']
+        colunas_necessarias = [
+            "APROVACAO",
+            "OBS_GESTAO",
+            "ANALISTA",
+            "SUPERVISOR",
+            "VENDEDOR",
+            "DISTANCIA_LOG",
+        ]
         for col in colunas_necessarias:
             if col not in df_agenda.columns:
-                df_agenda[col] = 0 if col == 'DISTANCIA_LOG' else ""
+                df_agenda[col] = 0 if col == "DISTANCIA_LOG" else ""
 
         # ✅ AJUSTE (NECESSÁRIO): garantir que DISTANCIA_LOG seja numérica (senão a tabela pode ficar em branco)
-        if 'DISTANCIA_LOG' in df_agenda.columns:
-            df_agenda['DISTANCIA_LOG'] = (
-                df_agenda['DISTANCIA_LOG']
+        if "DISTANCIA_LOG" in df_agenda.columns:
+            df_agenda["DISTANCIA_LOG"] = (
+                df_agenda["DISTANCIA_LOG"]
                 .astype(str)
                 .str.replace(",", ".", regex=False)
                 .str.strip()
             )
-            df_agenda['DISTANCIA_LOG'] = pd.to_numeric(df_agenda['DISTANCIA_LOG'], errors='coerce').fillna(0)
+            df_agenda["DISTANCIA_LOG"] = pd.to_numeric(
+                df_agenda["DISTANCIA_LOG"], errors="coerce"
+            ).fillna(0)
 
         # Padronização de valores vazios
-        df_agenda['APROVACAO'] = df_agenda['APROVACAO'].fillna("Pendente").replace(
-            ["", "none", "None", "nan", "NaN"], "Pendente"
+        df_agenda["APROVACAO"] = (
+            df_agenda["APROVACAO"]
+            .fillna("Pendente")
+            .replace(["", "none", "None", "nan", "NaN"], "Pendente")
         )
 
         # --- 2. PREPARAÇÃO DE DATAS ---
-        df_agenda['DT_COMPLETA'] = pd.to_datetime(df_agenda['DATA'], dayfirst=True, errors='coerce')
+        df_agenda["DT_COMPLETA"] = pd.to_datetime(
+            df_agenda["DATA"], dayfirst=True, errors="coerce"
+        )
 
         # ✅ (NOVO) DT_REGISTRO: data/hora do registro (quando agendou)
         # aceita "dd/mm/yyyy HH:MM" e também "dd/mm/yyyy"
-        if 'REGISTRO' in df_agenda.columns:
-            df_agenda['DT_REGISTRO'] = pd.to_datetime(df_agenda['REGISTRO'], dayfirst=True, errors='coerce')
+        if "REGISTRO" in df_agenda.columns:
+            df_agenda["DT_REGISTRO"] = pd.to_datetime(
+                df_agenda["REGISTRO"], dayfirst=True, errors="coerce"
+            )
         else:
-            df_agenda['DT_REGISTRO'] = pd.NaT
+            df_agenda["DT_REGISTRO"] = pd.NaT
 
         # --- 3. LÓGICA DE FILTRO POR HIERARQUIA E STATUS DE APROVAÇÃO ---
         if is_admin or is_diretoria:
             df_user = df_agenda.copy()
             st.info("💡 Visão de Administrador: Todos os registros exibidos.")
         elif is_analista:
-            df_user = df_agenda[df_agenda['ANALISTA'].astype(str).str.upper() == user_atual.upper()].copy()
+            df_user = df_agenda[
+                df_agenda["ANALISTA"].astype(str).str.upper() == user_atual.upper()
+            ].copy()
         elif is_supervisor:
-            df_user = df_agenda[df_agenda['SUPERVISOR'].astype(str).str.upper() == user_atual.upper()].copy()
+            df_user = df_agenda[
+                df_agenda["SUPERVISOR"].astype(str).str.upper() == user_atual.upper()
+            ].copy()
         else:
-            df_user = df_agenda[df_agenda['VENDEDOR'].astype(str).str.upper() == user_atual.upper()].copy()
+            df_user = df_agenda[
+                df_agenda["VENDEDOR"].astype(str).str.upper() == user_atual.upper()
+            ].copy()
 
         # --- AQUI ESTÁ O AJUSTE SOLICITADO ---
         # Removemos os pendentes da visualização da agenda (exceto para Admin se quiser manter a visão total)
         # Se quiser que NINGUÉM veja na agenda antes de aprovar, remova o "if not is_admin"
         if not (is_admin or is_diretoria):
-            df_user = df_user[df_user['STATUS'] != "Pendente"]
+            df_user = df_user[df_user["STATUS"] != "Pendente"]
         # ---------------------------------------
 
         df_user = df_user.reset_index(drop=True)
@@ -6047,22 +6068,24 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 f_col1, f_col2, f_col3 = st.columns(3)
 
                 def get_options(df, col):
-                    return ["Todos"] + sorted([str(x) for x in df[col].unique() if x and str(x).lower() != 'nan'])
+                    return ["Todos"] + sorted(
+                        [str(x) for x in df[col].unique() if x and str(x).lower() != "nan"]
+                    )
 
-                ana_f = f_col1.selectbox("Filtrar Analista:", get_options(df_user, 'ANALISTA'))
-                df_temp = df_user if ana_f == "Todos" else df_user[df_user['ANALISTA'] == ana_f]
+                ana_f = f_col1.selectbox("Filtrar Analista:", get_options(df_user, "ANALISTA"))
+                df_temp = df_user if ana_f == "Todos" else df_user[df_user["ANALISTA"] == ana_f]
 
-                sup_f = f_col2.selectbox("Filtrar Supervisor:", get_options(df_temp, 'SUPERVISOR'))
-                df_temp = df_temp if sup_f == "Todos" else df_temp[df_temp['SUPERVISOR'] == sup_f]
+                sup_f = f_col2.selectbox("Filtrar Supervisor:", get_options(df_temp, "SUPERVISOR"))
+                df_temp = df_temp if sup_f == "Todos" else df_temp[df_temp["SUPERVISOR"] == sup_f]
 
-                vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, 'VENDEDOR'))
+                vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, "VENDEDOR"))
 
                 if ana_f != "Todos":
-                    df_user = df_user[df_user['ANALISTA'] == ana_f]
+                    df_user = df_user[df_user["ANALISTA"] == ana_f]
                 if sup_f != "Todos":
-                    df_user = df_user[df_user['SUPERVISOR'] == sup_f]
+                    df_user = df_user[df_user["SUPERVISOR"] == sup_f]
                 if vend_f != "Todos":
-                    df_user = df_user[df_user['VENDEDOR'] == vend_f]
+                    df_user = df_user[df_user["VENDEDOR"] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
             # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR EM VENDEDOR / TROCA DE MODO / STATE VELHO
@@ -6074,7 +6097,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     "Filtrar datas por:",
                     ["Data da visita (DATA)", "Data do registro (REGISTRO)"],
                     horizontal=True,
-                    key="modo_data_agenda"
+                    key="modo_data_agenda",
                 )
 
             # ✅ limpa a key antiga (muita gente já ficou com state salvo e isso causa StreamlitAPIException)
@@ -6082,10 +6105,10 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                 del st.session_state["slider_periodo_agenda"]
 
             # Escolhe a coluna de data base do filtro
-            col_dt_filtro = 'DT_COMPLETA' if modo_data == "Data da visita (DATA)" else 'DT_REGISTRO'
+            col_dt_filtro = "DT_COMPLETA" if modo_data == "Data da visita (DATA)" else "DT_REGISTRO"
 
             # Prepara min/max só com datas válidas (date puro pro slider)
-            serie_dt = pd.to_datetime(df_user[col_dt_filtro], errors='coerce').dropna()
+            serie_dt = pd.to_datetime(df_user[col_dt_filtro], errors="coerce").dropna()
 
             if not serie_dt.empty:
                 dt_min = serie_dt.min().date()
@@ -6125,108 +6148,139 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                             min_value=dt_min,
                             max_value=dt_max,
                             value=(a, b),
-                            key=slider_key
+                            key=slider_key,
                         )
 
                 # aplica filtro (inclusive)
-                mask_dt = pd.to_datetime(df_user[col_dt_filtro], errors='coerce').dt.date.between(dt_ini, dt_fim)
+                mask_dt = (
+                    pd.to_datetime(df_user[col_dt_filtro], errors="coerce")
+                    .dt.date.between(dt_ini, dt_fim)
+                )
                 df_user = df_user[mask_dt].reset_index(drop=True)
             else:
                 with c_dt1:
                     st.info("Sem datas válidas para filtrar no modo selecionado.")
 
-           # ============================
-# ✅ PUXA CIDADE/ESTADO DA BASE (robusto)
-# BASE: Cliente | Local | Estado
-# AGENDA: CÓDIGO CLIENTE
-# ============================
-try:
-    # garante colunas no df_user (pra tabela aparecer mesmo se não der merge)
-    if "LOCAL" not in df_user.columns:
-        df_user["LOCAL"] = ""
-    if "ESTADO" not in df_user.columns:
-        df_user["ESTADO"] = ""
+            # ============================
+            # ✅ PUXA CIDADE/ESTADO DA BASE (robusto)
+            # BASE: Cliente | Local | Estado
+            # AGENDA: CÓDIGO CLIENTE
+            # ============================
+            try:
+                # garante colunas no df_user (pra tabela aparecer mesmo se não der merge)
+                if "LOCAL" not in df_user.columns:
+                    df_user["LOCAL"] = ""
+                if "ESTADO" not in df_user.columns:
+                    df_user["ESTADO"] = ""
 
-    if df_base is not None and not df_base.empty:
-        # normaliza nomes de colunas da BASE (pra não depender de maiúsc/minúsc)
-        base_cols_map = {str(c).strip().upper(): c for c in df_base.columns}
+                if df_base is not None and not df_base.empty:
+                    # normaliza nomes de colunas da BASE (pra não depender de maiúsc/minúsc)
+                    base_cols_map = {str(c).strip().upper(): c for c in df_base.columns}
 
-        col_cliente_base = base_cols_map.get("CLIENTE")
-        col_local_base = base_cols_map.get("LOCAL")
-        col_estado_base = base_cols_map.get("ESTADO")
+                    col_cliente_base = base_cols_map.get("CLIENTE")
+                    col_local_base = base_cols_map.get("LOCAL")
+                    col_estado_base = base_cols_map.get("ESTADO")
 
-        if col_cliente_base and col_local_base and col_estado_base and ("CÓDIGO CLIENTE" in df_user.columns):
-            df_loc = df_base[[col_cliente_base, col_local_base, col_estado_base]].drop_duplicates(subset=[col_cliente_base]).copy()
+                    if (
+                        col_cliente_base
+                        and col_local_base
+                        and col_estado_base
+                        and ("CÓDIGO CLIENTE" in df_user.columns)
+                    ):
+                        df_loc = df_base[
+                            [col_cliente_base, col_local_base, col_estado_base]
+                        ].drop_duplicates(subset=[col_cliente_base]).copy()
 
-            # normaliza chave da BASE
-            df_loc[col_cliente_base] = (
-                df_loc[col_cliente_base]
-                .astype(str)
-                .str.strip()
-                .str.replace(r"\.0$", "", regex=True)
-            )
+                        # normaliza chave da BASE
+                        df_loc[col_cliente_base] = (
+                            df_loc[col_cliente_base]
+                            .astype(str)
+                            .str.strip()
+                            .str.replace(r"\.0$", "", regex=True)
+                        )
 
-            # normaliza chave do df_user
-            df_user["CÓDIGO CLIENTE"] = (
-                df_user["CÓDIGO CLIENTE"]
-                .astype(str)
-                .str.strip()
-                .str.replace(r"\.0$", "", regex=True)
-            )
+                        # normaliza chave do df_user
+                        df_user["CÓDIGO CLIENTE"] = (
+                            df_user["CÓDIGO CLIENTE"]
+                            .astype(str)
+                            .str.strip()
+                            .str.replace(r"\.0$", "", regex=True)
+                        )
 
-            df_user = df_user.merge(
-                df_loc,
-                left_on="CÓDIGO CLIENTE",
-                right_on=col_cliente_base,
-                how="left"
-            )
+                        df_user = df_user.merge(
+                            df_loc,
+                            left_on="CÓDIGO CLIENTE",
+                            right_on=col_cliente_base,
+                            how="left",
+                        )
 
-            # joga nos nomes finais que você quer na tabela
-            df_user["LOCAL"] = df_user[col_local_base].astype(str).fillna("")
-            df_user["ESTADO"] = df_user[col_estado_base].astype(str).fillna("")
+                        # joga nos nomes finais que você quer na tabela
+                        df_user["LOCAL"] = df_user[col_local_base].astype(str).fillna("")
+                        df_user["ESTADO"] = df_user[col_estado_base].astype(str).fillna("")
 
-            # limpa colunas extras do merge (evita poluir)
-            df_user = df_user.drop(columns=[col_cliente_base, col_local_base, col_estado_base], errors="ignore")
-except Exception as e:
-    st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
-
+                        # limpa colunas extras do merge (evita poluir)
+                        df_user = df_user.drop(
+                            columns=[col_cliente_base, col_local_base, col_estado_base],
+                            errors="ignore",
+                        )
+            except Exception as e:
+                st.warning(f"Não consegui puxar Local/Estado da BASE: {e}")
 
             # --- 5. MÉTRICAS ---
             # ✅ (NOVO) Card de "fora do raio" > 50 metros
-            fora_raio_50m = int((df_user['DISTANCIA_LOG'] > 50).sum()) if 'DISTANCIA_LOG' in df_user.columns else 0
+            fora_raio_50m = (
+                int((df_user["DISTANCIA_LOG"] > 50).sum())
+                if "DISTANCIA_LOG" in df_user.columns
+                else 0
+            )
 
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("📅 Total Agendado", len(df_user))
             # Ajustado para mostrar o que está planejado (já aprovado)
-            m2.metric("⏳ Em Aguardo", len(df_user[df_user['STATUS'] == "Agendado"]))
-            m3.metric("✅ Total Realizado", len(df_user[df_user['STATUS'] == "Realizado"]))
+            m2.metric("⏳ Em Aguardo", len(df_user[df_user["STATUS"] == "Agendado"]))
+            m3.metric("✅ Total Realizado", len(df_user[df_user["STATUS"] == "Realizado"]))
             m4.metric("📍 Fora do Raio (+50m)", fora_raio_50m, delta_color="inverse")
             st.markdown("---")
 
             # --- 6. APROVAÇÃO EM MASSA (GESTÃO) ---
-            if (is_admin or is_diretoria or is_analista):
+            if is_admin or is_diretoria or is_analista:
                 with st.expander("⚖️ Painel de Aprovação de Agendas", expanded=False):
                     col_ap1, col_ap2, col_ap3 = st.columns([2, 2, 3])
-                    vends_na_lista = sorted([str(x) for x in df_user['VENDEDOR'].unique() if x])
-                    vend_alvo = col_ap1.selectbox("Vendedor:", ["Todos"] + vends_na_lista, key="sel_massa_v")
-                    status_massa = col_ap2.selectbox("Definir:", ["Aprovado", "Reprovado"], key="sel_massa_s")
+                    vends_na_lista = sorted([str(x) for x in df_user["VENDEDOR"].unique() if x])
+                    vend_alvo = col_ap1.selectbox(
+                        "Vendedor:", ["Todos"] + vends_na_lista, key="sel_massa_v"
+                    )
+                    status_massa = col_ap2.selectbox(
+                        "Definir:", ["Aprovado", "Reprovado"], key="sel_massa_s"
+                    )
                     obs_massa = col_ap3.text_input("Observação:", key="obs_massa_input")
 
                     if st.button("🚀 Aplicar Decisão em Massa"):
-                        mask = df_agenda['VENDEDOR'] == vend_alvo if vend_alvo != "Todos" else df_agenda['VENDEDOR'].isin(vends_na_lista)
-                        df_agenda.loc[mask, 'APROVACAO'] = status_massa
-                        df_agenda.loc[mask, 'OBS_GESTAO'] = obs_massa
+                        mask = (
+                            df_agenda["VENDEDOR"] == vend_alvo
+                            if vend_alvo != "Todos"
+                            else df_agenda["VENDEDOR"].isin(vends_na_lista)
+                        )
+                        df_agenda.loc[mask, "APROVACAO"] = status_massa
+                        df_agenda.loc[mask, "OBS_GESTAO"] = obs_massa
                         if status_massa == "Reprovado":
-                            df_agenda.loc[mask, 'STATUS'] = "Reprovado"
+                            df_agenda.loc[mask, "STATUS"] = "Reprovado"
                         else:
                             # Se aprovado em massa, muda de Pendente para Planejado
-                            df_agenda.loc[mask & (df_agenda['STATUS'] == "Pendente"), 'STATUS'] = "Agendado"
+                            df_agenda.loc[
+                                mask & (df_agenda["STATUS"] == "Pendente"), "STATUS"
+                            ] = "Agendado"
 
-                        df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
+                        df_save = df_agenda.drop_duplicates(
+                            subset=["DATA", "VENDEDOR", "CÓDIGO CLIENTE", "STATUS"]
+                        )
                         conn.update(
                             spreadsheet=url_planilha,
                             worksheet="AGENDA",
-                            data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                            data=df_save.drop(
+                                columns=["LINHA", "DT_COMPLETA", "DT_REGISTRO"],
+                                errors="ignore",
+                            ),
                         )
                         st.cache_data.clear()
                         st.success("Atualizado!")
@@ -6238,13 +6292,26 @@ except Exception as e:
 
             # ✅ Mantive sua lista original e apenas GARANTI que LOCAL/ESTADO existam no df_user via merge acima.
             cols_display = [
-                'AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA',
-                'ANALISTA', 'SUPERVISOR', 'VENDEDOR',
-                'CLIENTE','ESTADO', 'LOCAL', 'KM_PREVISTO',
-                'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO',
-                'HIERARQUIAS_VENDIDAS'
+                "AÇÃO",
+                "REGISTRO",
+                "AGENDADO POR",
+                "DATA",
+                "ANALISTA",
+                "SUPERVISOR",
+                "VENDEDOR",
+                "CLIENTE",
+                "ESTADO",
+                "LOCAL",
+                "KM_PREVISTO",
+                "STATUS",
+                "APROVACAO",
+                "DISTANCIA_LOG",
+                "OBS_GESTAO",
+                "HIERARQUIAS_VENDIDAS",
             ]
-            df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
+            df_display = df_user[
+                [c for c in cols_display if c in df_user.columns or c == "AÇÃO"]
+            ].copy()
 
             # ============================
             # ✅ EXPORTAR (EXCEL + PDF) — TABELA COMO NA TELA
@@ -6269,10 +6336,17 @@ except Exception as e:
                         for i, col_name in enumerate(df_export.columns):
                             try:
                                 max_len = max(
-                                    [len(str(col_name))] + [len(str(v)) for v in df_export[col_name].astype(str).fillna("").tolist()]
+                                    [len(str(col_name))]
+                                    + [
+                                        len(str(v))
+                                        for v in df_export[col_name]
+                                        .astype(str)
+                                        .fillna("")
+                                        .tolist()
+                                    ]
                                 )
                                 worksheet.set_column(i, i, min(max_len + 2, 45))
-                            except:
+                            except Exception:
                                 pass
 
                     st.download_button(
@@ -6280,7 +6354,7 @@ except Exception as e:
                         data=buffer_xlsx.getvalue(),
                         file_name="minha_agenda.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="btn_export_excel_minha_agenda"
+                        key="btn_export_excel_minha_agenda",
                     )
 
                 # --- PDF ---
@@ -6333,7 +6407,7 @@ except Exception as e:
                         data=pdf_bytes,
                         file_name="minha_agenda.pdf",
                         mime="application/pdf",
-                        key="btn_export_pdf_minha_agenda"
+                        key="btn_export_pdf_minha_agenda",
                     )
 
                 st.markdown("---")
@@ -6348,11 +6422,13 @@ except Exception as e:
                 use_container_width=True,
                 column_config={
                     "AÇÃO": st.column_config.CheckboxColumn("📌"),
-                    "DISTANCIA_LOG": st.column_config.NumberColumn("Distância (m)", format="%d m"),
+                    "DISTANCIA_LOG": st.column_config.NumberColumn(
+                        "Distância (m)", format="%d m"
+                    ),
                     "DATA": st.column_config.TextColumn("Data"),
-                    "ANALISTA": st.column_config.TextColumn("Analista")
+                    "ANALISTA": st.column_config.TextColumn("Analista"),
                 },
-                disabled=[c for c in df_display.columns if c != "AÇÃO"]
+                disabled=[c for c in df_display.columns if c != "AÇÃO"],
             )
 
             # --- 8. GERENCIAMENTO INDIVIDUAL ---
@@ -6372,21 +6448,30 @@ except Exception as e:
                 with t1:
                     if is_admin or is_diretoria or is_analista:
                         col_ind1, col_ind2 = st.columns(2)
-                        n_status = col_ind1.selectbox("Decisão:", ["Aprovado", "Reprovado"], key="n_status_ind")
-                        n_obs = col_ind2.text_input("Motivo:", value=str(sel_row['OBS_GESTAO']), key="n_obs_ind")
+                        n_status = col_ind1.selectbox(
+                            "Decisão:", ["Aprovado", "Reprovado"], key="n_status_ind"
+                        )
+                        n_obs = col_ind2.text_input(
+                            "Motivo:", value=str(sel_row["OBS_GESTAO"]), key="n_obs_ind"
+                        )
 
                         if st.button("Salvar Decisão Individual"):
-                            df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['APROVACAO', 'OBS_GESTAO']] = [n_status, n_obs]
+                            df_agenda.loc[
+                                df_agenda["ID"] == sel_row["ID"], ["APROVACAO", "OBS_GESTAO"]
+                            ] = [n_status, n_obs]
                             if n_status == "Reprovado":
-                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Reprovado"
+                                df_agenda.loc[df_agenda["ID"] == sel_row["ID"], "STATUS"] = "Reprovado"
                             else:
                                 # Se aprovado individualmente, muda de Pendente para Planejado
-                                df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Agendado"
+                                df_agenda.loc[df_agenda["ID"] == sel_row["ID"], "STATUS"] = "Agendado"
 
                             conn.update(
                                 spreadsheet=url_planilha,
                                 worksheet="AGENDA",
-                                data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                                data=df_agenda.drop(
+                                    columns=["LINHA", "DT_COMPLETA", "DT_REGISTRO"],
+                                    errors="ignore",
+                                ),
                             )
                             st.cache_data.clear()
                             st.success("Salvo!")
@@ -6400,15 +6485,17 @@ except Exception as e:
                     if st.button("Confirmar Reagendamento"):
                         # Reagendamento volta para Planejado ou Pendente?
                         # Aqui mantive Planejado como estava no seu código original
-                        df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [
-                            n_data.strftime('%d/%m/%Y'),
-                            "Agendado",
-                            "Pendente"
-                        ]
+                        df_agenda.loc[
+                            df_agenda["ID"] == sel_row["ID"], ["DATA", "STATUS", "APROVACAO"]
+                        ] = [n_data.strftime("%d/%m/%Y"), "Agendado", "Pendente"]
+
                         conn.update(
                             spreadsheet=url_planilha,
                             worksheet="AGENDA",
-                            data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                            data=df_agenda.drop(
+                                columns=["LINHA", "DT_COMPLETA", "DT_REGISTRO"],
+                                errors="ignore",
+                            ),
                         )
                         st.cache_data.clear()
                         st.success("Reagendado!")
@@ -6419,16 +6506,20 @@ except Exception as e:
                     with t3:
                         st.error("Atenção: Esta ação excluirá o registro permanentemente.")
                         if st.button("🗑️ CONFIRMAR EXCLUSÃO"):
-                            df_agenda = df_agenda[df_agenda['ID'] != sel_row['ID']]
+                            df_agenda = df_agenda[df_agenda["ID"] != sel_row["ID"]]
                             conn.update(
                                 spreadsheet=url_planilha,
                                 worksheet="AGENDA",
-                                data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore')
+                                data=df_agenda.drop(
+                                    columns=["LINHA", "DT_COMPLETA", "DT_REGISTRO"],
+                                    errors="ignore",
+                                ),
                             )
                             st.cache_data.clear()
                             st.success("Excluído")
                             time.sleep(1)
                             st.rerun()
+
 
                        # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
