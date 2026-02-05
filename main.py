@@ -6123,7 +6123,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
-            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO', col_hier_vend]]
+            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO', col_hier_vend]
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             # ============================
