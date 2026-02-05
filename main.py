@@ -5936,7 +5936,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             # --- 4. FILTROS DINÂMICOS ---
             with st.expander("🎯 Filtros de Visualização", expanded=False):
                 f_col1, f_col2, f_col3 = st.columns(3)
-
                 def get_options(df, col):
                     return ["Todos"] + sorted([str(x) for x in df[col].unique() if x and str(x).lower() != 'nan'])
 
@@ -5948,12 +5947,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                 vend_f = f_col3.selectbox("Filtrar Vendedor:", get_options(df_temp, 'VENDEDOR'))
 
-                if ana_f != "Todos":
-                    df_user = df_user[df_user['ANALISTA'] == ana_f]
-                if sup_f != "Todos":
-                    df_user = df_user[df_user['SUPERVISOR'] == sup_f]
-                if vend_f != "Todos":
-                    df_user = df_user[df_user['VENDEDOR'] == vend_f]
+                if ana_f != "Todos": df_user = df_user[df_user['ANALISTA'] == ana_f]
+                if sup_f != "Todos": df_user = df_user[df_user['SUPERVISOR'] == sup_f]
+                if vend_f != "Todos": df_user = df_user[df_user['VENDEDOR'] == vend_f]
                 df_user = df_user.reset_index(drop=True)
 
             # ✅ (AJUSTE) SLICER DE DATA (slider range) SEM ESTOURAR EM VENDEDOR / TROCA DE MODO / STATE VELHO
@@ -6003,12 +5999,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         a, b = dt_min, dt_max
 
                     # clamp
-                    if a < dt_min:
-                        a = dt_min
-                    if b > dt_max:
-                        b = dt_max
-                    if a > b:
-                        a, b = dt_min, dt_max
+                    if a < dt_min: a = dt_min
+                    if b > dt_max: b = dt_max
+                    if a > b: a, b = dt_min, dt_max
 
                     with c_dt1:
                         dt_ini, dt_fim = st.slider(
@@ -6059,14 +6052,11 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                         df_save = df_agenda.drop_duplicates(subset=['DATA', 'VENDEDOR', 'CÓDIGO CLIENTE', 'STATUS'])
                         conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_save.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
-                        st.cache_data.clear()
-                        st.success("Atualizado!")
-                        time.sleep(1)
-                        st.rerun()
+                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
 
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
-            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR', 'DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
+            cols_display = ['AÇÃO', 'REGISTRO', 'AGENDADO POR','DATA', 'ANALISTA', 'VENDEDOR', 'CLIENTE', 'STATUS', 'APROVACAO', 'DISTANCIA_LOG', 'OBS_GESTAO']
             df_display = df_user[[c for c in cols_display if c in df_user.columns or c == "AÇÃO"]].copy()
 
             # ============================
@@ -6206,11 +6196,8 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                                 # Se aprovado individualmente, muda de Pendente para Planejado
                                 df_agenda.loc[df_agenda['ID'] == sel_row['ID'], 'STATUS'] = "Agendado"
 
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
-                            st.cache_data.clear()
-                            st.success("Salvo!")
-                            time.sleep(1)
-                            st.rerun()
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
+                            st.cache_data.clear(); st.success("Salvo!"); time.sleep(1); st.rerun()
                     else:
                         st.warning("Apenas gestores podem alterar a aprovação.")
 
@@ -6220,22 +6207,16 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         # Reagendamento volta para Planejado ou Pendente?
                         # Aqui mantive Planejado como estava no seu código original
                         df_agenda.loc[df_agenda['ID'] == sel_row['ID'], ['DATA', 'STATUS', 'APROVACAO']] = [n_data.strftime('%d/%m/%Y'), "Agendado", "Pendente"]
-                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
-                        st.cache_data.clear()
-                        st.success("Reagendado!")
-                        time.sleep(1)
-                        st.rerun()
+                        conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
+                        st.cache_data.clear(); st.success("Reagendado!"); time.sleep(1); st.rerun()
 
                 if is_admin:
                     with t3:
                         st.error("Atenção: Esta ação excluirá o registro permanentemente.")
                         if st.button("🗑️ CONFIRMAR EXCLUSÃO"):
                             df_agenda = df_agenda[df_agenda['ID'] != sel_row['ID']]
-                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA', 'DT_COMPLETA', 'DT_REGISTRO'], errors='ignore'))
-                            st.cache_data.clear()
-                            st.success("Excluído")
-                            time.sleep(1)
-                            st.rerun()
+                            conn.update(spreadsheet=url_planilha, worksheet="AGENDA", data=df_agenda.drop(columns=['LINHA','DT_COMPLETA','DT_REGISTRO'], errors='ignore'))
+                            st.cache_data.clear(); st.success("Excluído"); time.sleep(1); st.rerun()
 
                        # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
@@ -6334,6 +6315,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                         lambda s: [0, 160, 0, 255] if s == "REALIZADO" else [200, 0, 0, 255]
                     )
 
+                    # Círculo 1km (cinza)
+                    df_map["COR_RAIO"] = [[160, 160, 160, 70]] * len(df_map)
+
                     # --- TOOLTIP ---
                     # ✅ mostra também de onde veio a coordenada (VENDEDOR vs BASE) pra você validar
                     def _origem_coord(row):
@@ -6370,7 +6354,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     df_map["ICON"] = df_map["STATUS"].apply(_icon_por_status)
 
                     # --- DADOS PARA O MAPA ---
-                    dados_mapa = df_map[["LON", "LAT", "COR_PINO", "ICON", "TOOLTIP"]].to_dict(orient="records")
+                    dados_mapa = df_map[["LON", "LAT", "COR_PINO", "COR_RAIO", "ICON", "TOOLTIP"]].to_dict(orient="records")
 
                     # --- CENTRO ---
                     lat_center = float(df_map["LAT"].mean())
@@ -6378,27 +6362,15 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                     import pydeck as pdk
 
-                    # ✅ prepara dados com raio e cores do círculo (bem leve)
-                    dados_mapa2 = []
-                    for d in dados_mapa:
-                        d2 = d.copy()
-                        d2["RAIO_M"] = 1000  # 1km
-                        d2["COR_RAIO_FILL"] = [120, 120, 120, 35]
-                        d2["COR_RAIO_LINE"] = [80, 80, 80, 120]
-                        dados_mapa2.append(d2)
-
-                    # ✅ RAIO 1KM (CircleLayer com limites pra não “explodir”)
+                    # --- CÍRCULO 1 KM ---
                     layer_raio = pdk.Layer(
                         "CircleLayer",
-                        data=dados_mapa2,
+                        data=dados_mapa,
                         get_position="[LON, LAT]",
-                        get_radius="RAIO_M",
+                        get_radius=1000,
                         radius_units="meters",
-                        radius_scale=1,
-                        radius_min_pixels=6,
-                        radius_max_pixels=200,
-                        get_fill_color="COR_RAIO_FILL",
-                        get_line_color="COR_RAIO_LINE",
+                        get_fill_color="COR_RAIO",
+                        get_line_color=[120, 120, 120, 180],
                         line_width_min_pixels=2,
                         filled=True,
                         stroked=True,
@@ -6408,7 +6380,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                     # --- PINOS ---
                     layer_pinos = pdk.Layer(
                         "IconLayer",
-                        data=dados_mapa2,
+                        data=dados_mapa,
                         get_position="[LON, LAT]",
                         get_icon="ICON",
                         get_size=4,
@@ -6441,7 +6413,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
         else:
             st.info("Nenhum agendamento encontrado para os filtros selecionados.")
-
 
 
 
