@@ -1,12 +1,8 @@
-streamlit
+streamlit>=1.35.0
 pandas
 sqlalchemy
 psycopg2-binary
-
-
-streamlit>=1.35.0
 st-gsheets-connection
-pandas
 xlsxwriter
 fpdf
 pytz
@@ -17,6 +13,3 @@ streamlit-folium
 plotly
 openai>=1.0.0
 reportlab>=4.0.0
-sqlalchemy
-psycopg2-binary
-
