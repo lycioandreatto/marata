@@ -1407,7 +1407,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                     .rename(columns={"Local": "CIDADE"})
                 )
 
-            cols_v = ["EDITAR", "VENDEDOR", "CLIENTE", "CIDADE", "STATUS", col_just]
+            cols_v = ["EDITAR", "VENDEDOR", "CLIENTE","ESTADO" ,"CIDADE", "STATUS", col_just]
 
             # ✅ Auditoria só aparece para quem pode validar
             if pode_validar:
