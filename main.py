@@ -1065,8 +1065,7 @@ with st.sidebar:
         opcoes_menu.append("🧪 TESTES")
         opcoes_menu.append("📊 KPI Aprovação Analistas")
         opcoes_menu.append("🚚 Logística")
-        opcoes_menu.append("🔎 BUSCAS (IA + PDF)")
-        opcoes_menu.append("🗺️ MAPA FATURADO")
+        opcoes_menu.append("🗺️ INSIGHTS FATURADO")
 
 
     
