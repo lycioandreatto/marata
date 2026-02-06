@@ -1,19 +1,4 @@
 import streamlit as st
-
-flag = str(st.secrets["postgres"].get("RUN_SUPABASE_TEST", "0"))
-st.write("RUN_SUPABASE_TEST (dentro de postgres) =", flag)
-
-if flag == "1":
-    import teste_supabase
-    teste_supabase.run()
-    st.stop()
-
-
-
-
-
-
-import streamlit as st
 from geoloc import capturar_coordenadas
 import numpy as np
 from streamlit_gsheets import GSheetsConnection
