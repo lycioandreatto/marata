@@ -1,3 +1,12 @@
+cfg = st.secrets["postgres"]
+st.write("HOST RAW:", repr(cfg["host"]))
+st.write("PORT:", cfg["port"])
+st.write("USER:", cfg["user"])
+
+
+
+
+
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
