@@ -1,5 +1,9 @@
 import streamlit as st
 
+st.write("SECRETS KEYS:", list(st.secrets.keys()))
+st.write("RUN_SUPABASE_TEST =", st.secrets.get("RUN_SUPABASE_TEST", "NAO_ACHEI"))
+
+
 st.write("RUN_SUPABASE_TEST =", st.secrets.get("RUN_SUPABASE_TEST", "0"))
 
 if str(st.secrets.get("RUN_SUPABASE_TEST", "0")) == "1":
