@@ -1,17 +1,12 @@
 import streamlit as st
 
-st.write("SECRETS KEYS:", list(st.secrets.keys()))
-st.write("RUN_SUPABASE_TEST =", st.secrets.get("RUN_SUPABASE_TEST", "NAO_ACHEI"))
+flag = str(st.secrets["flags"].get("RUN_SUPABASE_TEST", "0"))
+st.write("RUN_SUPABASE_TEST =", flag)
 
-
-st.write("RUN_SUPABASE_TEST =", st.secrets.get("RUN_SUPABASE_TEST", "0"))
-
-if str(st.secrets.get("RUN_SUPABASE_TEST", "0")) == "1":
+if flag == "1":
     import teste_supabase
     teste_supabase.run()
     st.stop()
-
-
 
 import streamlit as st
 from geoloc import capturar_coordenadas
