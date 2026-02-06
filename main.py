@@ -22,10 +22,8 @@ import pytz
 import time
 import os
 import math
-from openai import OpenAI
 import streamlit as st
 
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 from streamlit_cookies_manager import EncryptedCookieManager
 
