@@ -3,7 +3,6 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 def run():
-    st.set_page_config(page_title="Teste Supabase", layout="wide")
     st.title("✅ Teste de conexão Supabase")
 
     cfg = st.secrets["postgres"]
