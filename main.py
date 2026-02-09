@@ -1547,10 +1547,11 @@ if menu == "📅 Agendamentos do Dia":
                         if not cols_show:
                             cols_show = [c for c in df_futuros.columns if c not in ["_DT"]]
                         st.dataframe(
-                            df_futuros[cols_show].sort_values(by=["_DT"], ascending=True, na_position="last"),
+                            df_futuros.sort_values(by=["_DT"], ascending=True, na_position="last")[cols_show],
                             use_container_width=True,
                             hide_index=True,
                         )
+
 
                 with tab2:
                     if df_passados.empty:
@@ -1560,10 +1561,11 @@ if menu == "📅 Agendamentos do Dia":
                         if not cols_show:
                             cols_show = [c for c in df_passados.columns if c not in ["_DT"]]
                         st.dataframe(
-                            df_passados[cols_show].sort_values(by=["_DT"], ascending=False, na_position="last"),
+                            df_passados.sort_values(by=["_DT"], ascending=False, na_position="last")[cols_show],
                             use_container_width=True,
                             hide_index=True,
                         )
+
 
         # ✅ não executa o restante da página "Agendamentos do Dia"
     else:
