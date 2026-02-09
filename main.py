@@ -5853,6 +5853,43 @@ elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
     
     if df_base is not None:
+        # ✅ CAPTURA COORDENADAS UMA ÚNICA VEZ (NÃO PEDE DE NOVO NO SALVAR)
+        if "coords_ok" not in st.session_state:
+            st.session_state.coords_ok = False
+        if "lat" not in st.session_state:
+            st.session_state.lat = 0.0
+        if "lon" not in st.session_state:
+            st.session_state.lon = 0.0
+
+        if not st.session_state.coords_ok:
+            try:
+                coords = capturar_coordenadas()
+
+                if isinstance(coords, (list, tuple)) and len(coords) >= 2:
+                    lat, lon = coords[0], coords[1]
+                elif isinstance(coords, dict):
+                    lat, lon = coords.get("lat", 0.0), coords.get("lon", 0.0)
+                else:
+                    lat, lon = 0.0, 0.0
+
+                try:
+                    lat = float(lat)
+                    lon = float(lon)
+                except Exception:
+                    lat, lon = 0.0, 0.0
+
+                if lat != 0.0 and lon != 0.0:
+                    st.session_state.lat = lat
+                    st.session_state.lon = lon
+                    st.session_state.coords_ok = True
+            except Exception:
+                pass
+
+        if st.session_state.coords_ok:
+            st.caption(f"📍 Localização capturada: {st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
+        else:
+            st.warning("📍 Autorize a localização no navegador para salvar as coordenadas corretamente.")
+
         # Mapeamento das colunas da BASE
         col_ana_base = 'ANALISTA'
         col_sup_base = 'SUPERVISOR'
@@ -5926,6 +5963,12 @@ elif menu == "📋 Novo Agendamento":
                 df_agenda["HOSPEDAGEM"] = ""
             if "TURNO_VISITA" not in df_agenda.columns:
                 df_agenda["TURNO_VISITA"] = ""
+
+            # ✅ NOVO: garante colunas LATITUDE e LONGITUDE no df_agenda (pra salvar no Sheets)
+            if "LATITUDE" not in df_agenda.columns:
+                df_agenda["LATITUDE"] = ""
+            if "LONGITUDE" not in df_agenda.columns:
+                df_agenda["LONGITUDE"] = ""
 
             # Normalização para comparação
             df_agenda['CÓDIGO CLIENTE'] = df_agenda['CÓDIGO CLIENTE'].astype(str)
@@ -6029,6 +6072,15 @@ elif menu == "📋 Novo Agendamento":
                         ]
                         
                         if st.form_submit_button("💾 ENVIAR PARA APROVAÇÃO"):
+                            # ✅ NÃO PEDE COORDENADAS DE NOVO NO SALVAR: usa as já capturadas
+                            lat_salvar = float(st.session_state.get("lat", 0.0) or 0.0)
+                            lon_salvar = float(st.session_state.get("lon", 0.0) or 0.0)
+
+                            # ✅ Evita salvar 0,0
+                            if not st.session_state.get("coords_ok", False):
+                                st.error("Não foi possível capturar sua localização. Autorize a localização no navegador e tente novamente.")
+                                st.stop()
+
                             agora = datetime.now(fuso_br)
                             novas_linhas = []
 
@@ -6053,7 +6105,9 @@ elif menu == "📋 Novo Agendamento":
                                         "AGENDADO POR": user_atual,
                                         "KM_PREVISTO": km_num,          # ✅ agora vai só número
                                         "HOSPEDAGEM": hospedagem,       # ✅ novo
-                                        "TURNO_VISITA": turno_visita    # ✅ novo
+                                        "TURNO_VISITA": turno_visita,   # ✅ novo
+                                        "LATITUDE": lat_salvar,         # ✅ coordenadas sem pedir de novo
+                                        "LONGITUDE": lon_salvar         # ✅ coordenadas sem pedir de novo
                                     })
                             
                             df_antigo = df_agenda.drop(columns=['LINHA'], errors='ignore').copy()
@@ -6068,6 +6122,7 @@ elif menu == "📋 Novo Agendamento":
                             st.info("🔔 Agendamento enviado! Aguardando aprovação na tela de Aprovações.")
                             time.sleep(2)
                             st.rerun()
+
 
 
 
