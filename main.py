@@ -13,38 +13,38 @@ import os
 import math
 import streamlit as st
 
-with st.expander("🧪 TESTE DRIVE - ACESSO À PASTA"):
-    try:
-        import io
-        from google.oauth2 import service_account
-        from googleapiclient.discovery import build
 
-        folder_id = st.secrets["drive"]["folder_id"]
+st.markdown("### 🧪 DEBUG DRIVE - GET PASTA")
 
-        # monta o dict da service account
-        sa_info = dict(st.secrets["gcp"])
+try:
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
 
-        # ⚠️ importantíssimo: corrigir quebra de linha do private_key se vier com \n
-        if "private_key" in sa_info and isinstance(sa_info["private_key"], str):
-            sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+    folder_id = st.secrets["drive"]["folder_id"]
 
-        scopes = ["https://www.googleapis.com/auth/drive"]
-        creds = service_account.Credentials.from_service_account_info(sa_info, scopes=scopes)
+    sa_info = dict(st.secrets["gcp"])
+    # MUITO IMPORTANTE: se vier com \n, converte pra quebra de linha real
+    if "private_key" in sa_info and isinstance(sa_info["private_key"], str):
+        sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
 
-        drive = build("drive", "v3", credentials=creds)
+    creds = service_account.Credentials.from_service_account_info(
+        sa_info,
+        scopes=["https://www.googleapis.com/auth/drive"]
+    )
+    drive = build("drive", "v3", credentials=creds)
 
-        # ✅ tenta "enxergar" a pasta
-        folder = drive.files().get(
-            fileId=folder_id,
-            fields="id,name,mimeType,driveId,owners,emailAddress",
-            supportsAllDrives=True
-        ).execute()
+    meta = drive.files().get(
+        fileId=folder_id,
+        fields="id,name,mimeType,owners,emailAddress",
+        supportsAllDrives=True
+    ).execute()
 
-        st.success("✅ A pasta foi encontrada pelo Service Account!")
-        st.write("Folder:", folder)
+    st.success("✅ Service Account está enxergando a pasta!")
+    st.write(meta)
 
-    except Exception as e:
-        st.error(f"❌ Service Account NÃO está enxergando a pasta: {e}")
+except Exception as e:
+    st.error(f"❌ Service Account NÃO está enxergando a pasta: {e}")
+
 
 
 
