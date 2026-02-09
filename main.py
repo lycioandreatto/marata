@@ -1,3 +1,8 @@
+st.markdown("### 🧪 DEBUG DRIVE")
+st.write("Folder ID (secrets):", repr(st.secrets["drive"]["folder_id"]))
+st.write("Service Account:", st.secrets["gcp"]["client_email"])
+
+
 import streamlit as st
 from geoloc import capturar_coordenadas
 import numpy as np
