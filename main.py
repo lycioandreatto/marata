@@ -18,35 +18,6 @@ import streamlit as st
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-st.markdown("### 🧪 DEBUG: procurar pasta real pelo nome")
-
-sa_info = dict(st.secrets["gcp"])
-if "private_key" in sa_info and isinstance(sa_info["private_key"], str):
-    sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
-
-creds = service_account.Credentials.from_service_account_info(
-    sa_info,
-    scopes=["https://www.googleapis.com/auth/drive"]
-)
-drive = build("drive", "v3", credentials=creds)
-
-# procura itens com esse nome que o SA consegue ver
-nome = "FOTOS VENDEDORES"
-q = f"name = '{nome}' and trashed = false"
-
-res = drive.files().list(
-    q=q,
-    fields="files(id,name,mimeType,parents,shortcutDetails)",
-    pageSize=20,
-    supportsAllDrives=True,
-    includeItemsFromAllDrives=True,
-).execute()
-
-st.write(res.get("files", []))
-
-
-
-
 import io
 import uuid
 from datetime import datetime
