@@ -1343,7 +1343,7 @@ menu = menu_interna
 
 
 # --- PÁGINA: INÍCIO ---
-elif menu == "🏠 Início":
+if menu == "🏠 Início":
     st.markdown("""
         <style>
         .home-wrap {max-width: 900px; margin: 0 auto; padding-top: 10px;}
@@ -1410,7 +1410,7 @@ elif menu == "🏠 Início":
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
-if menu == "📅 Agendamentos do Dia":
+elif menu == "📅 Agendamentos do Dia":
 
     # ============================
     # ✅ (NOVO) ROTEAMENTO INTERNO + URL (FICHA DO CLIENTE)
