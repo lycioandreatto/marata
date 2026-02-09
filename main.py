@@ -1487,8 +1487,21 @@ if menu == "📅 Agendamentos do Dia":
 
                 hoje_dt = _parse_dt_br(datetime.now(fuso_br).strftime("%d/%m/%Y"))
 
-                df_futuros = df_hist[df_hist["_DT"] >= hoje_dt].copy()
-                df_passados = df_hist[df_hist["_DT"] < hoje_dt].copy()
+                                # ✅ FUTUROS: inclui datas > hoje
+                # e também inclui HOJE somente se NÃO estiver REALIZADO
+                status_upper = df_hist["STATUS"].astype(str).str.strip().str.upper() if "STATUS" in df_hist.columns else ""
+
+                df_futuros = df_hist[
+                    (df_hist["_DT"] > hoje_dt)
+                    | ((df_hist["_DT"] == hoje_dt) & (status_upper != "REALIZADO"))
+                ].copy()
+
+                # ✅ PASSADOS: tudo < hoje + (HOJE que já foi REALIZADO)
+                df_passados = df_hist[
+                    (df_hist["_DT"] < hoje_dt)
+                    | ((df_hist["_DT"] == hoje_dt) & (status_upper == "REALIZADO"))
+                ].copy()
+
 
                 # ✅ Cards rápidos
                 total_visitas = int(len(df_hist))
