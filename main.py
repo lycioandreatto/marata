@@ -1337,14 +1337,40 @@ if menu == "📅 Agendamentos do Dia":
         df_dia = df_agenda[df_agenda["DATA"] == hoje_str].copy()
         df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
 
-        # --- CONTROLE DE ACESSO ---
+                # ✅ TIME DO SUPERVISOR (pela BASE) -> pega vendedores vinculados
+        vendedores_do_supervisor = []
+        if df_base is not None and not df_base.empty and "SUPERVISOR" in df_base.columns and "VENDEDOR" in df_base.columns:
+            try:
+                _tmp = df_base[["SUPERVISOR", "VENDEDOR"]].copy()
+                _tmp["SUPERVISOR"] = _tmp["SUPERVISOR"].astype(str).str.strip().str.upper()
+                _tmp["VENDEDOR"] = _tmp["VENDEDOR"].astype(str).str.strip().str.upper()
+
+                vendedores_do_supervisor = (
+                    _tmp[_tmp["SUPERVISOR"] == str(user_atual).strip().upper()]["VENDEDOR"]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+            except Exception:
+                vendedores_do_supervisor = []
+
+
+                # --- CONTROLE DE ACESSO ---
         if not (is_admin or is_diretoria):
             if is_analista:
-                df_dia = df_dia[df_dia["ANALISTA"].astype(str).str.upper() == user_atual.upper()]
+                df_dia = df_dia[df_dia["ANALISTA"].astype(str).str.strip().str.upper() == user_atual.upper()]
+
             elif is_supervisor:
-                df_dia = df_dia[df_dia["SUPERVISOR"].astype(str).str.upper() == user_atual.upper()]
+                # ✅ Supervisor vê a equipe (pela BASE), não depende do campo SUPERVISOR da AGENDA
+                if vendedores_do_supervisor:
+                    df_dia = df_dia[df_dia["VENDEDOR"].astype(str).str.strip().str.upper().isin(vendedores_do_supervisor)]
+                else:
+                    # fallback: tenta pelo campo SUPERVISOR da agenda
+                    df_dia = df_dia[df_dia["SUPERVISOR"].astype(str).str.strip().str.upper() == user_atual.upper()]
+
             else:
-                df_dia = df_dia[df_dia["VENDEDOR"].astype(str).str.upper() == user_atual.upper()]
+                df_dia = df_dia[df_dia["VENDEDOR"].astype(str).str.strip().str.upper() == user_atual.upper()]
+
 
         df_dia = df_dia.reset_index(drop=True)
 
