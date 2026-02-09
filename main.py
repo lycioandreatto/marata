@@ -818,7 +818,7 @@ df_base, df_just, df_agenda, df_usuarios = carregar_dados()
 NOME_ADMIN = "lycio"         # Você (Admin)
 NOME_DIRETORIA = "aldo"         # Aldo
 LISTA_ANALISTA = ["BARBARA", "THAIS","ALLANA","Roberio","Regiane","Carol"] 
-LISTA_SUPERVISORES = ["Francisco", "Teste"] 
+LISTA_SUPERVISORES = ["Francisco", "Nilson Menezes"] 
 LISTA_VENDEDORES = ["Carlos Antonio", "Rita", "Saraiva","Jose Carlos"]     
 
 # --- SISTEMA DE ACESSO ---
@@ -5895,6 +5895,14 @@ elif menu == "📋 Novo Agendamento":
         col_sup_base = 'SUPERVISOR'
         col_ven_base = 'VENDEDOR' 
 
+        # ✅ NOVO: identifica se o usuário logado é supervisor (pela coluna SUPERVISOR da BASE)
+        is_supervisor_base = any(
+            df_base[col_sup_base].astype(str).str.upper() == str(user_atual).upper()
+        )
+
+        # ✅ NOVO: somente supervisor pode ver/preencher KM e Hospedagem
+        pode_preencher_km_hosp = bool(is_supervisor_base)
+
         # Inicialização de variáveis para evitar NameError
         ven_sel = "Selecione..."
         bloqueado = False
@@ -6011,20 +6019,26 @@ elif menu == "📋 Novo Agendamento":
 
                     with st.form("form_novo_v", clear_on_submit=True):
                         # ✅ NOVO: KM previsto (salvar SOMENTE número no Sheets)
-                        km_previsto_txt = st.text_input(
-                            "KM previsto para a visita (ex: 80):",
-                            value="",
-                            placeholder="80",
-                            key="km_previsto_novo_ag"
-                        ).strip()
+                        if pode_preencher_km_hosp:
+                            km_previsto_txt = st.text_input(
+                                "KM previsto para a visita (ex: 80):",
+                                value="",
+                                placeholder="80",
+                                key="km_previsto_novo_ag"
+                            ).strip()
+                        else:
+                            km_previsto_txt = ""
 
                         # ✅ NOVO: Hospedagem (SIM/NÃO)
-                        hospedagem = st.selectbox(
-                            "Hospedagem:",
-                            ["Não", "Sim"],
-                            index=0,
-                            key="hospedagem_novo_ag"
-                        )
+                        if pode_preencher_km_hosp:
+                            hospedagem = st.selectbox(
+                                "Hospedagem:",
+                                ["Não", "Sim"],
+                                index=0,
+                                key="hospedagem_novo_ag"
+                            )
+                        else:
+                            hospedagem = "Não"
 
                         # ✅ NOVO: Turno da visita (MANHÃ/TARDE)
                         turno_visita = st.selectbox(
@@ -6122,6 +6136,7 @@ elif menu == "📋 Novo Agendamento":
                             st.info("🔔 Agendamento enviado! Aguardando aprovação na tela de Aprovações.")
                             time.sleep(2)
                             st.rerun()
+
 
 
 
