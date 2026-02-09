@@ -1341,68 +1341,159 @@ st.markdown("---")
 # Mapeia menu_interna de volta para menu para o restante do código
 menu = menu_interna
 
-
 # --- PÁGINA: INÍCIO ---
 if menu == "🏠 Início":
+
     st.markdown("""
-        <style>
-        .home-wrap {max-width: 900px; margin: 0 auto; padding-top: 10px;}
-        .home-title {text-align:center; font-size: 28px; font-weight: 800; margin-bottom: 6px;}
-        .home-sub {text-align:center; opacity: .75; margin-bottom: 22px;}
-        div[data-testid="stButton"] > button {
-            height: 90px;
-            font-size: 18px;
-            font-weight: 700;
-            border-radius: 16px;
-        }
-        </style>
+    <style>
+      /* container central */
+      .home-wrap{
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 10px 0 0 0;
+      }
+
+      /* título */
+      .home-title{
+        font-size: 34px;
+        font-weight: 900;
+        color: #000C75;
+        margin: 0;
+        text-align: center;
+        letter-spacing: .4px;
+      }
+
+      .home-sub{
+        text-align:center;
+        color: rgba(17,17,17,.65);
+        font-size: 14px;
+        margin: 6px 0 18px 0;
+      }
+
+      /* grade de botões */
+      .home-grid{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      @media (max-width: 900px){
+        .home-grid{ grid-template-columns: 1fr; }
+      }
+
+      /* “cards-botão” */
+      div[data-testid="stButton"] > button.home-btn{
+        width: 100% !important;
+        min-height: 68px !important;
+        border-radius: 16px !important;
+        border: 1px solid rgba(17,17,17,0.10) !important;
+        background: rgba(255,255,255,0.75) !important;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.08) !important;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+
+        font-weight: 900 !important;
+        font-size: 16px !important;
+        color: #1c1c1c !important;
+
+        display:flex !important;
+        align-items:center !important;
+        justify-content:flex-start !important;
+        gap: 10px !important;
+
+        padding: 14px 16px !important;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+      }
+
+      div[data-testid="stButton"] > button.home-btn:hover{
+        transform: translateY(-1px) !important;
+        border-color: rgba(255,75,75,0.35) !important;
+        box-shadow: 0 14px 34px rgba(255,75,75,0.12) !important;
+      }
+
+      /* bolha do ícone */
+      .home-chip{
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background: rgba(255,75,75,0.12);
+        box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
+        flex: 0 0 36px;
+      }
+
+      .home-line1{
+        font-weight: 950;
+        font-size: 15px;
+        line-height: 1.1;
+      }
+
+      .home-line2{
+        font-weight: 700;
+        font-size: 12px;
+        color: rgba(17,17,17,.65);
+        margin-top: 2px;
+      }
+    </style>
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
-    st.markdown('<div class="home-title">📌 Menu Principal</div>', unsafe_allow_html=True)
-    st.markdown('<div class="home-sub">Escolha para onde ir</div>', unsafe_allow_html=True)
+    st.markdown("<div class='home-title'>Menu Principal</div>", unsafe_allow_html=True)
+    st.markdown("<div class='home-sub'>Acesse rápido as páginas do sistema</div>", unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
+    # ✅ Botões centrais (clicáveis) que mudam o menu e dão rerun
+    col_left, col_right = st.columns([1, 1], gap="medium")
 
-    with c1:
-        if st.button("📅 Agendamentos do Dia", use_container_width=True):
-            st.session_state.menu = "📅 Agendamentos do Dia"
-            st.rerun()
+    # helper: navega pelo session_state do seu rádio
+    def _ir(pagina):
+        st.session_state.menu_principal_radio = pagina
+        st.session_state.pagina_direta = None
+        st.rerun()
 
-    with c2:
-        if st.button("🗓️ Minha Agenda", use_container_width=True):
-            st.session_state.menu = "🗓️ Minha Agenda"
-            st.rerun()
+    with col_left:
+        st.markdown("<div class='home-grid'>", unsafe_allow_html=True)
 
-    with c3:
-        if st.button("🔔 Aprovações", use_container_width=True):
-            st.session_state.menu = "🔔 Aprovações"
-            st.rerun()
+        if st.button("📅 Agendamentos do Dia", use_container_width=True, key="home_ag_dia"):
+            _ir("📅 Agendamentos do Dia")
 
-    c4, c5, c6 = st.columns(3)
+        if st.button("📋 Novo Agendamento", use_container_width=True, key="home_novo_ag"):
+            _ir("📋 Novo Agendamento")
 
-    with c4:
-        if st.button("📊 Desempenho", use_container_width=True):
-            st.session_state.menu = "📊 Desempenho de Vendas"
-            st.rerun()
+        if st.button("🔍 Ver Agenda", use_container_width=True, key="home_ver_ag"):
+            # usa o texto dinâmico que você já montou no sidebar
+            _ir(texto_ver_agenda)
 
-    with c5:
-        if st.button("⚙️ Configurações", use_container_width=True):
-            st.session_state.menu = "⚙️ Configurações"
-            st.rerun()
+        if st.button("📊 ACOMP. DIÁRIO", use_container_width=True, key="home_acomp"):
+            _ir("📊 ACOMP. DIÁRIO")
 
-    with c6:
-        if st.button("🚪 Sair", use_container_width=True):
-            # se você tiver função de logout, chama aqui
-            st.session_state.clear()
-            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    with col_right:
+        st.markdown("<div class='home-grid'>", unsafe_allow_html=True)
 
+        if st.button("📚 Perfil do Cliente", use_container_width=True, key="home_perfil"):
+            _ir("📚 Perfil do Cliente")
 
+        # ✅ Só gestão
+        if eh_gestao:
+            if st.button("📊 Dashboard de Controle", use_container_width=True, key="home_dash"):
+                _ir("📊 Dashboard de Controle")
 
+        # ✅ Só admin
+        if is_admin:
+            if st.button("🚚 Logística", use_container_width=True, key="home_log"):
+                _ir("🚚 Logística")
+            if st.button("🗺️ INSIGHTS FATURADO", use_container_width=True, key="home_ins"):
+                _ir("🗺️ INSIGHTS FATURADO")
 
+        st.markdown("</div>", unsafe_allow_html=True)
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ✅ para não cair no resto do script
+    st.stop()
 
 
 
