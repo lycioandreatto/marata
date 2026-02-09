@@ -13,6 +13,55 @@ import os
 import math
 import streamlit as st
 
+import io
+import uuid
+from datetime import datetime
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+
+def get_drive_service():
+    creds_info = dict(st.secrets["gcp"])
+    scopes = ["https://www.googleapis.com/auth/drive"]
+    creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+def upload_images_to_drive(files, folder_id, prefix=""):
+    """
+    files: lista de UploadedFile (st.file_uploader)
+    retorna: lista de links (um por foto)
+    """
+    service = get_drive_service()
+    links = []
+
+    for f in files:
+        # nome único pra não sobrescrever
+        ext = (f.name.split(".")[-1] if "." in f.name else "jpg").lower()
+        safe_name = f"{prefix}{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.{ext}"
+
+        media = MediaIoBaseUpload(io.BytesIO(f.getvalue()), mimetype=f.type, resumable=False)
+        file_metadata = {"name": safe_name, "parents": [folder_id]}
+
+        created = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id"
+        ).execute()
+
+        file_id = created["id"]
+
+        # deixa “qualquer pessoa com link” (opcional)
+        service.permissions().create(
+            fileId=file_id,
+            body={"type": "anyone", "role": "reader"},
+        ).execute()
+
+        links.append(f"https://drive.google.com/file/d/{file_id}/view")
+
+    return links
+
+
+
 
 from streamlit_cookies_manager import EncryptedCookieManager
 
@@ -1333,11 +1382,20 @@ if menu == "📅 Agendamentos do Dia":
         if col_just not in df_agenda.columns:
             df_agenda[col_just] = ""
 
-        # ✅ NOVO: coluna para hierarquias vendidas na visita
+        # ✅ NOVO: coluna para hierarquias NÃO vendidas na visita (reaproveita a coluna atual)
+        # Mantemos a coluna HIERARQUIAS_VENDIDAS no Sheets para não quebrar nada,
+        # mas o rótulo e uso aqui passam a ser "não vendidas".
         col_hier_vend = "HIERARQUIAS_VENDIDAS"
         if col_hier_vend not in df_agenda.columns:
             df_agenda[col_hier_vend] = ""
 
+        # ✅ NOVO: colunas para motivo e fotos (links) do "não vendeu"
+        col_just_nao_vendeu = "JUST_NAO_VENDEU"
+        col_fotos_nao_vendeu = "FOTOS_NAO_VENDEU"
+        if col_just_nao_vendeu not in df_agenda.columns:
+            df_agenda[col_just_nao_vendeu] = ""
+        if col_fotos_nao_vendeu not in df_agenda.columns:
+            df_agenda[col_fotos_nao_vendeu] = ""
 
         # ✅ NOVO: coluna para observação da gestão na validação diária (sem mexer no botão do vendedor)
         col_obs_rotina = "OBS_VALIDACAO_GESTAO"
@@ -1351,12 +1409,6 @@ if menu == "📅 Agendamentos do Dia":
 
         if "KM_PREVISTO" not in df_agenda.columns:
             df_agenda["KM_PREVISTO"] = ""
-
-
-                # ✅ NOVO: coluna para salvar as hierarquias vendidas (em uma única linha)
-        col_hier_vend = "HIERARQUIAS_VENDIDAS"
-        if col_hier_vend not in df_agenda.columns:
-            df_agenda[col_hier_vend] = ""
 
         # ✅ NOVO: carrega opções da aba PRODUTOS (coluna "HIERARQUIA DE PRODUTOS")
         hierarquia_opcoes = []
@@ -1379,13 +1431,11 @@ if menu == "📅 Agendamentos do Dia":
         except Exception:
             hierarquia_opcoes = []
 
-
-
         # --- FILTRO DO DIA ---
         df_dia = df_agenda[df_agenda["DATA"] == hoje_str].copy()
         df_dia = df_dia[df_dia[col_aprov_plan].astype(str).str.upper() == "APROVADO"]
 
-                # ✅ TIME DO SUPERVISOR (pela BASE) -> pega vendedores vinculados
+        # ✅ TIME DO SUPERVISOR (pela BASE) -> pega vendedores vinculados
         vendedores_do_supervisor = []
         if df_base is not None and not df_base.empty and "SUPERVISOR" in df_base.columns and "VENDEDOR" in df_base.columns:
             try:
@@ -1402,8 +1452,7 @@ if menu == "📅 Agendamentos do Dia":
             except Exception:
                 vendedores_do_supervisor = []
 
-
-                # --- CONTROLE DE ACESSO ---
+        # --- CONTROLE DE ACESSO ---
         if not (is_admin or is_diretoria):
             if is_analista:
                 df_dia = df_dia[df_dia["ANALISTA"].astype(str).str.strip().str.upper() == user_atual.upper()]
@@ -1418,7 +1467,6 @@ if menu == "📅 Agendamentos do Dia":
 
             else:
                 df_dia = df_dia[df_dia["VENDEDOR"].astype(str).str.strip().str.upper() == user_atual.upper()]
-
 
         df_dia = df_dia.reset_index(drop=True)
 
@@ -1444,7 +1492,7 @@ if menu == "📅 Agendamentos do Dia":
         m3.metric("Validados", len(df_dia[df_dia[col_aprov_exec] == "OK"]))
         m4.metric("Reprovados", len(df_dia[df_dia[col_aprov_exec] == "REPROVADO"]), delta_color="inverse")
 
-         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
+        # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
             if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
                 # pega só as visitas REALIZADAS do dia (no recorte atual)
@@ -1561,7 +1609,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                     .rename(columns={"Local": "CIDADE"})
                 )
 
-            cols_v = ["EDITAR", "VENDEDOR", "CLIENTE","ESTADO" ,"CIDADE", "STATUS", col_just]
+            cols_v = ["EDITAR", "VENDEDOR", "CLIENTE", "ESTADO", "CIDADE", "STATUS", col_just]
 
             # ✅ Auditoria só aparece para quem pode validar
             if pode_validar:
@@ -1641,7 +1689,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                 else:
                     nova_just = st.text_input("Justificativa:", value=just_atual, key="just_txt")
 
-                                # ✅ NOVO: Hierarquias vendidas (multi-select)
+                # ✅ NOVO: Hierarquias NÃO vendidas (reaproveita a coluna existente)
                 hier_atual_txt = str(sel_row.get(col_hier_vend, "") or "").strip()
                 hier_atual_lista = []
 
@@ -1656,14 +1704,42 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                         hier_atual_lista = [hier_atual_txt]
 
                 hier_vendidas = st.multiselect(
-                    "Hierarquias vendidas (selecione uma ou mais):",
+                    "Hierarquias NÃO vendidas (selecione uma ou mais):",
                     options=hierarquia_opcoes,
                     default=[h for h in hier_atual_lista if h in hierarquia_opcoes],
-                    key="hier_multiselect_vendidas"
+                    key="hier_multiselect_nao_vendidas"
                 )
 
                 hier_vendidas_txt = " | ".join([str(x).strip() for x in hier_vendidas if str(x).strip()])
 
+                # ✅ NOVO: Justificativa do "não vendeu" + Fotos (até 10)
+                st.markdown("#### 📸 Justificativa e Fotos (Não venda)")
+                motivos_nao_venda = ["Selecione...", "Cliente Estocado", "Outros"]
+
+                just_nao_atual = str(sel_row.get(col_just_nao_vendeu, "") or "").strip()
+                if just_nao_atual and just_nao_atual not in motivos_nao_venda:
+                    idx_motivo = motivos_nao_venda.index("Outros")
+                else:
+                    idx_motivo = motivos_nao_venda.index(just_nao_atual) if just_nao_atual in motivos_nao_venda else 0
+
+                motivo_sel = st.selectbox("Motivo de não venda:", motivos_nao_venda, index=idx_motivo, key="motivo_nao_venda")
+
+                if motivo_sel == "Outros":
+                    motivo_txt = st.text_input("Digite o motivo:", value=just_nao_atual, key="motivo_outros_txt")
+                elif motivo_sel != "Selecione...":
+                    motivo_txt = motivo_sel
+                else:
+                    motivo_txt = ""
+
+                fotos = st.file_uploader(
+                    "Fotos da gôndola/estoque (até 10):",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    accept_multiple_files=True,
+                    key="uploader_fotos_nao_venda",
+                )
+                if fotos and len(fotos) > 10:
+                    st.warning("Envie no máximo 10 fotos. Vou considerar apenas as 10 primeiras.")
+                    fotos = fotos[:10]
 
                 # ✅ NOVO: BLOCO SEPARADO DA GESTÃO PARA VALIDAR A ROTINA + OBSERVAÇÃO (SEM MEXER NO BOTÃO DO VENDEDOR)
                 if pode_validar:
@@ -1731,11 +1807,13 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
 
                         df_agenda.loc[
                             df_agenda["ID"].astype(str) == str(sel_row["ID"]),
-                            ["STATUS", col_aprov_exec, col_just, "COORDENADAS", "DISTANCIA_LOG"],
+                            ["STATUS", col_aprov_exec, col_just, col_just_nao_vendeu, col_fotos_nao_vendeu, "COORDENADAS", "DISTANCIA_LOG"],
                         ] = [
                             novo_status,
                             nova_val,
                             nova_just,
+                            motivo_txt,
+                            str(sel_row.get(col_fotos_nao_vendeu, "") or ""),
                             coord_atual,
                             dist_atual,
                         ]
@@ -1753,6 +1831,64 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
 
                     # ✅ caso contrário (vendedor/supervisor), aí sim captura coordenadas e recalcula distância
                     else:
+                        # ✅ tenta importar drive libs só aqui (pra não quebrar se não tiver)
+                        links_fotos = []
+                        try:
+                            if fotos:
+                                import io as _io
+                                import uuid as _uuid
+                                from datetime import datetime as _dt
+                                from google.oauth2 import service_account
+                                from googleapiclient.discovery import build
+                                from googleapiclient.http import MediaIoBaseUpload
+
+                                def _get_drive_service():
+                                    creds_info = dict(st.secrets["gcp"])
+                                    scopes = ["https://www.googleapis.com/auth/drive"]
+                                    creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+                                    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+                                def _upload_images_to_drive(_files, _folder_id, _prefix=""):
+                                    service = _get_drive_service()
+                                    _links = []
+                                    for _f in _files:
+                                        _ext = (_f.name.split(".")[-1] if "." in _f.name else "jpg").lower()
+                                        _safe_name = f"{_prefix}{_dt.now().strftime('%Y%m%d_%H%M%S')}_{_uuid.uuid4().hex[:8]}.{_ext}"
+
+                                        media = MediaIoBaseUpload(_io.BytesIO(_f.getvalue()), mimetype=_f.type, resumable=False)
+                                        file_metadata = {"name": _safe_name, "parents": [_folder_id]}
+
+                                        created = service.files().create(
+                                            body=file_metadata,
+                                            media_body=media,
+                                            fields="id"
+                                        ).execute()
+
+                                        file_id = created["id"]
+
+                                        # deixa “qualquer pessoa com link” (opcional)
+                                        service.permissions().create(
+                                            fileId=file_id,
+                                            body={"type": "anyone", "role": "reader"},
+                                        ).execute()
+
+                                        _links.append(f"https://drive.google.com/file/d/{file_id}/view")
+                                    return _links
+
+                                folder_id = st.secrets["drive"]["folder_id"]
+                                prefix = f"{user_atual}_{str(sel_row.get('CÓDIGO CLIENTE','')).strip()}_"
+                                links_fotos = _upload_images_to_drive(fotos, folder_id, _prefix=prefix)
+
+                        except Exception as e:
+                            st.warning(f"Não consegui enviar as fotos pro Drive: {e}")
+                            links_fotos = []
+
+                        # ✅ mantém fotos antigas + adiciona novas (máx 10)
+                        fotos_antigas = str(sel_row.get(col_fotos_nao_vendeu, "") or "").strip()
+                        lista_antigas = [x.strip() for x in fotos_antigas.split(" | ") if x.strip()] if fotos_antigas else []
+                        lista_final = (lista_antigas + links_fotos)[:10]
+                        fotos_txt = " | ".join(lista_final)
+
                         lat_tmp, lon_tmp = capturar_coordenadas()
 
                         if lat_tmp and lon_tmp:
@@ -1808,7 +1944,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                             distancia_m = 0.0
                             st.warning(f"Falha ao calcular distância: {e}")
 
-                                                # garante string (evita lista/None)
+                        # garante string (evita lista/None)
                         hier_vendidas_txt = "" if hier_vendidas_txt is None else str(hier_vendidas_txt)
 
                         mask_id = df_agenda["ID"].astype(str) == str(sel_row["ID"])
@@ -1817,8 +1953,16 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                         if not idxs:
                             st.warning("Não encontrei o ID para atualizar na planilha (AGENDA).")
                         else:
-                            cols_upd = ["STATUS", col_aprov_exec, col_just, col_hier_vend, "COORDENADAS", "DISTANCIA_LOG"]
-                            vals_upd = [novo_status, nova_val, nova_just, hier_vendidas_txt, f"{lat_v}, {lon_v}", round(float(distancia_m), 1)]
+                            cols_upd = [
+                                "STATUS", col_aprov_exec, col_just,
+                                col_hier_vend, col_just_nao_vendeu, col_fotos_nao_vendeu,
+                                "COORDENADAS", "DISTANCIA_LOG"
+                            ]
+                            vals_upd = [
+                                novo_status, nova_val, nova_just,
+                                hier_vendidas_txt, motivo_txt, fotos_txt,
+                                f"{lat_v}, {lon_v}", round(float(distancia_m), 1)
+                            ]
 
                             # ✅ atribuição robusta (não quebra se ID estiver duplicado)
                             df_agenda.loc[idxs, cols_upd] = pd.DataFrame(
@@ -1826,7 +1970,6 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                                 columns=cols_upd,
                                 index=idxs
                             )
-
 
                         conn.update(
                             spreadsheet=url_planilha,
@@ -1838,7 +1981,6 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                         st.success("Dados atualizados!")
                         time.sleep(1)
                         st.rerun()
-
 
             # ============================
             # 🗺️ MAPA (AO FINAL)
@@ -2063,6 +2205,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
             st.info("Nenhum agendamento para hoje.")
     else:
         st.info("Nenhum agendamento para hoje.")
+
 
 # ==========================================
 # ✅ NOVA PÁGINA: LOGÍSTICA (SIMULAÇÃO) — + FECHAMENTO DE CARGA + MAPA FUNCIONANDO
