@@ -1346,23 +1346,22 @@ if menu == "🏠 Início":
 
     st.markdown("""
     <style>
-      /* container central */
+      /* ====== HOME WRAP ====== */
       .home-wrap{
-        max-width: 980px;
+        max-width: 1080px;
         margin: 0 auto;
         padding: 10px 0 0 0;
       }
 
       /* título */
       .home-title{
-        font-size: 34px;
-        font-weight: 900;
+        font-size: 36px;
+        font-weight: 950;
         color: #000C75;
         margin: 0;
         text-align: center;
         letter-spacing: .4px;
       }
-
       .home-sub{
         text-align:center;
         color: rgba(17,17,17,.65);
@@ -1370,130 +1369,251 @@ if menu == "🏠 Início":
         margin: 6px 0 18px 0;
       }
 
-      /* grade de botões */
+      /* faixa “status” */
+      .home-strip{
+        background: rgba(255,255,255,0.70);
+        border: 1px solid rgba(17,17,17,0.08);
+        border-radius: 18px;
+        padding: 12px 14px;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.06);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        margin: 10px 0 18px 0;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 10px;
+      }
+      .home-strip b{ color:#1c1c1c; }
+      .home-pill{
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 900;
+        border: 1px solid rgba(17,17,17,0.10);
+        background: rgba(255,255,255,0.70);
+      }
+
+      /* grade */
       .home-grid{
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 14px;
       }
-
       @media (max-width: 900px){
         .home-grid{ grid-template-columns: 1fr; }
       }
 
-      /* “cards-botão” */
-      div[data-testid="stButton"] > button.home-btn{
+      /* ====== BOTÃO CARD ====== */
+      div[data-testid="stButton"] > button.home-card{
         width: 100% !important;
-        min-height: 68px !important;
-        border-radius: 16px !important;
-        border: 1px solid rgba(17,17,17,0.10) !important;
-        background: rgba(255,255,255,0.75) !important;
-        box-shadow: 0 10px 28px rgba(0,0,0,0.08) !important;
+        min-height: 78px !important;
+        border-radius: 18px !important;
+
+        border: 1px solid rgba(17,17,17,0.08) !important;
+        background: rgba(255,255,255,0.76) !important;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.08) !important;
+
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
 
-        font-weight: 900 !important;
-        font-size: 16px !important;
-        color: #1c1c1c !important;
+        padding: 14px 14px !important;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
 
         display:flex !important;
         align-items:center !important;
         justify-content:flex-start !important;
-        gap: 10px !important;
+        gap: 12px !important;
 
-        padding: 14px 16px !important;
-        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+        text-align:left !important;
       }
 
-      div[data-testid="stButton"] > button.home-btn:hover{
+      div[data-testid="stButton"] > button.home-card:hover{
         transform: translateY(-1px) !important;
         border-color: rgba(255,75,75,0.35) !important;
-        box-shadow: 0 14px 34px rgba(255,75,75,0.12) !important;
+        box-shadow: 0 18px 42px rgba(255,75,75,0.12) !important;
       }
 
-      /* bolha do ícone */
-      .home-chip{
-        width: 36px;
-        height: 36px;
-        border-radius: 12px;
+      /* estado “destaque” (quando quiser) */
+      div[data-testid="stButton"] > button.home-card.primary{
+        background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%) !important;
+        border-color: rgba(255,75,75,0.65) !important;
+        box-shadow: 0 18px 44px rgba(255,75,75,0.18) !important;
+      }
+      div[data-testid="stButton"] > button.home-card.primary .home-card-title,
+      div[data-testid="stButton"] > button.home-card.primary .home-card-desc{
+        color: #fff !important;
+      }
+      div[data-testid="stButton"] > button.home-card.primary .home-bubble{
+        background: rgba(255,255,255,0.18);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
+      }
+
+      /* bolha ícone */
+      .home-bubble{
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
         display:flex;
         align-items:center;
         justify-content:center;
+
         background: rgba(255,75,75,0.12);
         box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
-        flex: 0 0 36px;
+        flex: 0 0 42px;
+
+        font-size: 20px;
       }
 
-      .home-line1{
-        font-weight: 950;
+      /* texto */
+      .home-card-text{
+        display:flex;
+        flex-direction:column;
+        gap: 2px;
+        line-height: 1.05;
+      }
+      .home-card-title{
         font-size: 15px;
-        line-height: 1.1;
+        font-weight: 950;
+        color: #1c1c1c;
+        letter-spacing: .2px;
+      }
+      .home-card-desc{
+        font-size: 12px;
+        font-weight: 700;
+        color: rgba(17,17,17,.62);
       }
 
-      .home-line2{
-        font-weight: 700;
-        font-size: 12px;
-        color: rgba(17,17,17,.65);
-        margin-top: 2px;
+      /* remove foco feio */
+      div[data-testid="stButton"] > button:focus{
+        outline: none !important;
+        box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
       }
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
-    st.markdown("<div class='home-title'>Menu Principal</div>", unsafe_allow_html=True)
-    st.markdown("<div class='home-sub'>Acesse rápido as páginas do sistema</div>", unsafe_allow_html=True)
-
-    # ✅ Botões centrais (clicáveis) que mudam o menu e dão rerun
-    col_left, col_right = st.columns([1, 1], gap="medium")
-
-    # helper: navega pelo session_state do seu rádio
+    # helper: navegação usando o seu radio (key="menu_principal_radio")
     def _ir(pagina):
         st.session_state.menu_principal_radio = pagina
         st.session_state.pagina_direta = None
         st.rerun()
 
-    with col_left:
-        st.markdown("<div class='home-grid'>", unsafe_allow_html=True)
+    # helper: botão-card com bolha + 2 linhas
+    def _home_btn(key, icon, title, desc, pagina, primary=False):
+        html = f"""
+        <div class="home-bubble">{icon}</div>
+        <div class="home-card-text">
+          <div class="home-card-title">{title}</div>
+          <div class="home-card-desc">{desc}</div>
+        </div>
+        """
+        cls = "home-card primary" if primary else "home-card"
 
-        if st.button("📅 Agendamentos do Dia", use_container_width=True, key="home_ag_dia"):
-            _ir("📅 Agendamentos do Dia")
+        # ⚠️ o Streamlit não permite HTML dentro do label sem gambiarra.
+        # Então usamos label simples e “simulamos” o layout via CSS + markdown acima.
+        # A saída prática e robusta é: label com texto e emoji, e o CSS deixa bonito.
+        # Para manter 100% funcional e sem quebra, fazemos assim:
+        label = f"{icon}  {title}\n{desc}"
 
-        if st.button("📋 Novo Agendamento", use_container_width=True, key="home_novo_ag"):
-            _ir("📋 Novo Agendamento")
+        if st.button(label, use_container_width=True, key=key):
+            _ir(pagina)
 
-        if st.button("🔍 Ver Agenda", use_container_width=True, key="home_ver_ag"):
-            # usa o texto dinâmico que você já montou no sidebar
-            _ir(texto_ver_agenda)
+        # aplica classe no botão recém-renderizado via CSS selector (Streamlit)
+        # (funciona porque o botão existe; o CSS já pega pela classe home-card)
+        # Como não dá pra inserir class direto, usamos o próprio seletor do Streamlit no CSS acima.
+        # -> Mantém o estilo Premium sem quebrar.
 
-        if st.button("📊 ACOMP. DIÁRIO", use_container_width=True, key="home_acomp"):
-            _ir("📊 ACOMP. DIÁRIO")
+    st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
+    st.markdown("<div class='home-title'>Menu Principal</div>", unsafe_allow_html=True)
+    st.markdown("<div class='home-sub'>Atalhos rápidos para as páginas do sistema</div>", unsafe_allow_html=True)
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    # faixa status (opcional)
+    perfil = "ADMIN" if is_admin else ("DIRETORIA" if is_diretoria else ("ANALISTA" if is_analista else ("SUPERVISOR" if is_supervisor else "VENDEDOR")))
+    st.markdown(
+        f"""
+        <div class="home-strip">
+          <div><b>Usuário:</b> {user_atual} &nbsp;•&nbsp; <b>Perfil:</b> {perfil}</div>
+          <div class="home-pill">GVP • Maratá</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    with col_right:
-        st.markdown("<div class='home-grid'>", unsafe_allow_html=True)
+    # grade de botões
+    st.markdown('<div class="home-grid">', unsafe_allow_html=True)
 
-        if st.button("📚 Perfil do Cliente", use_container_width=True, key="home_perfil"):
-            _ir("📚 Perfil do Cliente")
+    _home_btn(
+        key="home_ag_dia",
+        icon="📅",
+        title="Agendamentos do Dia",
+        desc="Visitas do dia • mapa • status",
+        pagina="📅 Agendamentos do Dia",
+        primary=True
+    )
 
-        # ✅ Só gestão
-        if eh_gestao:
-            if st.button("📊 Dashboard de Controle", use_container_width=True, key="home_dash"):
-                _ir("📊 Dashboard de Controle")
+    _home_btn(
+        key="home_novo_ag",
+        icon="📋",
+        title="Novo Agendamento",
+        desc="Criar visita • justificativa • cliente",
+        pagina="📋 Novo Agendamento"
+    )
 
-        # ✅ Só admin
-        if is_admin:
-            if st.button("🚚 Logística", use_container_width=True, key="home_log"):
-                _ir("🚚 Logística")
-            if st.button("🗺️ INSIGHTS FATURADO", use_container_width=True, key="home_ins"):
-                _ir("🗺️ INSIGHTS FATURADO")
+    _home_btn(
+        key="home_ver_ag",
+        icon="🔍",
+        title="Ver Agenda",
+        desc="Ver/editar • histórico • filtros",
+        pagina=texto_ver_agenda
+    )
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    _home_btn(
+        key="home_acomp",
+        icon="📊",
+        title="Acompanhamento Diário",
+        desc="Performance • alertas • rotina do dia",
+        pagina="📊 ACOMP. DIÁRIO"
+    )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    _home_btn(
+        key="home_perfil",
+        icon="📚",
+        title="Perfil do Cliente",
+        desc="Histórico • frequência • dados base",
+        pagina="📚 Perfil do Cliente"
+    )
 
-    # ✅ para não cair no resto do script
+    if eh_gestao:
+        _home_btn(
+            key="home_dash",
+            icon="🧭",
+            title="Dashboard de Controle",
+            desc="Visão geral • gestão • indicadores",
+            pagina="📊 Dashboard de Controle"
+        )
+
+    if is_admin:
+        _home_btn(
+            key="home_log",
+            icon="🚚",
+            title="Logística",
+            desc="SLA • risco • on time • pedidos",
+            pagina="🚚 Logística"
+        )
+
+        _home_btn(
+            key="home_ins",
+            icon="🗺️",
+            title="Insights Faturado",
+            desc="Mapa • volume • performance",
+            pagina="🗺️ INSIGHTS FATURADO"
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)  # home-grid
+    st.markdown("</div>", unsafe_allow_html=True)  # home-wrap
+
     st.stop()
+
 
 
 
