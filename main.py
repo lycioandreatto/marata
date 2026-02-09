@@ -14,39 +14,35 @@ import math
 import streamlit as st
 
 
-st.markdown("### 🧪 DEBUG DRIVE - GET PASTA")
+import streamlit as st
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
-try:
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
+st.markdown("### 🧪 DEBUG: procurar pasta real pelo nome")
 
-    folder_id = st.secrets["drive"]["folder_id"]
+sa_info = dict(st.secrets["gcp"])
+if "private_key" in sa_info and isinstance(sa_info["private_key"], str):
+    sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
 
-    sa_info = dict(st.secrets["gcp"])
-    # MUITO IMPORTANTE: se vier com \n, converte pra quebra de linha real
-    if "private_key" in sa_info and isinstance(sa_info["private_key"], str):
-        sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+creds = service_account.Credentials.from_service_account_info(
+    sa_info,
+    scopes=["https://www.googleapis.com/auth/drive"]
+)
+drive = build("drive", "v3", credentials=creds)
 
-    creds = service_account.Credentials.from_service_account_info(
-        sa_info,
-        scopes=["https://www.googleapis.com/auth/drive"]
-    )
-    drive = build("drive", "v3", credentials=creds)
+# procura itens com esse nome que o SA consegue ver
+nome = "FOTOS VENDEDORES"
+q = f"name = '{nome}' and trashed = false"
 
-    meta = drive.files().get(
-        fileId=folder_id,
-        fields="id,name,mimeType,owners,emailAddress",
-        supportsAllDrives=True
-    ).execute()
+res = drive.files().list(
+    q=q,
+    fields="files(id,name,mimeType,parents,shortcutDetails)",
+    pageSize=20,
+    supportsAllDrives=True,
+    includeItemsFromAllDrives=True,
+).execute()
 
-    st.success("✅ Service Account está enxergando a pasta!")
-    st.write(meta)
-
-except Exception as e:
-    st.error(f"❌ Service Account NÃO está enxergando a pasta: {e}")
-
-
-
+st.write(res.get("files", []))
 
 
 
