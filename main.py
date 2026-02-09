@@ -2174,6 +2174,7 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                                # ============================
                 # 🗺️ MAPA (AO FINAL)
                 # ============================
+                if is_admin or is_diretoria or is_analista:
                 st.markdown("---")
                 st.markdown("### 🗺️ Mapa das Visitas do Dia")
 
