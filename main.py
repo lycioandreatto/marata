@@ -6853,7 +6853,7 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
 
                 col_e1, col_e2 = st.columns([0.7, 0.3])
                 with col_e1:
-                    st.info("Se quiser mudar os e-mails depois, edite a lista EMAILS_ENVIO_AGENDA no código.")
+                    st.info("Botão indisponível")
                 with col_e2:
                     if st.button("📨 Enviar tabela por e-mail", use_container_width=True, key="btn_enviar_agenda_email"):
                         try:
