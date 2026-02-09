@@ -1496,7 +1496,7 @@ if menu == "📅 Agendamentos do Dia":
 
         # --- BOTÃO APROVAR EM MASSA (GESTÃO + ANALISTA) ---
         if pode_validar and not df_dia.empty:
-            if st.button("✅ APROVAR TODAS AS VISITAS REALIZADAS", use_container_width=True):
+            if st.button("✅ CIENTE DE TODAS AS VISITAS REALIZADAS", use_container_width=True):
                 # pega só as visitas REALIZADAS do dia (no recorte atual)
                 ids = df_dia[df_dia["STATUS"] == "Realizado"]["ID"].astype(str).tolist()
 
