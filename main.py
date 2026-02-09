@@ -13,12 +13,6 @@ import os
 import math
 import streamlit as st
 
-st.markdown("### 🧪 DEBUG DRIVE")
-st.write("Folder ID (secrets):", repr(st.secrets["drive"]["folder_id"]))
-st.write("Service Account:", st.secrets["gcp"]["client_email"])
-
-
-
 import io
 import uuid
 from datetime import datetime
