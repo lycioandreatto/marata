@@ -1341,33 +1341,34 @@ st.markdown("---")
 # Mapeia menu_interna de volta para menu para o restante do código
 menu = menu_interna
 
+
 # --- PÁGINA: INÍCIO ---
 if menu == "🏠 Início":
+    import streamlit.components.v1 as components
 
-    # =========================================================
-    # 1) Navegação via query param (?go=...)
-    # =========================================================
+    HOME_ROUTES = {
+        "ag_dia": "📅 Agendamentos do Dia",
+        "novo": "📋 Novo Agendamento",
+        "ver_agenda": texto_ver_agenda,
+        "acomp": "📊 ACOMP. DIÁRIO",
+        "perfil": "📚 Perfil do Cliente",
+        "dash": "📊 Dashboard de Controle",
+        "log": "🚚 Logística",
+        "ins_fat": "🗺️ INSIGHTS FATURADO",
+    }
+
+    # -----------------------------
+    # Lê query param ?go=
+    # -----------------------------
     go_param = ""
     try:
-        qp = st.query_params
-        go_param = str(qp.get("go", "") or "").strip()
+        go_param = str(st.query_params.get("go", "") or "").strip()
     except Exception:
         try:
             qp = st.experimental_get_query_params()
             go_param = str((qp.get("go", [""])[0]) if isinstance(qp.get("go", [""]), list) else qp.get("go", "")).strip()
         except Exception:
             go_param = ""
-
-    def _set_go(pagina):
-        # seta param e recarrega
-        try:
-            st.query_params["go"] = pagina
-        except Exception:
-            try:
-                st.experimental_set_query_params(go=pagina)
-            except Exception:
-                pass
-        st.rerun()
 
     def _clear_go():
         try:
@@ -1381,24 +1382,69 @@ if menu == "🏠 Início":
             except Exception:
                 pass
 
-    # Se veio go na URL, redireciona
     if go_param:
-        st.session_state.menu_principal_radio = go_param
-        st.session_state.pagina_direta = None
+        alvo = HOME_ROUTES.get(go_param, "")
+        if alvo:
+            st.session_state.menu_principal_radio = alvo
+            st.session_state.pagina_direta = None
+            _clear_go()
+            st.rerun()
         _clear_go()
-        st.rerun()
 
-    # =========================================================
-    # 2) CSS PREMIUM (cards + bolha) — mantém sua faixa top
-    # =========================================================
-    st.markdown("""
+    # -----------------------------
+    # Perfil
+    # -----------------------------
+    if is_admin:
+        perfil = "ADMIN"
+    elif is_diretoria:
+        perfil = "DIRETORIA"
+    elif is_analista:
+        perfil = "ANALISTA"
+    elif is_supervisor:
+        perfil = "SUPERVISOR"
+    else:
+        perfil = "VENDEDOR"
+
+    # -----------------------------
+    # Cards conforme perfil
+    # -----------------------------
+    cards = [
+        {"id": "ag_dia", "icon": "📅", "title": "Agendamentos do Dia", "desc": "Visitas do dia • mapa • status", "primary": True},
+        {"id": "novo", "icon": "📋", "title": "Novo Agendamento", "desc": "Criar visita • justificativa • cliente", "primary": False},
+        {"id": "ver_agenda", "icon": "🔍", "title": "Ver Agenda", "desc": "Ver/editar • histórico • filtros", "primary": False},
+        {"id": "acomp", "icon": "📊", "title": "Acompanhamento Diário", "desc": "Performance • alertas • rotina do dia", "primary": False},
+        {"id": "perfil", "icon": "📚", "title": "Perfil do Cliente", "desc": "Histórico • frequência • dados base", "primary": False},
+    ]
+
+    if eh_gestao:
+        cards.append({"id": "dash", "icon": "🧭", "title": "Dashboard de Controle", "desc": "Visão geral • gestão • indicadores", "primary": False})
+
+    if is_admin:
+        cards.append({"id": "log", "icon": "🚚", "title": "Logística", "desc": "SLA • risco • on time • pedidos", "primary": False})
+        cards.append({"id": "ins_fat", "icon": "🗺️", "title": "Insights Faturado", "desc": "Mapa • volume • performance", "primary": False})
+
+    cards_html = []
+    for c in cards:
+        cls = "home-card primary" if c.get("primary") else "home-card"
+        cards_html.append(
+            f'<a class="{cls}" href="?go={c["id"]}">'
+            f'  <div class="home-bubble">{c["icon"]}</div>'
+            f'  <div class="home-card-text">'
+            f'    <div class="home-card-title">{c["title"]}</div>'
+            f'    <div class="home-card-desc">{c["desc"]}</div>'
+            f'  </div>'
+            f'</a>'
+        )
+
+    # ✅ STRING NORMAL (sem f""" gigante) — não quebra o arquivo
+    html = """
     <style>
       .home-wrap{
         max-width: 1100px;
         margin: 0 auto;
-        padding: 8px 0 0 0;
+        padding: 10px 0 0 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
       }
-
       .home-title{
         font-size: 36px;
         font-weight: 950;
@@ -1413,8 +1459,6 @@ if menu == "🏠 Início":
         font-size: 14px;
         margin: 6px 0 18px 0;
       }
-
-      /* Faixa que você gostou */
       .home-strip{
         background: rgba(255,255,255,0.70);
         border: 1px solid rgba(17,17,17,0.08);
@@ -1439,8 +1483,6 @@ if menu == "🏠 Início":
         background: rgba(255,255,255,0.70);
         white-space: nowrap;
       }
-
-      /* Grid de cards */
       .home-grid{
         display:grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1449,23 +1491,18 @@ if menu == "🏠 Início":
       @media (max-width: 900px){
         .home-grid{ grid-template-columns: 1fr; }
       }
-
-      /* Card clicável (anchor) */
       .home-card{
         display:flex;
         align-items:center;
         gap: 12px;
         text-decoration:none !important;
-
         background: rgba(255,255,255,0.76);
         border: 1px solid rgba(17,17,17,0.08);
         border-radius: 18px;
         padding: 14px 14px;
-
         box-shadow: 0 14px 34px rgba(0,0,0,0.08);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
-
         transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
         min-height: 78px;
       }
@@ -1474,8 +1511,6 @@ if menu == "🏠 Início":
         border-color: rgba(255,75,75,0.35);
         box-shadow: 0 18px 42px rgba(255,75,75,0.12);
       }
-
-      /* destaque */
       .home-card.primary{
         background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%);
         border-color: rgba(255,75,75,0.65);
@@ -1489,8 +1524,6 @@ if menu == "🏠 Início":
         background: rgba(255,255,255,0.18);
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
       }
-
-      /* bolha */
       .home-bubble{
         width: 44px;
         height: 44px;
@@ -1498,15 +1531,11 @@ if menu == "🏠 Início":
         display:flex;
         align-items:center;
         justify-content:center;
-
         background: rgba(255,75,75,0.12);
         box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
         flex: 0 0 44px;
-
         font-size: 20px;
       }
-
-      /* texto */
       .home-card-text{
         display:flex;
         flex-direction:column;
@@ -1524,69 +1553,27 @@ if menu == "🏠 Início":
         font-weight: 700;
         color: rgba(17,17,17,.62);
       }
-
-      /* remove underline em qualquer estado */
-      .home-card:visited, .home-card:hover, .home-card:active{
-        text-decoration:none !important;
-      }
     </style>
-    """, unsafe_allow_html=True)
 
-    # =========================================================
-    # 3) Conteúdo
-    # =========================================================
-    perfil = "ADMIN" if is_admin else ("DIRETORIA" if is_diretoria else ("ANALISTA" if is_analista else ("SUPERVISOR" if is_supervisor else "VENDEDOR")))
+    <div class="home-wrap">
+      <div class="home-title">Menu Principal</div>
+      <div class="home-sub">Atalhos rápidos para as páginas do sistema</div>
 
-    st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
-    st.markdown("<div class='home-title'>Menu Principal</div>", unsafe_allow_html=True)
-    st.markdown("<div class='home-sub'>Atalhos rápidos para as páginas do sistema</div>", unsafe_allow_html=True)
+      <div class="home-strip">
+        <div><b>Usuário:</b> __USER__ &nbsp;•&nbsp; <b>Perfil:</b> __PERFIL__</div>
+        <div class="home-pill">GVP • Maratá</div>
+      </div>
 
-    st.markdown(
-        f"""
-        <div class="home-strip">
-          <div><b>Usuário:</b> {user_atual} &nbsp;•&nbsp; <b>Perfil:</b> {perfil}</div>
-          <div class="home-pill">GVP • Maratá</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+      <div class="home-grid">
+        __CARDS__
+      </div>
+    </div>
+    """
 
-    def _card(icon, title, desc, pagina, primary=False):
-        cls = "home-card primary" if primary else "home-card"
-        # usa query param go (para cair na lógica do topo)
-        return f"""
-        <a class="{cls}" href="?go={pagina}">
-          <div class="home-bubble">{icon}</div>
-          <div class="home-card-text">
-            <div class="home-card-title">{title}</div>
-            <div class="home-card-desc">{desc}</div>
-          </div>
-        </a>
-        """
+    html = html.replace("__USER__", str(user_atual)).replace("__PERFIL__", str(perfil)).replace("__CARDS__", "".join(cards_html))
 
-    cards_html = []
-
-    cards_html.append(_card("📅", "Agendamentos do Dia", "Visitas do dia • mapa • status", "📅 Agendamentos do Dia", primary=True))
-    cards_html.append(_card("📋", "Novo Agendamento", "Criar visita • justificativa • cliente", "📋 Novo Agendamento"))
-    cards_html.append(_card("🔍", "Ver Agenda", "Ver/editar • histórico • filtros", texto_ver_agenda))
-    cards_html.append(_card("📊", "Acompanhamento Diário", "Performance • alertas • rotina do dia", "📊 ACOMP. DIÁRIO"))
-    cards_html.append(_card("📚", "Perfil do Cliente", "Histórico • frequência • dados base", "📚 Perfil do Cliente"))
-
-    if eh_gestao:
-        cards_html.append(_card("🧭", "Dashboard de Controle", "Visão geral • gestão • indicadores", "📊 Dashboard de Controle"))
-
-    if is_admin:
-        cards_html.append(_card("🚚", "Logística", "SLA • risco • on time • pedidos", "🚚 Logística"))
-        cards_html.append(_card("🗺️", "Insights Faturado", "Mapa • volume • performance", "🗺️ INSIGHTS FATURADO"))
-
-    st.markdown(f"<div class='home-grid'>{''.join(cards_html)}</div>", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    components.html(html, height=560, scrolling=True)
     st.stop()
-
-
-
-
 
 
 
