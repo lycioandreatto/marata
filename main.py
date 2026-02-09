@@ -1101,28 +1101,76 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- AJUSTE: SINO DE NOTIFICAÇÃO FILTRADO ---
-    # Só mostra se for Gestão (Adm/Analista). Supervisor e Vendedor não entram aqui.
-    if eh_gestao:
+        # --- AJUSTE: SINO DE NOTIFICAÇÃO FILTRADO ---
+    # Mostra para: Admin, Analista e Supervisor (vendedor não entra)
+    if (eh_gestao or is_supervisor):
         if df_agenda is not None:
-            # Se for Admin, vê tudo. Se for Analista, vê apenas o que é dele.
+
+            # ✅ TIME DO SUPERVISOR (pela BASE) -> pega vendedores vinculados
+            vendedores_do_supervisor = []
+            if (
+                is_supervisor
+                and df_base is not None
+                and not df_base.empty
+                and "SUPERVISOR" in df_base.columns
+                and "VENDEDOR" in df_base.columns
+            ):
+                try:
+                    _tmp = df_base[["SUPERVISOR", "VENDEDOR"]].copy()
+                    _tmp["SUPERVISOR"] = _tmp["SUPERVISOR"].astype(str).str.strip().str.upper()
+                    _tmp["VENDEDOR"] = _tmp["VENDEDOR"].astype(str).str.strip().str.upper()
+
+                    vendedores_do_supervisor = (
+                        _tmp[_tmp["SUPERVISOR"] == str(user_atual).strip().upper()]["VENDEDOR"]
+                        .dropna()
+                        .unique()
+                        .tolist()
+                    )
+                except Exception:
+                    vendedores_do_supervisor = []
+
+            # Se for Admin, vê tudo
             if is_admin:
-                df_filtrado_sino = df_agenda[df_agenda['STATUS'] == "Pendente"]
-            else:
+                df_filtrado_sino = df_agenda[df_agenda["STATUS"] == "Pendente"]
+
+            # Se for Analista, vê só do analista
+            elif is_analista:
                 df_filtrado_sino = df_agenda[
-                    (df_agenda['STATUS'] == "Pendente") &
-                    (df_agenda['ANALISTA'] == user_atual)
+                    (df_agenda["STATUS"] == "Pendente")
+                    & (df_agenda["ANALISTA"].astype(str).str.strip().str.upper() == user_atual.upper())
                 ]
+
+            # ✅ Se for Supervisor, vê só da equipe (pela BASE)
+            elif is_supervisor:
+                if vendedores_do_supervisor:
+                    df_filtrado_sino = df_agenda[
+                        (df_agenda["STATUS"] == "Pendente")
+                        & (df_agenda["VENDEDOR"].astype(str).str.strip().str.upper().isin(vendedores_do_supervisor))
+                    ]
+                else:
+                    # fallback: tenta pelo campo SUPERVISOR da agenda
+                    df_filtrado_sino = df_agenda[
+                        (df_agenda["STATUS"] == "Pendente")
+                        & (df_agenda["SUPERVISOR"].astype(str).str.strip().str.upper() == user_atual.upper())
+                    ]
+            else:
+                df_filtrado_sino = df_agenda.iloc[0:0]
+
             qtd_p = len(df_filtrado_sino)
         else:
             qtd_p = 0
 
         if qtd_p > 0:
-            if st.button(f"🔔 {qtd_p} Pendências de Aprovação", use_container_width=True, type="primary"):
+            if st.button(
+                f"🔔 {qtd_p} Pendências de Aprovação",
+                use_container_width=True,
+                type="primary"
+            ):
                 st.session_state.pagina_direta = "🔔 Aprovações"
                 st.rerun()
         else:
             st.caption("✅ Nenhuma aprovação pendente")
+
 
     # Texto dinâmico do menu
     if eh_gestao:
