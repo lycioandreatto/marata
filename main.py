@@ -6786,35 +6786,6 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
             m4.metric("📍 Fora do Raio (+50m)", fora_raio_50m, delta_color="inverse")
             st.markdown("---")
 
-            # --- 6. APROVAÇÃO EM MASSA (GESTÃO) ---
-            if (is_admin or is_diretoria or is_analista):
-                with st.expander("⚖️ Painel de Aprovação de Agendas", expanded=False):
-                    col_ap1, col_ap2, col_ap3 = st.columns([2, 2, 3])
-                    vends_na_lista = sorted([str(x) for x in df_user["VENDEDOR"].unique() if x])
-                    vend_alvo = col_ap1.selectbox("Vendedor:", ["Todos"] + vends_na_lista, key="sel_massa_v")
-                    status_massa = col_ap2.selectbox("Definir:", ["Aprovado", "Reprovado"], key="sel_massa_s")
-                    obs_massa = col_ap3.text_input("Observação:", key="obs_massa_input")
-
-                    if st.button("🚀 Aplicar Decisão em Massa"):
-                        mask = df_agenda["VENDEDOR"] == vend_alvo if vend_alvo != "Todos" else df_agenda["VENDEDOR"].isin(vends_na_lista)
-                        df_agenda.loc[mask, "APROVACAO"] = status_massa
-                        df_agenda.loc[mask, "OBS_GESTAO"] = obs_massa
-                        if status_massa == "Reprovado":
-                            df_agenda.loc[mask, "STATUS"] = "Reprovado"
-                        else:
-                            df_agenda.loc[mask & (df_agenda["STATUS"] == "Pendente"), "STATUS"] = "Agendado"
-
-                        df_save = df_agenda.drop_duplicates(subset=["DATA", "VENDEDOR", "CÓDIGO CLIENTE", "STATUS"])
-                        conn.update(
-                            spreadsheet=url_planilha,
-                            worksheet="AGENDA",
-                            data=df_save.drop(columns=["LINHA", "DT_COMPLETA", "DT_REGISTRO"], errors="ignore")
-                        )
-                        st.cache_data.clear()
-                        st.success("Atualizado!")
-                        time.sleep(1)
-                        st.rerun()
-
             # --- 7. TABELA COM ANALISTA E DISTÂNCIA ---
             df_user["AÇÃO"] = False
 
