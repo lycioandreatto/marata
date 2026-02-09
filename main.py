@@ -1344,16 +1344,61 @@ menu = menu_interna
 # --- PÁGINA: INÍCIO ---
 if menu == "🏠 Início":
 
+    # =========================================================
+    # 1) Navegação via query param (?go=...)
+    # =========================================================
+    go_param = ""
+    try:
+        qp = st.query_params
+        go_param = str(qp.get("go", "") or "").strip()
+    except Exception:
+        try:
+            qp = st.experimental_get_query_params()
+            go_param = str((qp.get("go", [""])[0]) if isinstance(qp.get("go", [""]), list) else qp.get("go", "")).strip()
+        except Exception:
+            go_param = ""
+
+    def _set_go(pagina):
+        # seta param e recarrega
+        try:
+            st.query_params["go"] = pagina
+        except Exception:
+            try:
+                st.experimental_set_query_params(go=pagina)
+            except Exception:
+                pass
+        st.rerun()
+
+    def _clear_go():
+        try:
+            try:
+                del st.query_params["go"]
+            except Exception:
+                st.query_params.clear()
+        except Exception:
+            try:
+                st.experimental_set_query_params()
+            except Exception:
+                pass
+
+    # Se veio go na URL, redireciona
+    if go_param:
+        st.session_state.menu_principal_radio = go_param
+        st.session_state.pagina_direta = None
+        _clear_go()
+        st.rerun()
+
+    # =========================================================
+    # 2) CSS PREMIUM (cards + bolha) — mantém sua faixa top
+    # =========================================================
     st.markdown("""
     <style>
-      /* ====== HOME WRAP ====== */
       .home-wrap{
-        max-width: 1080px;
+        max-width: 1100px;
         margin: 0 auto;
-        padding: 10px 0 0 0;
+        padding: 8px 0 0 0;
       }
 
-      /* título */
       .home-title{
         font-size: 36px;
         font-weight: 950;
@@ -1369,7 +1414,7 @@ if menu == "🏠 Início":
         margin: 6px 0 18px 0;
       }
 
-      /* faixa “status” */
+      /* Faixa que você gostou */
       .home-strip{
         background: rgba(255,255,255,0.70);
         border: 1px solid rgba(17,17,17,0.08);
@@ -1392,11 +1437,12 @@ if menu == "🏠 Início":
         font-weight: 900;
         border: 1px solid rgba(17,17,17,0.10);
         background: rgba(255,255,255,0.70);
+        white-space: nowrap;
       }
 
-      /* grade */
+      /* Grid de cards */
       .home-grid{
-        display: grid;
+        display:grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 14px;
       }
@@ -1404,55 +1450,50 @@ if menu == "🏠 Início":
         .home-grid{ grid-template-columns: 1fr; }
       }
 
-      /* ====== BOTÃO CARD ====== */
-      div[data-testid="stButton"] > button.home-card{
-        width: 100% !important;
-        min-height: 78px !important;
-        border-radius: 18px !important;
+      /* Card clicável (anchor) */
+      .home-card{
+        display:flex;
+        align-items:center;
+        gap: 12px;
+        text-decoration:none !important;
 
-        border: 1px solid rgba(17,17,17,0.08) !important;
-        background: rgba(255,255,255,0.76) !important;
-        box-shadow: 0 14px 34px rgba(0,0,0,0.08) !important;
+        background: rgba(255,255,255,0.76);
+        border: 1px solid rgba(17,17,17,0.08);
+        border-radius: 18px;
+        padding: 14px 14px;
 
+        box-shadow: 0 14px 34px rgba(0,0,0,0.08);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
 
-        padding: 14px 14px !important;
-        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-
-        display:flex !important;
-        align-items:center !important;
-        justify-content:flex-start !important;
-        gap: 12px !important;
-
-        text-align:left !important;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+        min-height: 78px;
+      }
+      .home-card:hover{
+        transform: translateY(-1px);
+        border-color: rgba(255,75,75,0.35);
+        box-shadow: 0 18px 42px rgba(255,75,75,0.12);
       }
 
-      div[data-testid="stButton"] > button.home-card:hover{
-        transform: translateY(-1px) !important;
-        border-color: rgba(255,75,75,0.35) !important;
-        box-shadow: 0 18px 42px rgba(255,75,75,0.12) !important;
+      /* destaque */
+      .home-card.primary{
+        background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%);
+        border-color: rgba(255,75,75,0.65);
+        box-shadow: 0 18px 44px rgba(255,75,75,0.18);
       }
-
-      /* estado “destaque” (quando quiser) */
-      div[data-testid="stButton"] > button.home-card.primary{
-        background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%) !important;
-        border-color: rgba(255,75,75,0.65) !important;
-        box-shadow: 0 18px 44px rgba(255,75,75,0.18) !important;
-      }
-      div[data-testid="stButton"] > button.home-card.primary .home-card-title,
-      div[data-testid="stButton"] > button.home-card.primary .home-card-desc{
+      .home-card.primary .home-card-title,
+      .home-card.primary .home-card-desc{
         color: #fff !important;
       }
-      div[data-testid="stButton"] > button.home-card.primary .home-bubble{
+      .home-card.primary .home-bubble{
         background: rgba(255,255,255,0.18);
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
       }
 
-      /* bolha ícone */
+      /* bolha */
       .home-bubble{
-        width: 42px;
-        height: 42px;
+        width: 44px;
+        height: 44px;
         border-radius: 14px;
         display:flex;
         align-items:center;
@@ -1460,7 +1501,7 @@ if menu == "🏠 Início":
 
         background: rgba(255,75,75,0.12);
         box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
-        flex: 0 0 42px;
+        flex: 0 0 44px;
 
         font-size: 20px;
       }
@@ -1484,51 +1525,22 @@ if menu == "🏠 Início":
         color: rgba(17,17,17,.62);
       }
 
-      /* remove foco feio */
-      div[data-testid="stButton"] > button:focus{
-        outline: none !important;
-        box-shadow: 0 0 0 4px rgba(0,12,117,0.10) !important;
+      /* remove underline em qualquer estado */
+      .home-card:visited, .home-card:hover, .home-card:active{
+        text-decoration:none !important;
       }
     </style>
     """, unsafe_allow_html=True)
 
-    # helper: navegação usando o seu radio (key="menu_principal_radio")
-    def _ir(pagina):
-        st.session_state.menu_principal_radio = pagina
-        st.session_state.pagina_direta = None
-        st.rerun()
-
-    # helper: botão-card com bolha + 2 linhas
-    def _home_btn(key, icon, title, desc, pagina, primary=False):
-        html = f"""
-        <div class="home-bubble">{icon}</div>
-        <div class="home-card-text">
-          <div class="home-card-title">{title}</div>
-          <div class="home-card-desc">{desc}</div>
-        </div>
-        """
-        cls = "home-card primary" if primary else "home-card"
-
-        # ⚠️ o Streamlit não permite HTML dentro do label sem gambiarra.
-        # Então usamos label simples e “simulamos” o layout via CSS + markdown acima.
-        # A saída prática e robusta é: label com texto e emoji, e o CSS deixa bonito.
-        # Para manter 100% funcional e sem quebra, fazemos assim:
-        label = f"{icon}  {title}\n{desc}"
-
-        if st.button(label, use_container_width=True, key=key):
-            _ir(pagina)
-
-        # aplica classe no botão recém-renderizado via CSS selector (Streamlit)
-        # (funciona porque o botão existe; o CSS já pega pela classe home-card)
-        # Como não dá pra inserir class direto, usamos o próprio seletor do Streamlit no CSS acima.
-        # -> Mantém o estilo Premium sem quebrar.
+    # =========================================================
+    # 3) Conteúdo
+    # =========================================================
+    perfil = "ADMIN" if is_admin else ("DIRETORIA" if is_diretoria else ("ANALISTA" if is_analista else ("SUPERVISOR" if is_supervisor else "VENDEDOR")))
 
     st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
     st.markdown("<div class='home-title'>Menu Principal</div>", unsafe_allow_html=True)
     st.markdown("<div class='home-sub'>Atalhos rápidos para as páginas do sistema</div>", unsafe_allow_html=True)
 
-    # faixa status (opcional)
-    perfil = "ADMIN" if is_admin else ("DIRETORIA" if is_diretoria else ("ANALISTA" if is_analista else ("SUPERVISOR" if is_supervisor else "VENDEDOR")))
     st.markdown(
         f"""
         <div class="home-strip">
@@ -1539,80 +1551,39 @@ if menu == "🏠 Início":
         unsafe_allow_html=True
     )
 
-    # grade de botões
-    st.markdown('<div class="home-grid">', unsafe_allow_html=True)
+    def _card(icon, title, desc, pagina, primary=False):
+        cls = "home-card primary" if primary else "home-card"
+        # usa query param go (para cair na lógica do topo)
+        return f"""
+        <a class="{cls}" href="?go={pagina}">
+          <div class="home-bubble">{icon}</div>
+          <div class="home-card-text">
+            <div class="home-card-title">{title}</div>
+            <div class="home-card-desc">{desc}</div>
+          </div>
+        </a>
+        """
 
-    _home_btn(
-        key="home_ag_dia",
-        icon="📅",
-        title="Agendamentos do Dia",
-        desc="Visitas do dia • mapa • status",
-        pagina="📅 Agendamentos do Dia",
-        primary=True
-    )
+    cards_html = []
 
-    _home_btn(
-        key="home_novo_ag",
-        icon="📋",
-        title="Novo Agendamento",
-        desc="Criar visita • justificativa • cliente",
-        pagina="📋 Novo Agendamento"
-    )
-
-    _home_btn(
-        key="home_ver_ag",
-        icon="🔍",
-        title="Ver Agenda",
-        desc="Ver/editar • histórico • filtros",
-        pagina=texto_ver_agenda
-    )
-
-    _home_btn(
-        key="home_acomp",
-        icon="📊",
-        title="Acompanhamento Diário",
-        desc="Performance • alertas • rotina do dia",
-        pagina="📊 ACOMP. DIÁRIO"
-    )
-
-    _home_btn(
-        key="home_perfil",
-        icon="📚",
-        title="Perfil do Cliente",
-        desc="Histórico • frequência • dados base",
-        pagina="📚 Perfil do Cliente"
-    )
+    cards_html.append(_card("📅", "Agendamentos do Dia", "Visitas do dia • mapa • status", "📅 Agendamentos do Dia", primary=True))
+    cards_html.append(_card("📋", "Novo Agendamento", "Criar visita • justificativa • cliente", "📋 Novo Agendamento"))
+    cards_html.append(_card("🔍", "Ver Agenda", "Ver/editar • histórico • filtros", texto_ver_agenda))
+    cards_html.append(_card("📊", "Acompanhamento Diário", "Performance • alertas • rotina do dia", "📊 ACOMP. DIÁRIO"))
+    cards_html.append(_card("📚", "Perfil do Cliente", "Histórico • frequência • dados base", "📚 Perfil do Cliente"))
 
     if eh_gestao:
-        _home_btn(
-            key="home_dash",
-            icon="🧭",
-            title="Dashboard de Controle",
-            desc="Visão geral • gestão • indicadores",
-            pagina="📊 Dashboard de Controle"
-        )
+        cards_html.append(_card("🧭", "Dashboard de Controle", "Visão geral • gestão • indicadores", "📊 Dashboard de Controle"))
 
     if is_admin:
-        _home_btn(
-            key="home_log",
-            icon="🚚",
-            title="Logística",
-            desc="SLA • risco • on time • pedidos",
-            pagina="🚚 Logística"
-        )
+        cards_html.append(_card("🚚", "Logística", "SLA • risco • on time • pedidos", "🚚 Logística"))
+        cards_html.append(_card("🗺️", "Insights Faturado", "Mapa • volume • performance", "🗺️ INSIGHTS FATURADO"))
 
-        _home_btn(
-            key="home_ins",
-            icon="🗺️",
-            title="Insights Faturado",
-            desc="Mapa • volume • performance",
-            pagina="🗺️ INSIGHTS FATURADO"
-        )
+    st.markdown(f"<div class='home-grid'>{''.join(cards_html)}</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)  # home-grid
-    st.markdown("</div>", unsafe_allow_html=True)  # home-wrap
-
+    st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
+
 
 
 
