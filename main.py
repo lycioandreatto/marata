@@ -6571,6 +6571,7 @@ elif menu == "📋 Novo Agendamento":
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
 # --- PÁGINA: VER/EDITAR MINHA AGENDA ---
+if is_admin or is_diretoria or is_analista:
 elif menu == "🔍 Ver/Editar Minha Agenda":
     col_titulo, col_btn = st.columns([0.8, 0.2])
     with col_titulo:
