@@ -7056,9 +7056,9 @@ elif menu == "🔍 Ver/Editar Minha Agenda":
                        # ============================
             # 🗺️ MAPA (IGUAL AO DO DIA)
             # ============================
+        if is_admin or is_diretoria or is_analista:
             st.markdown("---")
             st.markdown("### 🗺️ Mapa da Minha Agenda")
-        if is_admin or is_diretoria or is_analista:
             try:
                 # ----------------------------
                 # 1) Prepara DF do mapa
