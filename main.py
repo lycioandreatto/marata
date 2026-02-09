@@ -2171,13 +2171,13 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
                             time.sleep(1)
                             st.rerun()
 
-                # ============================
+                               # ============================
                 # 🗺️ MAPA (AO FINAL)
                 # ============================
                 st.markdown("---")
                 st.markdown("### 🗺️ Mapa das Visitas do Dia")
 
-                                try:
+                try:
                     # ----------------------------
                     # 1) Prepara DF do mapa (do dia)
                     # ----------------------------
