@@ -8169,22 +8169,58 @@ elif menu_interna == "📊 ACOMP. DIÁRIO":
 elif menu_interna == "🔔 Aprovações":
     st.header("🔔 Agendamentos Pendentes de Aprovação")
     
-    # SEGURANÇA: Se por algum erro de estado um vendedor/supervisor cair aqui, bloqueia.
-    if not eh_gestao:
+    # ✅ SEGURANÇA: vendedor não entra
+    if is_vendedor:
         st.error("Você não tem permissão para acessar esta página.")
         st.stop()
+
+    # ✅ TIME DO SUPERVISOR (pela BASE) -> pega vendedores vinculados
+    vendedores_do_supervisor = []
+    if df_base is not None and not df_base.empty and "SUPERVISOR" in df_base.columns and "VENDEDOR" in df_base.columns:
+        try:
+            _tmp = df_base[["SUPERVISOR", "VENDEDOR"]].copy()
+            _tmp["SUPERVISOR"] = _tmp["SUPERVISOR"].astype(str).str.strip().str.upper()
+            _tmp["VENDEDOR"] = _tmp["VENDEDOR"].astype(str).str.strip().str.upper()
+
+            vendedores_do_supervisor = (
+                _tmp[_tmp["SUPERVISOR"] == str(user_atual).strip().upper()]["VENDEDOR"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+        except Exception:
+            vendedores_do_supervisor = []
 
     # Filtrar apenas os pendentes e respeitar a hierarquia
     if is_admin:
         # Admin vê todos os pendentes
         df_pendentes = df_agenda[df_agenda["STATUS"] == "Pendente"].copy()
-    else:
+
+    elif is_analista:
         # Analista vê apenas os pendentes atribuídos a ele
-        # Certifique-se que a coluna 'ANALISTA' existe na sua planilha
         df_pendentes = df_agenda[
             (df_agenda["STATUS"] == "Pendente") &
-            (df_agenda["ANALISTA"] == user_atual)
+            (df_agenda["ANALISTA"].astype(str).str.strip().str.upper() == user_atual.upper())
         ].copy()
+
+    elif is_supervisor:
+        # ✅ Supervisor vê pendentes apenas da equipe (pela BASE)
+        if vendedores_do_supervisor:
+            df_pendentes = df_agenda[
+                (df_agenda["STATUS"] == "Pendente") &
+                (df_agenda["VENDEDOR"].astype(str).str.strip().str.upper().isin(vendedores_do_supervisor))
+            ].copy()
+        else:
+            # fallback: tenta pelo campo SUPERVISOR da agenda
+            df_pendentes = df_agenda[
+                (df_agenda["STATUS"] == "Pendente") &
+                (df_agenda["SUPERVISOR"].astype(str).str.strip().str.upper() == user_atual.upper())
+            ].copy()
+
+    else:
+        # Qualquer outro perfil (se cair aqui) bloqueia
+        st.error("Você não tem permissão para acessar esta página.")
+        st.stop()
     
     # ✅ SLICER / FILTRO DE VENDEDOR
     df_pendentes_filtrado = df_pendentes.copy()
@@ -8250,7 +8286,6 @@ elif menu_interna == "🔔 Aprovações":
                     st.error(f"Agendamento de {row['CLIENTE']} recusado.")
                     st.cache_data.clear()
                     st.rerun()
-
 
 # --- PÁGINA: KPI APROVAÇÃO POR ANALISTA ---
 elif menu == "📊 KPI Aprovação Analistas":
