@@ -1235,6 +1235,7 @@ with st.sidebar:
         texto_ver_agenda = "🔍 Minha Agenda de Visitas"
 
     opcoes_menu = [
+        "🏠 Início",
         "📅 Agendamentos do Dia",
         "📋 Novo Agendamento",
         texto_ver_agenda
@@ -1339,6 +1340,72 @@ st.markdown("---")
 
 # Mapeia menu_interna de volta para menu para o restante do código
 menu = menu_interna
+
+
+# --- PÁGINA: INÍCIO ---
+elif menu == "🏠 Início":
+    st.markdown("""
+        <style>
+        .home-wrap {max-width: 900px; margin: 0 auto; padding-top: 10px;}
+        .home-title {text-align:center; font-size: 28px; font-weight: 800; margin-bottom: 6px;}
+        .home-sub {text-align:center; opacity: .75; margin-bottom: 22px;}
+        div[data-testid="stButton"] > button {
+            height: 90px;
+            font-size: 18px;
+            font-weight: 700;
+            border-radius: 16px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
+    st.markdown('<div class="home-title">📌 Menu Principal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="home-sub">Escolha para onde ir</div>', unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        if st.button("📅 Agendamentos do Dia", use_container_width=True):
+            st.session_state.menu = "📅 Agendamentos do Dia"
+            st.rerun()
+
+    with c2:
+        if st.button("🗓️ Minha Agenda", use_container_width=True):
+            st.session_state.menu = "🗓️ Minha Agenda"
+            st.rerun()
+
+    with c3:
+        if st.button("🔔 Aprovações", use_container_width=True):
+            st.session_state.menu = "🔔 Aprovações"
+            st.rerun()
+
+    c4, c5, c6 = st.columns(3)
+
+    with c4:
+        if st.button("📊 Desempenho", use_container_width=True):
+            st.session_state.menu = "📊 Desempenho de Vendas"
+            st.rerun()
+
+    with c5:
+        if st.button("⚙️ Configurações", use_container_width=True):
+            st.session_state.menu = "⚙️ Configurações"
+            st.rerun()
+
+    with c6:
+        if st.button("🚪 Sair", use_container_width=True):
+            # se você tiver função de logout, chama aqui
+            st.session_state.clear()
+            st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+
+
+
+
+
+
 
 
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
