@@ -3800,6 +3800,35 @@ elif menu_interna == "🧪 TESTES":
 elif menu_interna == "📚 Perfil do Cliente":
     st.header("📚 Perfil do Cliente (Histórico e Mix)")
 
+        # ✅ BOTÃO VOLTAR PARA INÍCIO (não mexe no key do radio)
+    col_back, col_refresh = st.columns([0.22, 0.78])
+    with col_back:
+        if st.button("⬅️ Início", use_container_width=True, key="btn_back_inicio_agdia"):
+            # força navegação pelo seu roteamento interno
+            st.session_state.pagina_direta = "🏠 Início"
+
+            # opcional: se estava na ficha, limpa o estado e a url
+            st.session_state.view_ag_dia = "dia"
+            st.session_state.cliente_ficha_cod = ""
+            st.session_state.cliente_ficha_nome = ""
+
+            try:
+                # streamlit novo
+                if "cliente" in st.query_params:
+                    del st.query_params["cliente"]
+            except Exception:
+                try:
+                    # streamlit antigo
+                    st.experimental_set_query_params()
+                except Exception:
+                    pass
+
+            st.rerun()
+
+    with col_refresh:
+        st.caption("")
+
+
     # ============================
     # 1) Carrega FATURADO
     # ============================
