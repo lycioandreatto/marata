@@ -1271,8 +1271,8 @@ with st.sidebar:
     # Se o usuário clicou manualmente no menu do sidebar,
     # cancelamos a navegação direta (exceto quando está no Início,
     # pois os cards do Início usam pagina_direta)
-    if st.session_state.pagina_direta and menu != "🏠 Início":
-        st.session_state.pagina_direta = None
+        if st.session_state.pagina_direta and menu != "🏠 Início":
+            st.session_state.pagina_direta = None
 
 
     if st.session_state.pagina_direta:
