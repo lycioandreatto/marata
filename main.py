@@ -1268,7 +1268,7 @@ with st.sidebar:
         st.session_state.pagina_direta = None
 
     if menu:
-        if st.session_state.pagina_direta and menu not in= ["📅 Agendamentos do Dia", "🏠 Início"]:
+        if st.session_state.pagina_direta and menu not in ["📅 Agendamentos do Dia", "🏠 Início"]:
             st.session_state.pagina_direta = None
 
     if st.session_state.pagina_direta:
