@@ -6443,6 +6443,35 @@ elif menu == "📊 Dashboard de Controle":
 # --- PÁGINA: NOVO AGENDAMENTO ---
 elif menu == "📋 Novo Agendamento":
     st.header("📋 Agendar Visita")
+
+        # ✅ BOTÃO VOLTAR PARA INÍCIO (não mexe no key do radio)
+    col_back, col_refresh = st.columns([0.22, 0.78])
+    with col_back:
+        if st.button("⬅️ Início", use_container_width=True, key="btn_back_inicio_agdia"):
+            # força navegação pelo seu roteamento interno
+            st.session_state.pagina_direta = "🏠 Início"
+
+            # opcional: se estava na ficha, limpa o estado e a url
+            st.session_state.view_ag_dia = "dia"
+            st.session_state.cliente_ficha_cod = ""
+            st.session_state.cliente_ficha_nome = ""
+
+            try:
+                # streamlit novo
+                if "cliente" in st.query_params:
+                    del st.query_params["cliente"]
+            except Exception:
+                try:
+                    # streamlit antigo
+                    st.experimental_set_query_params()
+                except Exception:
+                    pass
+
+            st.rerun()
+
+    with col_refresh:
+        st.caption("")
+
     
     if df_base is not None:
         # ✅ CAPTURA COORDENADAS UMA ÚNICA VEZ (NÃO PEDE DE NOVO NO SALVAR)
