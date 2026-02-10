@@ -1362,7 +1362,7 @@ if menu == "🏠 Início":
 
     perfil = _perfil_label()
 
-    # ---------- CSS (APLICA SÓ NOS BOTÕES "MARCADOS" DO INÍCIO) ----------
+    # ---------- CSS (SÓ NO MAIN / NÃO ATINGE SIDEBAR) ----------
     st.markdown("""
     <style>
       .home-wrap{
@@ -1413,17 +1413,15 @@ if menu == "🏠 Início":
       }
 
       /* =====================================================
-         ✅ ESTILO SÓ PARA OS BOTÕES DO INÍCIO
-         Aplica APENAS no botão que vem logo depois do marker
+         ✅ BOTÕES EM FORMATO CARD (APENAS NO CONTEÚDO PRINCIPAL)
+         NÃO AFETA A SIDEBAR
          ===================================================== */
-
-      /* botão normal do início */
-      div.home-marker + div[data-testid="stButton"] > button{
+      div[data-testid="stMainBlockContainer"] div[data-testid="stButton"] > button{
         width: 100% !important;
-        min-height: 86px !important;
+        min-height: 92px !important;
         border-radius: 18px !important;
         border: 1px solid rgba(17,17,17,0.08) !important;
-        background: rgba(255,255,255,0.76) !important;
+        background: rgba(255,255,255,0.82) !important;
         box-shadow: 0 14px 34px rgba(0,0,0,0.08) !important;
         padding: 14px 16px !important;
 
@@ -1436,23 +1434,18 @@ if menu == "🏠 Início":
         transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease !important;
       }
 
-      div.home-marker + div[data-testid="stButton"] > button:hover{
+      div[data-testid="stMainBlockContainer"] div[data-testid="stButton"] > button:hover{
         transform: translateY(-1px) !important;
         border-color: rgba(255,75,75,0.35) !important;
         box-shadow: 0 18px 42px rgba(255,75,75,0.12) !important;
       }
 
-      /* ✅ botão destaque do início (primary) */
-      div.home-marker-primary + div[data-testid="stButton"] > button{
+      /* ✅ Destaque do primeiro card (sem precisar de iframe) */
+      div[data-testid="stMainBlockContainer"] div[data-testid="stButton"] > button[kind="primary"]{
         background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%) !important;
         border-color: rgba(255,75,75,0.65) !important;
         box-shadow: 0 18px 44px rgba(255,75,75,0.18) !important;
         color: #fff !important;
-      }
-
-      /* deixa a segunda linha mais “soft” (efeito visual simples) */
-      div.home-marker + div[data-testid="stButton"] > button{
-        font-size: 15px !important;
       }
     </style>
     """, unsafe_allow_html=True)
@@ -1475,35 +1468,29 @@ if menu == "🏠 Início":
     c1, c2 = st.columns(2)
 
     with c1:
-        st.markdown('<div class="home-marker-primary"></div>', unsafe_allow_html=True)
-        if st.button("📅  Agendamentos do Dia\nVisitas do dia • mapa • status", key="home_ag_dia", use_container_width=True):
+        if st.button("📅  Agendamentos do Dia\nVisitas do dia • mapa • status", key="home_ag_dia", use_container_width=True, type="primary"):
             _ir("📅 Agendamentos do Dia")
 
     with c2:
-        st.markdown('<div class="home-marker"></div>', unsafe_allow_html=True)
         if st.button("📋  Novo Agendamento\nCriar visita • justificativa • cliente", key="home_novo", use_container_width=True):
             _ir("📋 Novo Agendamento")
 
     c3, c4 = st.columns(2)
     with c3:
-        st.markdown('<div class="home-marker"></div>', unsafe_allow_html=True)
         if st.button("🔍  Ver Agenda\nVer/editar • histórico • filtros", key="home_ver", use_container_width=True):
             _ir("🔍 Ver/Editar Minha Agenda")
 
     with c4:
-        st.markdown('<div class="home-marker"></div>', unsafe_allow_html=True)
         if st.button("📊  Acompanhamento Diário\nPerformance • alertas • rotina do dia", key="home_acomp", use_container_width=True):
             _ir("📊 ACOMP. DIÁRIO")
 
     c5, c6 = st.columns(2)
     with c5:
-        st.markdown('<div class="home-marker"></div>', unsafe_allow_html=True)
         if st.button("📚  Perfil do Cliente\nHistórico • frequência • dados base", key="home_perfil", use_container_width=True):
             _ir("📚 Perfil do Cliente")
 
     with c6:
         if eh_gestao:
-            st.markdown('<div class="home-marker"></div>', unsafe_allow_html=True)
             if st.button("🧭  Dashboard de Controle\nVisão geral • gestão • indicadores", key="home_dash", use_container_width=True):
                 _ir("📊 Dashboard de Controle")
         else:
@@ -1512,12 +1499,10 @@ if menu == "🏠 Início":
     if is_admin:
         c7, c8 = st.columns(2)
         with c7:
-            st.markdown('<div class="home-marker"></div>', unsafe_allow_html=True)
             if st.button("🚚  Logística\nSLA • risco • on time • pedidos", key="home_log", use_container_width=True):
                 _ir("🚚 Logística")
 
         with c8:
-            st.markdown('<div class="home-marker"></div>', unsafe_allow_html=True)
             if st.button("🗺️  Insights Faturado\nMapa • volume • performance", key="home_ins", use_container_width=True):
                 _ir("🗺️ INSIGHTS FATURADO")
 
