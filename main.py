@@ -1491,27 +1491,34 @@ if menu == "🏠 Início":
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 elif menu == "📅 Agendamentos do Dia":
 
-    # ✅ BOTÃO VOLTAR PARA INÍCIO (fica sempre no topo)
-    col_back, col_title = st.columns([0.18, 0.82])
+        # ✅ BOTÃO VOLTAR PARA INÍCIO (não mexe no key do radio)
+    col_back, col_refresh = st.columns([0.22, 0.78])
     with col_back:
         if st.button("⬅️ Início", use_container_width=True, key="btn_back_inicio_agdia"):
-            # volta pro menu principal do app
-            st.session_state.menu_principal_radio = "🏠 Início"
-            st.session_state.pagina_direta = None
+            # força navegação pelo seu roteamento interno
+            st.session_state.pagina_direta = "🏠 Início"
 
-            # (opcional) limpa query param "cliente" caso esteja na ficha
+            # opcional: se estava na ficha, limpa o estado e a url
+            st.session_state.view_ag_dia = "dia"
+            st.session_state.cliente_ficha_cod = ""
+            st.session_state.cliente_ficha_nome = ""
+
             try:
-                del st.query_params["cliente"]
+                # streamlit novo
+                if "cliente" in st.query_params:
+                    del st.query_params["cliente"]
             except Exception:
                 try:
+                    # streamlit antigo
                     st.experimental_set_query_params()
                 except Exception:
                     pass
 
             st.rerun()
 
-    with col_title:
-        st.caption(" ")
+    with col_refresh:
+        st.caption("")
+
     # ============================
     # ✅ (NOVO) ROTEAMENTO INTERNO + URL (FICHA DO CLIENTE)
     # - Não cria menu novo
