@@ -1244,7 +1244,8 @@ with st.sidebar:
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     opcoes_menu.append("📚 Perfil do Cliente")
     # ✅ NOVA PÁGINA: Simulador de Metas (Atual x Capacidade)
-    opcoes_menu.append("📈 Simulador de Metas")
+    opcoes_menu.append("📈 Simulador de Metas (SIM)")
+
 
 
     if is_admin: 
