@@ -1268,8 +1268,12 @@ with st.sidebar:
         st.session_state.pagina_direta = None
 
     if menu:
-        if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia":
-            st.session_state.pagina_direta = None
+    # Se o usuário clicou manualmente no menu do sidebar,
+    # cancelamos a navegação direta (exceto quando está no Início,
+    # pois os cards do Início usam pagina_direta)
+    if st.session_state.pagina_direta and menu != "🏠 Início":
+        st.session_state.pagina_direta = None
+
 
     if st.session_state.pagina_direta:
         menu_interna = st.session_state.pagina_direta
@@ -1344,126 +1348,39 @@ menu = menu_interna
 
 # --- PÁGINA: INÍCIO ---
 if menu == "🏠 Início":
-    import streamlit.components.v1 as components
 
-    HOME_ROUTES = {
-        "ag_dia": "📅 Agendamentos do Dia",
-        "novo": "📋 Novo Agendamento",
-        "ver_agenda": texto_ver_agenda,
-        "acomp": "📊 ACOMP. DIÁRIO",
-        "perfil": "📚 Perfil do Cliente",
-        "dash": "📊 Dashboard de Controle",
-        "log": "🚚 Logística",
-        "ins_fat": "🗺️ INSIGHTS FATURADO",
-    }
+    # ---------- helpers ----------
+    def _perfil_label():
+        if is_admin:
+            return "ADMIN"
+        if is_diretoria:
+            return "DIRETORIA"
+        if is_analista:
+            return "ANALISTA"
+        if is_supervisor:
+            return "SUPERVISOR"
+        return "VENDEDOR"
 
-    # -----------------------------
-    # Lê query param ?go=
-    # -----------------------------
-    go_param = ""
-    try:
-        go_param = str(st.query_params.get("go", "") or "").strip()
-    except Exception:
-        try:
-            qp = st.experimental_get_query_params()
-            go_param = str((qp.get("go", [""])[0]) if isinstance(qp.get("go", [""]), list) else qp.get("go", "")).strip()
-        except Exception:
-            go_param = ""
+    def _ir(pagina):
+        st.session_state.pagina_direta = pagina
+        st.rerun()
 
-    def _clear_go():
-        try:
-            try:
-                del st.query_params["go"]
-            except Exception:
-                st.query_params.clear()
-        except Exception:
-            try:
-                st.experimental_set_query_params()
-            except Exception:
-                pass
+    perfil = _perfil_label()
 
-    if go_param:
-        alvo = HOME_ROUTES.get(go_param, "")
-        if alvo:
-            st.session_state.menu_principal_radio = alvo
-            st.session_state.pagina_direta = None
-            _clear_go()
-            st.rerun()
-        _clear_go()
-
-    # -----------------------------
-    # Perfil
-    # -----------------------------
-    if is_admin:
-        perfil = "ADMIN"
-    elif is_diretoria:
-        perfil = "DIRETORIA"
-    elif is_analista:
-        perfil = "ANALISTA"
-    elif is_supervisor:
-        perfil = "SUPERVISOR"
-    else:
-        perfil = "VENDEDOR"
-
-    # -----------------------------
-    # Cards conforme perfil
-    # -----------------------------
-    cards = [
-        {"id": "ag_dia", "icon": "📅", "title": "Agendamentos do Dia", "desc": "Visitas do dia • mapa • status", "primary": True},
-        {"id": "novo", "icon": "📋", "title": "Novo Agendamento", "desc": "Criar visita • justificativa • cliente", "primary": False},
-        {"id": "ver_agenda", "icon": "🔍", "title": "Ver Agenda", "desc": "Ver/editar • histórico • filtros", "primary": False},
-        {"id": "acomp", "icon": "📊", "title": "Acompanhamento Diário", "desc": "Performance • alertas • rotina do dia", "primary": False},
-        {"id": "perfil", "icon": "📚", "title": "Perfil do Cliente", "desc": "Histórico • frequência • dados base", "primary": False},
-    ]
-
-    if eh_gestao:
-        cards.append({"id": "dash", "icon": "🧭", "title": "Dashboard de Controle", "desc": "Visão geral • gestão • indicadores", "primary": False})
-
-    if is_admin:
-        cards.append({"id": "log", "icon": "🚚", "title": "Logística", "desc": "SLA • risco • on time • pedidos", "primary": False})
-        cards.append({"id": "ins_fat", "icon": "🗺️", "title": "Insights Faturado", "desc": "Mapa • volume • performance", "primary": False})
-
-    cards_html = []
-    for c in cards:
-        cls = "home-card primary" if c.get("primary") else "home-card"
-        cards_html.append(
-            f'<a class="{cls}" href="?go={c["id"]}">'
-            f'  <div class="home-bubble">{c["icon"]}</div>'
-            f'  <div class="home-card-text">'
-            f'    <div class="home-card-title">{c["title"]}</div>'
-            f'    <div class="home-card-desc">{c["desc"]}</div>'
-            f'  </div>'
-            f'</a>'
-        )
-
-    # ✅ STRING NORMAL (sem f""" gigante) — não quebra o arquivo
-    html = """
+    # ---------- CSS (não usa iframe / não duplica app) ----------
+    st.markdown("""
     <style>
       .home-wrap{
         max-width: 1100px;
         margin: 0 auto;
-        padding: 10px 0 0 0;
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        padding-top: 8px;
       }
-      .home-title{
-        font-size: 36px;
-        font-weight: 950;
-        color: #000C75;
-        margin: 0;
-        text-align: center;
-        letter-spacing: .4px;
-      }
-      .home-sub{
-        text-align:center;
-        color: rgba(17,17,17,.65);
-        font-size: 14px;
-        margin: 6px 0 18px 0;
-      }
+
       .home-strip{
         background: rgba(255,255,255,0.70);
         border: 1px solid rgba(17,17,17,0.08);
         border-radius: 18px;
-        padding: 12px 14px;
+        padding: 14px 16px;
         box-shadow: 0 18px 42px rgba(0,0,0,0.06);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
@@ -1483,96 +1400,184 @@ if menu == "🏠 Início":
         background: rgba(255,255,255,0.70);
         white-space: nowrap;
       }
-      .home-grid{
-        display:grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
+
+      .home-title{
+        font-size: 34px;
+        font-weight: 950;
+        color: #000C75;
+        margin: 0;
+        text-align: center;
+        letter-spacing: .4px;
       }
-      @media (max-width: 900px){
-        .home-grid{ grid-template-columns: 1fr; }
+      .home-sub{
+        text-align:center;
+        color: rgba(17,17,17,.65);
+        font-size: 14px;
+        margin: 6px 0 16px 0;
       }
-      .home-card{
-        display:flex;
-        align-items:center;
-        gap: 12px;
-        text-decoration:none !important;
-        background: rgba(255,255,255,0.76);
-        border: 1px solid rgba(17,17,17,0.08);
-        border-radius: 18px;
-        padding: 14px 14px;
-        box-shadow: 0 14px 34px rgba(0,0,0,0.08);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
-        min-height: 78px;
+
+      /* deixa os botões com cara de card */
+      div[data-testid="stButton"] > button{
+        width: 100% !important;
+        min-height: 78px !important;
+        border-radius: 18px !important;
+        border: 1px solid rgba(17,17,17,0.08) !important;
+        background: rgba(255,255,255,0.76) !important;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.08) !important;
+        padding: 14px 14px !important;
+        font-weight: 900 !important;
+        text-align: left !important;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease !important;
       }
-      .home-card:hover{
-        transform: translateY(-1px);
-        border-color: rgba(255,75,75,0.35);
-        box-shadow: 0 18px 42px rgba(255,75,75,0.12);
+      div[data-testid="stButton"] > button:hover{
+        transform: translateY(-1px) !important;
+        border-color: rgba(255,75,75,0.35) !important;
+        box-shadow: 0 18px 42px rgba(255,75,75,0.12) !important;
       }
-      .home-card.primary{
-        background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%);
-        border-color: rgba(255,75,75,0.65);
-        box-shadow: 0 18px 44px rgba(255,75,75,0.18);
-      }
-      .home-card.primary .home-card-title,
-      .home-card.primary .home-card-desc{
-        color: #fff !important;
-      }
-      .home-card.primary .home-bubble{
-        background: rgba(255,255,255,0.18);
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
-      }
-      .home-bubble{
-        width: 44px;
-        height: 44px;
-        border-radius: 14px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        background: rgba(255,75,75,0.12);
-        box-shadow: inset 0 0 0 1px rgba(255,75,75,0.20);
-        flex: 0 0 44px;
-        font-size: 20px;
-      }
-      .home-card-text{
-        display:flex;
-        flex-direction:column;
-        gap: 2px;
-        line-height: 1.05;
-      }
-      .home-card-title{
+      /* texto “2 linhas” */
+      .home-btn-title{
         font-size: 15px;
         font-weight: 950;
         color: #1c1c1c;
-        letter-spacing: .2px;
+        margin-bottom: 4px;
       }
-      .home-card-desc{
+      .home-btn-desc{
         font-size: 12px;
         font-weight: 700;
         color: rgba(17,17,17,.62);
       }
+
+      /* botão destaque (primeiro card) */
+      .home-primary div[data-testid="stButton"] > button{
+        background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%) !important;
+        border-color: rgba(255,75,75,0.65) !important;
+        box-shadow: 0 18px 44px rgba(255,75,75,0.18) !important;
+        color: #fff !important;
+      }
+      .home-primary .home-btn-title,
+      .home-primary .home-btn-desc{
+        color: #fff !important;
+      }
     </style>
+    """, unsafe_allow_html=True)
 
-    <div class="home-wrap">
-      <div class="home-title">Menu Principal</div>
-      <div class="home-sub">Atalhos rápidos para as páginas do sistema</div>
+    st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
+    st.markdown("<div class='home-title'>Menu Principal</div>", unsafe_allow_html=True)
+    st.markdown("<div class='home-sub'>Atalhos rápidos para as páginas do sistema</div>", unsafe_allow_html=True)
 
-      <div class="home-strip">
-        <div><b>Usuário:</b> __USER__ &nbsp;•&nbsp; <b>Perfil:</b> __PERFIL__</div>
-        <div class="home-pill">GVP • Maratá</div>
-      </div>
+    st.markdown(
+        f"""
+        <div class="home-strip">
+          <div><b>Usuário:</b> {user_atual} &nbsp;•&nbsp; <b>Perfil:</b> {perfil}</div>
+          <div class="home-pill">GVP • Maratá</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-      <div class="home-grid">
-        __CARDS__
-      </div>
-    </div>
-    """
+    # ---------- GRID (2 colunas PC / 1 col mobile) ----------
+    c1, c2 = st.columns(2)
 
-    html = html.replace("__USER__", str(user_atual)).replace("__PERFIL__", str(perfil)).replace("__CARDS__", "".join(cards_html))
+    # 1) Agendamentos do Dia (destaque)
+    with c1:
+        st.markdown('<div class="home-primary">', unsafe_allow_html=True)
+        if st.button(" ", key="home_ag_dia", use_container_width=True):
+            _ir("📅 Agendamentos do Dia")
+        st.markdown("""
+          <script></script>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style="margin-top:-70px; padding:0 18px;">
+          <div class="home-btn-title">📅 Agendamentos do Dia</div>
+          <div class="home-btn-desc">Visitas do dia • mapa • status</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    components.html(html, height=560, scrolling=True)
+    # 2) Novo Agendamento
+    with c2:
+        if st.button(" ", key="home_novo", use_container_width=True):
+            _ir("📋 Novo Agendamento")
+        st.markdown("""
+        <div style="margin-top:-70px; padding:0 18px;">
+          <div class="home-btn-title">📋 Novo Agendamento</div>
+          <div class="home-btn-desc">Criar visita • justificativa • cliente</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 3) Ver Agenda (sempre abre a página interna certa)
+    c3, c4 = st.columns(2)
+    with c3:
+        if st.button(" ", key="home_ver", use_container_width=True):
+            _ir("🔍 Ver/Editar Minha Agenda")
+        st.markdown("""
+        <div style="margin-top:-70px; padding:0 18px;">
+          <div class="home-btn-title">🔍 Ver Agenda</div>
+          <div class="home-btn-desc">Ver/editar • histórico • filtros</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 4) Acompanhamento Diário
+    with c4:
+        if st.button(" ", key="home_acomp", use_container_width=True):
+            _ir("📊 ACOMP. DIÁRIO")
+        st.markdown("""
+        <div style="margin-top:-70px; padding:0 18px;">
+          <div class="home-btn-title">📊 Acompanhamento Diário</div>
+          <div class="home-btn-desc">Performance • alertas • rotina do dia</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 5) Perfil do Cliente
+    c5, c6 = st.columns(2)
+    with c5:
+        if st.button(" ", key="home_perfil", use_container_width=True):
+            _ir("📚 Perfil do Cliente")
+        st.markdown("""
+        <div style="margin-top:-70px; padding:0 18px;">
+          <div class="home-btn-title">📚 Perfil do Cliente</div>
+          <div class="home-btn-desc">Histórico • frequência • dados base</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c6:
+        # espaço “inteligente” dependendo do perfil
+        if eh_gestao:
+            if st.button(" ", key="home_dash", use_container_width=True):
+                _ir("📊 Dashboard de Controle")
+            st.markdown("""
+            <div style="margin-top:-70px; padding:0 18px;">
+              <div class="home-btn-title">🧭 Dashboard de Controle</div>
+              <div class="home-btn-desc">Visão geral • gestão • indicadores</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.empty()
+
+    # Admin extras
+    if is_admin:
+        c7, c8 = st.columns(2)
+        with c7:
+            if st.button(" ", key="home_log", use_container_width=True):
+                _ir("🚚 Logística")
+            st.markdown("""
+            <div style="margin-top:-70px; padding:0 18px;">
+              <div class="home-btn-title">🚚 Logística</div>
+              <div class="home-btn-desc">SLA • risco • on time • pedidos</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with c8:
+            if st.button(" ", key="home_ins", use_container_width=True):
+                _ir("🗺️ INSIGHTS FATURADO")
+            st.markdown("""
+            <div style="margin-top:-70px; padding:0 18px;">
+              <div class="home-btn-title">🗺️ Insights Faturado</div>
+              <div class="home-btn-desc">Mapa • volume • performance</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 
