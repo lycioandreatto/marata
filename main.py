@@ -1491,6 +1491,27 @@ if menu == "🏠 Início":
 # --- PÁGINA: AGENDAMENTOS DO DIA ---
 elif menu == "📅 Agendamentos do Dia":
 
+    # ✅ BOTÃO VOLTAR PARA INÍCIO (fica sempre no topo)
+    col_back, col_title = st.columns([0.18, 0.82])
+    with col_back:
+        if st.button("⬅️ Início", use_container_width=True, key="btn_back_inicio_agdia"):
+            # volta pro menu principal do app
+            st.session_state.menu_principal_radio = "🏠 Início"
+            st.session_state.pagina_direta = None
+
+            # (opcional) limpa query param "cliente" caso esteja na ficha
+            try:
+                del st.query_params["cliente"]
+            except Exception:
+                try:
+                    st.experimental_set_query_params()
+                except Exception:
+                    pass
+
+            st.rerun()
+
+    with col_title:
+        st.caption(" ")
     # ============================
     # ✅ (NOVO) ROTEAMENTO INTERNO + URL (FICHA DO CLIENTE)
     # - Não cria menu novo
