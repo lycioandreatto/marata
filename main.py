@@ -1486,385 +1486,298 @@ if menu == "🏠 Início":
     st.stop()
 
 
-# --- PÁGINA: SIMULADOR DE METAS (ATUAL x CAPACIDADE) ---
-elif menu == "📈 Simulador de Metas":
+# --- PÁGINA: SIMULADOR DE METAS (SIMULADO) ---
+elif menu == "📈 Simulador de Metas (SIM)":
 
-    st.header("📈 MARATÁ — Simulador de Metas (Atual x Capacidade)")
-    st.caption("Comparativo: Meta Atual (Ano Anterior + %) vs Meta por Capacidade Atual (crescimento gradual por vendedor)")
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime
 
-    # =========================================================
-    # 1) Carrega base de faturamento (tenta 2 abas)
-    # =========================================================
-    @st.cache_data(ttl=120)
-    def _carregar_faturamento():
-        abas_tentativa = ["FATURAMENTO24X25", "FATURADO"]
-        for aba in abas_tentativa:
-            try:
-                df = conn.read(spreadsheet=url_planilha, worksheet=aba)
-                if df is not None and not df.empty:
-                    df.columns = [str(c).strip() for c in df.columns]
-                    df["_ABA_ORIGEM"] = aba
-                    return df
-            except Exception:
-                pass
-        return pd.DataFrame()
-
-    df_fat = _carregar_faturamento()
-
-    if df_fat is None or df_fat.empty:
-        st.error("Não encontrei dados de faturamento nas abas 'FATURAMENTO24X25' ou 'FATURADO'.")
-        st.stop()
+    st.header("📈 Maratá — Simulador de Metas (Dados Simulados)")
+    st.caption("Comparativo: Meta Atual (Ano anterior + %) vs Meta Nova (Capacidade/Potencial real). Tudo simulado para demonstração.")
 
     # =========================================================
-    # 2) Detecta colunas (robusto)
+    # 1) Produtos (os seus)
     # =========================================================
-    def _find_col(possiveis):
-        up = {c.upper(): c for c in df_fat.columns}
-        for p in possiveis:
-            if p.upper() in up:
-                return up[p.upper()]
-        return None
-
-    col_data = _find_col(["Data fat.", "DATA FAT.", "DATA", "DT", "DATA_FAT"])
-    col_vend = _find_col(["EscrV", "VENDEDOR", "VENDEDOR NOME", "RG", "COD VENDEDOR"])
-    col_rec  = _find_col(["Receita", "RECEITA", "FATURAMENTO", "VALOR", "R$"])
-    col_qtd  = _find_col(["Qtd Vendas (S/Dec)", "QTD", "VOLUME", "QUANTIDADE"])
-    col_prod = _find_col(["Hierarquia de produtos", "HIERARQUIA DE PRODUTOS", "PRODUTO", "N° artigo", "Nº ARTIGO"])
-    col_cli  = _find_col(["Cliente", "CLIENTE", "CÓDIGO CLIENTE", "COD CLIENTE"])
-    col_uf   = _find_col(["Estado", "ESTADO", "UF"])
-
-    if not col_data or not col_vend or not col_rec:
-        st.error(
-            "Faltam colunas obrigatórias para simular metas.\n\n"
-            f"- Data: {col_data}\n- Vendedor: {col_vend}\n- Receita: {col_rec}"
-        )
-        st.stop()
+    PRODUTOS = [
+        "ACHOCOLATADO","ACUCAR","ADOCANTE SACARINA","ADOCANTE SUCRALOSE","AZEITONA","BALSAMICO",
+        "BEBIDA MISTA","CALDOS TABLETE","CATCHUP","CEBOLINHA","COGUMELO","DESCARTAVEIS","ESPECIARIAS",
+        "FARINHA DE TRIGO FD","FARINHA DE TRIGO SC","FARINHA LACTEA","FERMENTO","MACARRAO INSTANTANEO",
+        "MARATINHO","MILHO","MILHO FARINHA GOTA","MILHO FARINHA MARATA","MILHO FLOCAO GOTA","MILHO FLOCAO MARATA",
+        "MILHO PIPOCA","MINGAU","MISTURA BOLO","MOLHO PRONTO","MOLHOS ALHO","MOLHOS INGLES","MOLHOS LIMAO",
+        "MOLHOS PIMENTA","MOLHOS PIMENTA 75ML","MOLHOS SALSA","MOLHOS SHOYO","MOLHOS TEMPEROS CASEIROS",
+        "OLEAGINOSAS","PIMENTA CONSERVA","REFRESCO","SALGADINHOS FARDO","SALGADINHOS NACHOS","SALGADINHOS PASTEIS",
+        "SUCO D+ 1000ML","SUCO D+ 200ML","SUCO MARATA 1000ML","SUCO MARATA 200ML","TEMPERO COLORIFICO GOTA",
+        "TEMPERO COLORIFICO MARATA","TEMPERO CONDIMENTO GOTA","TEMPERO CONDIMENTO MARATA","TEMPERO EM PO","VINAGRE","VINAGRE ESPECIAL"
+    ]
 
     # =========================================================
-    # 3) Limpeza + padronização
+    # 2) Controles da simulação
     # =========================================================
-    df = df_fat.copy()
+    st.markdown("### 🎛️ Configurações")
 
-    df[col_vend] = df[col_vend].astype(str).str.strip().str.upper()
-    df[col_rec]  = pd.to_numeric(df[col_rec], errors="coerce").fillna(0)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        n_vendedores = st.slider("Qtd vendedores", 5, 30, 12)
+    with c2:
+        meses_passado = st.slider("Meses no passado", 6, 24, 12)
+    with c3:
+        meses_futuro = st.slider("Meses no futuro", 3, 12, 6)
+    with c4:
+        semente = st.number_input("Semente (repetir simulação)", min_value=1, max_value=999999, value=2026, step=1)
 
-    # data
-    df["_DT"] = pd.to_datetime(df[col_data], errors="coerce", dayfirst=True)
-    df = df.dropna(subset=["_DT"]).copy()
-
-    # ano-mês
-    df["_YM"] = df["_DT"].dt.to_period("M").astype(str)
-
-    # opcionais
-    if col_prod:
-        df[col_prod] = df[col_prod].astype(str).str.strip()
-    if col_uf:
-        df[col_uf] = df[col_uf].astype(str).str.strip().str.upper()
-
-    # =========================================================
-    # 4) Filtros
-    # =========================================================
-    st.markdown("### 🎛️ Filtros")
-    cA, cB, cC, cD = st.columns([0.35, 0.25, 0.20, 0.20])
-
-    vendedores = sorted(df[col_vend].dropna().unique().tolist())
-    with cA:
-        vend_sel = st.selectbox("Vendedor", ["(Todos)"] + vendedores, index=0)
-
-    with cB:
-        uf_list = ["(Todos)"]
-        if col_uf:
-            uf_list += sorted([x for x in df[col_uf].dropna().unique().tolist() if x])
-        uf_sel = st.selectbox("UF", uf_list, index=0)
-
-    with cC:
-        prod_list = ["(Todos)"]
-        if col_prod:
-            # limita lista para não travar
-            uniq = df[col_prod].dropna().unique().tolist()
-            uniq = [str(x) for x in uniq if str(x).strip() and str(x).strip().lower() != "nan"]
-            prod_list += sorted(uniq)[:5000]
-        prod_sel = st.selectbox("Produto/Hierarquia", prod_list, index=0)
-
-    with cD:
-        janela_meses = st.slider("Meses p/ Baseline", 2, 12, 4)
-
-    df_f = df.copy()
-    if vend_sel != "(Todos)":
-        df_f = df_f[df_f[col_vend] == vend_sel]
-    if col_uf and uf_sel != "(Todos)":
-        df_f = df_f[df_f[col_uf] == uf_sel]
-    if col_prod and prod_sel != "(Todos)":
-        df_f = df_f[df_f[col_prod] == prod_sel]
-
-    if df_f.empty:
-        st.warning("Sem dados com esses filtros.")
-        st.stop()
-
-    # =========================================================
-    # 5) Parâmetros da simulação
-    # =========================================================
-    st.markdown("### ⚙️ Parâmetros da Meta")
-    p1, p2, p3 = st.columns(3)
-
-    with p1:
-        pct_meta_antiga = st.slider("Meta Atual = Ano Anterior + %", 0, 40, 10) / 100.0
-
-    with p2:
-        meses_previsao = st.slider("Meses de previsão (futuro)", 3, 12, 6)
-
-    with p3:
-        fechamento_gap = st.slider("Crescimento gradual (fecha % do gap por mês)", 5, 35, 15) / 100.0
+    st.markdown("### ⚙️ Metas")
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        pct_meta_antiga = st.slider("Meta Atual = Ano anterior + %", 0, 40, 10) / 100.0
+    with m2:
+        fechamento_gap = st.slider("Meta Nova: fecha % do GAP por mês", 5, 35, 15) / 100.0
+    with m3:
+        pressao_mercado = st.slider("Dificuldade do mês (simula cenário ruim)", 0, 30, 12) / 100.0
 
     st.info(
-        "📌 **Interpretação**: Meta por Capacidade = Baseline atual + (Gap de capacidade) * taxa_mensal.\n\n"
-        "Você controla o quão agressivo é o crescimento (sem inventar número impossível)."
+        "📌 **Como a simulação funciona (simples e realista):**\n"
+        "- Cada vendedor tem um **baseline** por produto (capacidade atual)\n"
+        "- Existe um **potencial** por produto (capacidade máxima provável)\n"
+        "- A Meta Atual usa **ano anterior + %**\n"
+        "- A Meta Nova usa **baseline + crescimento gradual do gap**\n"
+        "- E aplicamos uma “dificuldade” para simular que **historicamente ninguém bate a meta atual**."
     )
 
     # =========================================================
-    # 6) Agregação mensal por vendedor
+    # 3) Gerador de dados simulados
     # =========================================================
-    # total por vendedor/mês
-    g = (
-        df_f.groupby([col_vend, "_YM"], as_index=False)[col_rec]
-        .sum()
-        .rename(columns={col_rec: "RECEITA"})
+    @st.cache_data(ttl=300)
+    def gerar_dados_simulados(seed, n_vend, meses_hist, meses_fore, dificuldade):
+        rng = np.random.default_rng(int(seed))
+
+        # vendedores
+        vendedores = [f"VEND_{i:02d}" for i in range(1, n_vend + 1)]
+
+        # meses (YYYY-MM)
+        hoje = pd.Timestamp(datetime.now().date()).to_period("M")
+        hist = [str(hoje - i) for i in range(meses_hist, 0, -1)]  # passado
+        fut  = [str(hoje + i) for i in range(1, meses_fore + 1)]  # futuro
+        meses_all = hist + [str(hoje)]  # inclui mês atual no histórico
+
+        # “peso” do produto (alguns naturalmente maiores)
+        # cria um multiplicador por produto (1.0 ~ 3.5)
+        peso_prod = {}
+        for p in PRODUTOS:
+            base = rng.uniform(0.9, 3.2)
+            # algumas linhas tendem a ser bem volumosas:
+            if "MILHO" in p or "FARINHA" in p or "SUCO" in p or "REFRESCO" in p:
+                base *= rng.uniform(1.2, 1.7)
+            peso_prod[p] = float(min(base, 4.0))
+
+        # baseline por vendedor x produto (capacidade atual)
+        baseline = []
+        for v in vendedores:
+            fator_v = rng.uniform(0.75, 1.25)  # vendedor mais forte/fraco
+            for p in PRODUTOS:
+                b = rng.uniform(80, 260) * peso_prod[p] * fator_v
+                baseline.append((v, p, float(b)))
+        df_base = pd.DataFrame(baseline, columns=["VENDEDOR", "PRODUTO", "BASELINE"])
+
+        # potencial (capacidade) por vendedor x produto (sempre >= baseline)
+        # potencial = baseline * (1.15 ~ 1.80)
+        df_base["POTENCIAL"] = df_base["BASELINE"] * rng.uniform(1.15, 1.80, size=len(df_base))
+
+        # gera histórico de vendas com ruído e sazonalidade leve
+        linhas_hist = []
+        for ym in meses_all:
+            # sazonalidade leve: some/adicione 6% aleatório no mês
+            saz = rng.normal(0.0, 0.06)
+            for _, r in df_base.iterrows():
+                v = r["VENDEDOR"]
+                p = r["PRODUTO"]
+                b = r["BASELINE"]
+                # venda real = baseline + ruído, e aplica dificuldade (reduz)
+                ruido = rng.normal(0.0, 0.20)  # variação
+                venda = b * (1.0 + saz + ruido) * (1.0 - dificuldade)
+                venda = max(0.0, float(venda))
+                linhas_hist.append((ym, v, p, venda))
+        df_hist = pd.DataFrame(linhas_hist, columns=["YM", "VENDEDOR", "PRODUTO", "VENDAS"])
+
+        # cria “ano anterior” (para meta antiga): copia histórico e desloca 12 meses
+        # (simples e suficiente para comparação)
+        df_aa = df_hist.copy()
+        df_aa["YM"] = (pd.PeriodIndex(df_aa["YM"], freq="M") - 12).astype(str)
+        df_aa = df_aa.rename(columns={"VENDAS": "VENDAS_AA"})
+
+        # agrega para facilitar
+        df_hist_agg = df_hist.groupby(["YM", "VENDEDOR", "PRODUTO"], as_index=False)["VENDAS"].sum()
+        df_aa_agg   = df_aa.groupby(["YM", "VENDEDOR", "PRODUTO"], as_index=False)["VENDAS_AA"].sum()
+
+        return df_base, df_hist_agg, df_aa_agg, hist, fut, str(hoje)
+
+    df_base, df_hist, df_aa, meses_hist_list, meses_fut_list, mes_atual = gerar_dados_simulados(
+        semente, n_vendedores, meses_passado, meses_futuro, pressao_mercado
     )
 
-    # ordena meses
-    g["_YM_PER"] = pd.PeriodIndex(g["_YM"], freq="M")
-    g = g.sort_values([col_vend, "_YM_PER"]).reset_index(drop=True)
+    # =========================================================
+    # 4) Cálculo de metas (antiga e nova)
+    # =========================================================
+    # Meta antiga no mês atual = vendas do mesmo mês ano anterior * (1 + %)
+    aa_mes_atual = (pd.Period(mes_atual, freq="M") - 12).astype(str)
 
-    # mês atual (último mês com dado)
-    ym_atual = str(g["_YM_PER"].max())
+    df_mes_atual = df_hist[df_hist["YM"] == mes_atual].copy()
+    df_aa_mes    = df_hist[df_hist["YM"] == aa_mes_atual].copy()
+    df_aa_mes    = df_aa_mes.rename(columns={"VENDAS": "VENDAS_AA_MES"})
 
-    # baseline = média dos últimos N meses (do vendedor)
-    def _baseline_por_vend(sub):
-        sub = sub.sort_values("_YM_PER")
-        ult = sub.tail(janela_meses)
-        return float(ult["RECEITA"].mean()) if len(ult) else 0.0
+    df_comp = df_mes_atual.merge(df_aa_mes[["VENDEDOR","PRODUTO","VENDAS_AA_MES"]], on=["VENDEDOR","PRODUTO"], how="left")
+    df_comp["VENDAS_AA_MES"] = df_comp["VENDAS_AA_MES"].fillna(0.0)
+    df_comp = df_comp.merge(df_base[["VENDEDOR","PRODUTO","BASELINE","POTENCIAL"]], on=["VENDEDOR","PRODUTO"], how="left")
 
-    base = (
-        g.groupby(col_vend)
-        .apply(_baseline_por_vend)
-        .reset_index(name="BASELINE_ATUAL")
-    )
+    df_comp["META_ATUAL"] = df_comp["VENDAS_AA_MES"] * (1.0 + pct_meta_antiga)
 
-    # capacidade/potencial (heurística inicial):
-    # usa P75 do histórico do vendedor (ou baseline se histórico curto)
-    def _p75(sub):
-        vals = sub["RECEITA"].astype(float).values
-        if len(vals) < 4:
-            return float(vals.mean()) if len(vals) else 0.0
-        return float(np.percentile(vals, 75))
+    # Meta nova (mês atual) = baseline + fecha % do gap (potencial - baseline)
+    df_comp["GAP"] = (df_comp["POTENCIAL"] - df_comp["BASELINE"]).clip(lower=0.0)
+    df_comp["META_NOVA"] = df_comp["BASELINE"] + df_comp["GAP"] * fechamento_gap
 
-    pot = (
-        g.groupby(col_vend)
-        .apply(_p75)
-        .reset_index(name="POTENCIAL_P75")
-    )
-
-    sim = base.merge(pot, on=col_vend, how="left")
-    sim["POTENCIAL_P75"] = sim["POTENCIAL_P75"].fillna(sim["BASELINE_ATUAL"])
-    sim["POTENCIAL_FINAL"] = sim[["BASELINE_ATUAL", "POTENCIAL_P75"]].max(axis=1)
-
-    # gap (o que falta “virar” de capacidade)
-    sim["GAP_CAPACIDADE"] = (sim["POTENCIAL_FINAL"] - sim["BASELINE_ATUAL"]).clip(lower=0)
+    df_comp["ATING_%_ATUAL"] = np.where(df_comp["META_ATUAL"] > 0, df_comp["VENDAS"] / df_comp["META_ATUAL"] * 100.0, 0.0)
+    df_comp["ATING_%_NOVA"]  = np.where(df_comp["META_NOVA"]  > 0, df_comp["VENDAS"] / df_comp["META_NOVA"]  * 100.0, 0.0)
 
     # =========================================================
-    # 7) Meta antiga (Ano Anterior + %)
-    #    - por mês: pega mesmo mês do ano anterior
+    # 5) Filtros do dashboard
     # =========================================================
-    # cria tabela de receita por vendedor/ano/mes
-    g2 = g.copy()
-    g2["ANO"] = g2["_YM_PER"].dt.year
-    g2["MES"] = g2["_YM_PER"].dt.month
+    st.markdown("### 🔎 Análise")
+    f1, f2, f3 = st.columns([0.4, 0.35, 0.25])
 
-    # receita ano anterior do mês atual
-    ano_atual = pd.Period(ym_atual, freq="M").year
-    mes_atual = pd.Period(ym_atual, freq="M").month
+    with f1:
+        vend_sel = st.selectbox("Vendedor", ["(Todos)"] + sorted(df_comp["VENDEDOR"].unique().tolist()), index=0)
+    with f2:
+        prod_sel = st.selectbox("Produto", ["(Todos)"] + PRODUTOS, index=0)
+    with f3:
+        visao = st.radio("Visão", ["Receita/Volume (simulado)", "Atingimento (%)"], horizontal=True)
 
-    ano_anterior = ano_atual - 1
-
-    hist_ref = g2[(g2["ANO"] == ano_anterior) & (g2["MES"] == mes_atual)].copy()
-    hist_ref = hist_ref[[col_vend, "RECEITA"]].rename(columns={"RECEITA": "MESMO_MES_ANO_ANTERIOR"})
-
-    sim = sim.merge(hist_ref, on=col_vend, how="left")
-    sim["MESMO_MES_ANO_ANTERIOR"] = sim["MESMO_MES_ANO_ANTERIOR"].fillna(0.0)
-    sim["META_ANTIGA_MES_ATUAL"] = sim["MESMO_MES_ANO_ANTERIOR"] * (1.0 + pct_meta_antiga)
-
-    # resultado atual do mês atual
-    atual_mes = g[g["_YM"] == ym_atual][[col_vend, "RECEITA"]].rename(columns={"RECEITA": "RESULTADO_MES_ATUAL"})
-    sim = sim.merge(atual_mes, on=col_vend, how="left")
-    sim["RESULTADO_MES_ATUAL"] = sim["RESULTADO_MES_ATUAL"].fillna(0.0)
-
-    # atingimento antigo vs novo (aplicando meta nova no mês atual = baseline + 1x fechamento)
-    sim["META_NOVA_MES_ATUAL"] = sim["BASELINE_ATUAL"] + sim["GAP_CAPACIDADE"] * fechamento_gap
-
-    def _pct(a, b):
-        return (a / b * 100.0) if b and b > 0 else 0.0
-
-    sim["ATING_%_ANTIGA"] = sim.apply(lambda r: _pct(r["RESULTADO_MES_ATUAL"], r["META_ANTIGA_MES_ATUAL"]), axis=1)
-    sim["ATING_%_NOVA"]   = sim.apply(lambda r: _pct(r["RESULTADO_MES_ATUAL"], r["META_NOVA_MES_ATUAL"]), axis=1)
+    df_view = df_comp.copy()
+    if vend_sel != "(Todos)":
+        df_view = df_view[df_view["VENDEDOR"] == vend_sel]
+    if prod_sel != "(Todos)":
+        df_view = df_view[df_view["PRODUTO"] == prod_sel]
 
     # =========================================================
-    # 8) Série futura (previsão gradual por vendedor)
+    # 6) KPIs (mês atual)
     # =========================================================
-    # cria lista de meses futuros
-    ultimo_periodo = pd.Period(ym_atual, freq="M")
-    fut_periods = [ultimo_periodo + i for i in range(1, meses_previsao + 1)]
+    total_vendas = float(df_view["VENDAS"].sum())
+    total_meta_atual = float(df_view["META_ATUAL"].sum())
+    total_meta_nova  = float(df_view["META_NOVA"].sum())
+
+    at_atual = (total_vendas / total_meta_atual * 100.0) if total_meta_atual > 0 else 0.0
+    at_nova  = (total_vendas / total_meta_nova  * 100.0) if total_meta_nova  > 0 else 0.0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Mês atual (simulado)", mes_atual)
+    k2.metric("Vendas (simulado)", f"{total_vendas:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    k3.metric("% Atingimento Meta Atual", f"{at_atual:.1f}%")
+    k4.metric("% Atingimento Meta Nova", f"{at_nova:.1f}%")
+
+    st.markdown("---")
+
+    # =========================================================
+    # 7) Tabela comparativa (top gaps)
+    # =========================================================
+    st.markdown("### 📋 Onde está o problema (mês atual)")
+    tab = df_view.copy()
+    tab["GAP_META_ATUAL"] = tab["META_ATUAL"] - tab["VENDAS"]
+    tab["GAP_META_NOVA"]  = tab["META_NOVA"]  - tab["VENDAS"]
+
+    tab_show = tab[[
+        "VENDEDOR","PRODUTO","VENDAS","META_ATUAL","META_NOVA","ATING_%_ATUAL","ATING_%_NOVA","GAP_META_ATUAL","GAP_META_NOVA"
+    ]].copy()
+
+    tab_show = tab_show.sort_values("GAP_META_ATUAL", ascending=False).head(50)
+
+    # formata leve
+    st.dataframe(tab_show, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # =========================================================
+    # 8) Série temporal: passado + futuro (meta nova cresce gradualmente)
+    # =========================================================
+    st.markdown("### 📈 Passado x Futuro (simulado)")
+    st.caption("No futuro, a Meta Nova cresce fechando o GAP mês a mês. A Meta Atual tende a continuar descolada.")
+
+    if vend_sel == "(Todos)":
+        vend_plot = st.selectbox("Escolha um vendedor para o gráfico", sorted(df_comp["VENDEDOR"].unique().tolist()))
+    else:
+        vend_plot = vend_sel
+
+    if prod_sel == "(Todos)":
+        prod_plot = st.selectbox("Escolha um produto para o gráfico", PRODUTOS)
+    else:
+        prod_plot = prod_sel
+
+    # histórico do par
+    h = df_hist[(df_hist["VENDEDOR"] == vend_plot) & (df_hist["PRODUTO"] == prod_plot)].copy()
+    h["_P"] = pd.PeriodIndex(h["YM"], freq="M")
+    h = h.sort_values("_P")
+
+    # base e potencial
+    bp = df_base[(df_base["VENDEDOR"] == vend_plot) & (df_base["PRODUTO"] == prod_plot)].copy()
+    baseline = float(bp["BASELINE"].iloc[0]) if not bp.empty else 0.0
+    potencial = float(bp["POTENCIAL"].iloc[0]) if not bp.empty else baseline
+    gap = max(0.0, potencial - baseline)
+
+    # meta atual (no histórico) = mesmo mês AA * (1+%)
+    # aqui simulamos “AA” pegando o mesmo histórico deslocado 12 meses (já temos nos dados)
+    # então: para cada mês M, meta_atual(M) = vendas(M-12) * (1+%)
+    h_prev = h.copy()
+    h_prev["_P"] = h_prev["_P"] + 12
+    h_prev = h_prev.rename(columns={"VENDAS": "VENDAS_AA"})
+    h_merge = h.merge(h_prev[["_P","VENDAS_AA"]], on="_P", how="left")
+    h_merge["VENDAS_AA"] = h_merge["VENDAS_AA"].fillna(0.0)
+    h_merge["META_ATUAL"] = h_merge["VENDAS_AA"] * (1.0 + pct_meta_antiga)
+
+    # futuro: meta nova gradual
+    fut_periods = [pd.Period(mes_atual, freq="M") + i for i in range(1, meses_futuro + 1)]
     fut_ym = [str(p) for p in fut_periods]
 
-    # tabela forecast
-    linhas = []
-    for _, r in sim.iterrows():
-        vend = r[col_vend]
-        base_atual = float(r["BASELINE_ATUAL"])
-        gap = float(r["GAP_CAPACIDADE"])
+    # meta nova mês a mês
+    linhas_f = []
+    acumulado = 0.0
+    for ym in fut_ym:
+        acumulado = min(gap, acumulado + gap * fechamento_gap)
+        meta_nova = baseline + acumulado
+        # meta atual futura (pra efeito visual): repete a do mês atual (padrão ruim)
+        meta_atual_f = float(df_comp[(df_comp["VENDEDOR"] == vend_plot) & (df_comp["PRODUTO"] == prod_plot)]["META_ATUAL"].sum())
+        linhas_f.append((ym, np.nan, meta_atual_f, meta_nova))
 
-        # crescimento gradual: fecha X% do gap por mês (acumulativo)
-        acumulado = 0.0
-        for i, ym in enumerate(fut_ym, start=1):
-            acumulado = min(gap, acumulado + gap * fechamento_gap)
-            meta_mes = base_atual + acumulado
-            linhas.append({
-                col_vend: vend,
-                "_YM": ym,
-                "META_NOVA_SIM": meta_mes
-            })
+    df_plot_hist = h_merge[["YM","VENDAS","META_ATUAL"]].copy()
+    df_plot_hist["META_NOVA"] = np.nan
 
-    df_fore = pd.DataFrame(linhas)
+    df_plot_fut = pd.DataFrame(linhas_f, columns=["YM","VENDAS","META_ATUAL","META_NOVA"])
 
-    # =========================================================
-    # 9) Diagnóstico “ninguém bate meta” (fato no histórico)
-    # =========================================================
-    st.markdown("### 🧠 Diagnóstico (Meta Atual)")
-    # cria meta antiga por mês comparável (ano anterior + % por mês)
-    # método: para cada linha (ano,mes), busca (ano-1, mes)
-    ref = g2[[col_vend, "ANO", "MES", "RECEITA"]].copy()
-    ref = ref.rename(columns={"RECEITA": "RECEITA_MES"})
+    df_plot = pd.concat([df_plot_hist, df_plot_fut], ignore_index=True)
+    df_plot["_P"] = pd.PeriodIndex(df_plot["YM"], freq="M")
+    df_plot = df_plot.sort_values("_P").drop(columns=["_P"])
 
-    ref_prev = ref.copy()
-    ref_prev["ANO"] = ref_prev["ANO"] + 1
-    ref_prev = ref_prev.rename(columns={"RECEITA_MES": "RECEITA_ANO_ANT"})
-
-    ref_join = ref.merge(ref_prev, on=[col_vend, "ANO", "MES"], how="left")
-    ref_join["RECEITA_ANO_ANT"] = ref_join["RECEITA_ANO_ANT"].fillna(0.0)
-    ref_join["META_ANTIGA"] = ref_join["RECEITA_ANO_ANT"] * (1.0 + pct_meta_antiga)
-
-    ref_join["BATEU_META"] = ref_join.apply(lambda r: (r["RECEITA_MES"] >= r["META_ANTIGA"]) if r["META_ANTIGA"] > 0 else False, axis=1)
-
-    # resumo
-    total_meses = len(ref_join)
-    meses_bateu = int(ref_join["BATEU_META"].sum()) if total_meses else 0
-    taxa = (meses_bateu / total_meses * 100.0) if total_meses else 0.0
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Meses analisados", total_meses)
-    c2.metric("Meses que bateram Meta Atual", meses_bateu)
-    c3.metric("% de meses batendo Meta Atual", f"{taxa:.1f}%")
-
-    if meses_bateu == 0 and total_meses > 0:
-        st.warning(
-            "🚨 **Evidência forte para mudança de metodologia:** nos meses analisados, a Meta Atual não foi batida.\n\n"
-            "Isso indica que o método (Ano Anterior + %) pode estar descolado da capacidade real da operação."
-        )
+    st.line_chart(df_plot.set_index("YM")[["VENDAS","META_ATUAL","META_NOVA"]])
 
     st.markdown("---")
 
     # =========================================================
-    # 10) Tabela comparativa por vendedor
+    # 9) Conclusão executiva (pra você falar com diretoria)
     # =========================================================
-    st.markdown("### 📋 Comparativo por Vendedor (Mês Atual)")
+    st.markdown("### 🧩 Leitura executiva (Maratá) — argumentos prontos")
 
-    view = sim[[col_vend, "RESULTADO_MES_ATUAL", "META_ANTIGA_MES_ATUAL", "META_NOVA_MES_ATUAL",
-                "BASELINE_ATUAL", "POTENCIAL_FINAL", "ATING_%_ANTIGA", "ATING_%_NOVA"]].copy()
-
-    view = view.rename(columns={
-        col_vend: "VENDEDOR",
-        "RESULTADO_MES_ATUAL": "RESULTADO (MÊS ATUAL)",
-        "META_ANTIGA_MES_ATUAL": "META ATUAL (ANO ANT + %)",
-        "META_NOVA_MES_ATUAL": "META NOVA (CAPACIDADE)",
-        "BASELINE_ATUAL": "BASELINE (MÉDIA RECENTE)",
-        "POTENCIAL_FINAL": "POTENCIAL (P75)",
-        "ATING_%_ANTIGA": "% ATING META ATUAL",
-        "ATING_%_NOVA": "% ATING META NOVA",
-    })
-
-    # ordena por maior gap
-    view["GAP (NOVA - RESULTADO)"] = view["META NOVA (CAPACIDADE)"] - view["RESULTADO (MÊS ATUAL)"]
-    view = view.sort_values("GAP (NOVA - RESULTADO)", ascending=False)
-
-    st.dataframe(view, use_container_width=True, hide_index=True)
-
-    # download
-    st.download_button(
-        "⬇️ Baixar tabela (CSV)",
-        data=view.to_csv(index=False).encode("utf-8"),
-        file_name="marata_simulador_metas.csv",
-        mime="text/csv",
-        use_container_width=True
+    st.write(
+        "**1) Meta Atual (Ano anterior + %) pode ficar impossível** quando o mercado muda, quando há ruptura, "
+        "quando a base já está comprimida, ou quando a execução não tem capacidade para absorver esse crescimento."
+    )
+    st.write(
+        "**2) Meta por Capacidade** não “abaixa a régua”: ela **ancora no que é possível** (baseline) e "
+        "**empurra crescimento com disciplina** (fechando o GAP para o potencial)."
+    )
+    st.write(
+        "**3) Isso vira plano de ação de verdade:** você enxerga onde o gap é maior por vendedor/produto "
+        "e define rotina (mix, cobertura, frequência, negociação, execução) para fechar o gap gradualmente."
     )
 
-    st.markdown("---")
+    st.success("✅ Página 100% simulada, pronta para apresentar. Se quiser, eu adapto o visual para ficar igual ao seu Menu Início premium.")
 
-    # =========================================================
-    # 11) Gráfico: Passado + Projeção (seleciona vendedor)
-    # =========================================================
-    st.markdown("### 📈 Série temporal: Resultado x Metas (Atual e Nova)")
-
-    vend_plot = st.selectbox("Escolha um vendedor para ver o gráfico", sorted(view["VENDEDOR"].unique().tolist()))
-
-    # histórico do vendedor
-    hist_v = g[g[col_vend] == vend_plot].copy()
-    hist_v = hist_v.sort_values("_YM_PER")
-
-    # meta antiga histórica do vendedor
-    ref_v = ref_join[ref_join[col_vend] == vend_plot].copy()
-    ref_v["_YM_PER"] = pd.PeriodIndex(ref_v["ANO"].astype(str) + "-" + ref_v["MES"].astype(str), freq="M")
-    ref_v["_YM"] = ref_v["_YM_PER"].astype(str)
-    ref_v = ref_v.sort_values("_YM_PER")
-
-    # meta nova futura do vendedor
-    fore_v = df_fore[df_fore[col_vend] == vend_plot].copy()
-    fore_v["_YM_PER"] = pd.PeriodIndex(fore_v["_YM"], freq="M")
-    fore_v = fore_v.sort_values("_YM_PER")
-
-    # monta dataset único para plot (linhas)
-    plot_df = pd.DataFrame({
-        "_YM": hist_v["_YM"].astype(str),
-        "RESULTADO": hist_v["RECEITA"].astype(float),
-    })
-
-    # junta meta antiga (onde tiver)
-    plot_df = plot_df.merge(ref_v[["_YM", "META_ANTIGA"]], on="_YM", how="left")
-    plot_df = plot_df.rename(columns={"META_ANTIGA": "META_ATUAL"})
-
-    # adiciona meta nova: no histórico pode deixar NaN; para o futuro usa forecast
-    plot_df["META_NOVA"] = np.nan
-
-    # adiciona linhas futuras
-    fut_add = pd.DataFrame({
-        "_YM": fore_v["_YM"].astype(str),
-        "RESULTADO": np.nan,
-        "META_ATUAL": np.nan,  # opcional: você pode calcular, mas aqui é “simulador”
-        "META_NOVA": fore_v["META_NOVA_SIM"].astype(float)
-    })
-
-    plot_df = pd.concat([plot_df, fut_add], ignore_index=True)
-
-    # ordena
-    plot_df["_YM_PER"] = pd.PeriodIndex(plot_df["_YM"], freq="M")
-    plot_df = plot_df.sort_values("_YM_PER").drop(columns=["_YM_PER"]).reset_index(drop=True)
-
-    st.line_chart(plot_df.set_index("_YM")[["RESULTADO", "META_ATUAL", "META_NOVA"]])
-
-    st.caption(
-        "✅ **Leitura rápida:**\n"
-        "- RESULTADO = histórico real\n"
-        "- META_ATUAL = método antigo (ano anterior + %)\n"
-        "- META_NOVA = simulação gradual pela capacidade atual"
-    )
 
 
 
