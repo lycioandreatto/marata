@@ -1620,7 +1620,8 @@ elif menu == "📈 Simulador de Metas (SIM)":
     # 4) Cálculo de metas (antiga e nova)
     # =========================================================
     # Meta antiga no mês atual = vendas do mesmo mês ano anterior * (1 + %)
-    aa_mes_atual = (pd.Period(mes_atual, freq="M") - 12).astype(str)
+    aa_mes_atual = str(pd.Period(mes_atual, freq="M") - 12)
+
 
     df_mes_atual = df_hist[df_hist["YM"] == mes_atual].copy()
     df_aa_mes    = df_hist[df_hist["YM"] == aa_mes_atual].copy()
