@@ -1268,7 +1268,7 @@ with st.sidebar:
         st.session_state.pagina_direta = None
 
     if menu:
-        if st.session_state.pagina_direta and menu != "📅 Agendamentos do Dia":
+        if st.session_state.pagina_direta and menu not in= ["📅 Agendamentos do Dia", "🏠 Início"]:
             st.session_state.pagina_direta = None
 
     if st.session_state.pagina_direta:
@@ -1344,7 +1344,6 @@ menu = menu_interna
 # --- PÁGINA: INÍCIO ---
 if menu == "🏠 Início":
 
-    # ---------- helpers ----------
     def _perfil_label():
         if is_admin:
             return "ADMIN"
@@ -1356,18 +1355,13 @@ if menu == "🏠 Início":
             return "SUPERVISOR"
         return "VENDEDOR"
 
-    def _ir(opcao_radio, pagina_direta=None):
-        # ✅ muda o rádio do sidebar (isso garante que navega)
-        st.session_state.menu_principal_radio = opcao_radio
-
-        # ✅ opcional: usa pagina_direta só se você precisar
-        st.session_state.pagina_direta = pagina_direta
-
+    def _ir(pagina):
+        # ✅ navegação pelo seu roteamento já existente (pagina_direta -> menu_interna)
+        st.session_state.pagina_direta = pagina
         st.rerun()
 
     perfil = _perfil_label()
 
-    # ---------- CSS (SÓ NO MAIN / NÃO ATINGE SIDEBAR) ----------
     st.markdown("""
     <style>
       .home-wrap{
@@ -1375,7 +1369,6 @@ if menu == "🏠 Início":
         margin: 0 auto;
         padding-top: 8px;
       }
-
       .home-title{
         font-size: 34px;
         font-weight: 950;
@@ -1417,9 +1410,7 @@ if menu == "🏠 Início":
         white-space: nowrap;
       }
 
-      /* =====================================================
-         ✅ BOTÕES EM FORMATO CARD (APENAS NO CONTEÚDO PRINCIPAL)
-         ===================================================== */
+      /* cards (apenas no container principal) */
       div[data-testid="stMainBlockContainer"] div[data-testid="stButton"] > button{
         width: 100% !important;
         min-height: 92px !important;
@@ -1431,21 +1422,19 @@ if menu == "🏠 Início":
 
         font-weight: 950 !important;
         text-align: left !important;
-
-        white-space: pre-line !important; /* permite \n */
+        white-space: pre-line !important;
         line-height: 1.15 !important;
 
         transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease !important;
       }
-
       div[data-testid="stMainBlockContainer"] div[data-testid="stButton"] > button:hover{
         transform: translateY(-1px) !important;
         border-color: rgba(255,75,75,0.35) !important;
         box-shadow: 0 18px 42px rgba(255,75,75,0.12) !important;
       }
 
-      /* ✅ Destaque do primeiro card */
-      div[data-testid="stMainBlockContainer"] div[data-testid="stButton"] > button[kind="primary"]{
+      /* destaque do primeiro card (não depende de type=primary) */
+      .home-primary div[data-testid="stButton"] > button{
         background: linear-gradient(90deg, rgba(11,94,215,0.95) 0%, rgba(8,66,152,0.95) 100%) !important;
         border-color: rgba(255,75,75,0.65) !important;
         box-shadow: 0 18px 44px rgba(255,75,75,0.18) !important;
@@ -1468,50 +1457,31 @@ if menu == "🏠 Início":
         unsafe_allow_html=True
     )
 
-    # ---------- GRID ----------
     c1, c2 = st.columns(2)
+
     with c1:
-        if st.button("📅  Agendamentos do Dia\nVisitas do dia • mapa • status", key="home_ag_dia", use_container_width=True, type="primary"):
-            _ir("📅 Agendamentos do Dia", None)
+        st.markdown('<div class="home-primary">', unsafe_allow_html=True)
+        if st.button("📅  Agendamentos do Dia\nVisitas do dia • mapa • status", key="home_ag_dia", use_container_width=True):
+            _ir("📅 Agendamentos do Dia")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with c2:
         if st.button("📋  Novo Agendamento\nCriar visita • justificativa • cliente", key="home_novo", use_container_width=True):
-            _ir("📋 Novo Agendamento", None)
+            _ir("📋 Novo Agendamento")
 
     c3, c4 = st.columns(2)
+
     with c3:
-        if st.button("🔍  Ver Agenda\nVer/editar • histórico • filtros", key="home_ver", use_container_width=True):
-            # ✅ aqui precisa ir para a opção dinâmica do rádio
-            _ir(texto_ver_agenda, None)
+        if st.button("📊  ACOMP. DIÁRIO\nPerformance • alertas • rotina do dia", key="home_acomp", use_container_width=True):
+            _ir("📊 ACOMP. DIÁRIO")
 
     with c4:
-        if st.button("📊  Acompanhamento Diário\nPerformance • alertas • rotina do dia", key="home_acomp", use_container_width=True):
-            _ir("📊 ACOMP. DIÁRIO", None)
-
-    c5, c6 = st.columns(2)
-    with c5:
         if st.button("📚  Perfil do Cliente\nHistórico • frequência • dados base", key="home_perfil", use_container_width=True):
-            _ir("📚 Perfil do Cliente", None)
-
-    with c6:
-        if eh_gestao:
-            if st.button("🧭  Dashboard de Controle\nVisão geral • gestão • indicadores", key="home_dash", use_container_width=True):
-                _ir("📊 Dashboard de Controle", None)
-        else:
-            st.empty()
-
-    if is_admin:
-        c7, c8 = st.columns(2)
-        with c7:
-            if st.button("🚚  Logística\nSLA • risco • on time • pedidos", key="home_log", use_container_width=True):
-                _ir("🚚 Logística", None)
-
-        with c8:
-            if st.button("🗺️  Insights Faturado\nMapa • volume • performance", key="home_ins", use_container_width=True):
-                _ir("🗺️ INSIGHTS FATURADO", None)
+            _ir("📚 Perfil do Cliente")
 
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
+
 
 
 
