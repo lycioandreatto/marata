@@ -1244,6 +1244,7 @@ with st.sidebar:
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     opcoes_menu.append("📚 Perfil do Cliente")
     opcoes_menu.append("💼 SALDO")
+    opcoes_menu.append("👔 DIRETORIA")
     # ✅ NOVA PÁGINA: Simulador de Metas (Atual x Capacidade)
     opcoes_menu.append("📈 Simulador de Metas (SIM)")
 
@@ -8179,6 +8180,547 @@ elif menu_interna == "📚 Perfil do Cliente":
                 st.info("Sem dados suficientes para comparar SKUs.")
             else:
                 st.dataframe(df_diff.head(int(top_n_diff)), use_container_width=True, hide_index=True)
+
+
+
+# --- PÁGINA: DIRETORIA ---
+elif menu == "👔 DIRETORIA":
+    import pandas as pd
+    import numpy as np
+    import streamlit as st
+    from datetime import datetime, timedelta
+    import json
+
+    st.header("👔 DIRETORIA — Visão executiva (Faturado x Saldo)")
+
+    # ============================
+    # Helpers locais
+    # ============================
+    def _fmt_int_pt(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(v)
+
+    def _safe_str(x):
+        try:
+            return str(x).strip()
+        except Exception:
+            return ""
+
+    def _to_num(s):
+        return pd.to_numeric(s, errors="coerce").fillna(0.0)
+
+    def _clean_uf(x):
+        # Ex.: "SE1" -> "SE"
+        s = _safe_str(x).upper()
+        s = pd.Series([s]).str.replace(r"\d+$", "", regex=True).iloc[0]
+        return s
+
+    def _week_label(dt):
+        try:
+            d = pd.to_datetime(dt)
+            iso = d.isocalendar()
+            return f"{int(iso.year)}-W{int(iso.week):02d}"
+        except Exception:
+            return "Sem data"
+
+    # ============================
+    # Cache: geojson
+    # ============================
+    @st.cache_data(show_spinner=False)
+    def _load_geojson(path):
+        with open(path, "r", encoding="utf-8") as f:
+            gj = json.load(f)
+        return gj
+
+    def _guess_featureidkey(geojson):
+        """
+        Tenta descobrir qual campo nas properties guarda a UF (sigla).
+        Retorna algo tipo 'properties.sigla' / 'properties.UF' / 'properties.SIGLA' etc.
+        """
+        try:
+            feats = geojson.get("features", [])
+            if not feats:
+                return None
+            props = feats[0].get("properties", {}) or {}
+            keys = list(props.keys())
+
+            # Preferências comuns
+            candidates = [
+                "sigla", "SIGLA",
+                "uf", "UF",
+                "state", "STATE",
+                "abbrev", "ABBREV",
+                "name_1", "NAME_1",
+                "nome", "NOME",
+            ]
+            for c in candidates:
+                if c in keys:
+                    return f"properties.{c}"
+
+            # fallback: tenta achar algo com 'sig' ou 'uf'
+            for k in keys:
+                kl = str(k).lower()
+                if "sig" in kl or kl == "uf":
+                    return f"properties.{k}"
+
+            return None
+        except Exception:
+            return None
+
+    # ============================
+    # Cache: leitura do Sheets
+    # ============================
+    @st.cache_data(show_spinner=False)
+    def _read_sheet(worksheet):
+        return conn.read(spreadsheet=url_planilha, worksheet=worksheet)
+
+    # ============================
+    # 1) Ler bases
+    # ============================
+    try:
+        df_fat0 = _read_sheet("FATURADO")
+    except Exception as e:
+        st.error(f"Erro ao ler FATURADO: {e}")
+        df_fat0 = None
+
+    try:
+        df_saldo0 = _read_sheet("saldo")
+    except Exception as e:
+        st.error(f"Erro ao ler saldo: {e}")
+        df_saldo0 = None
+
+    if df_fat0 is None or df_fat0.empty:
+        st.warning("A aba FATURADO está vazia ou não foi carregada.")
+    if df_saldo0 is None or df_saldo0.empty:
+        st.warning("A aba saldo está vazia ou não foi carregada.")
+
+    if (df_fat0 is None or df_fat0.empty) and (df_saldo0 is None or df_saldo0.empty):
+        st.stop()
+
+    # ============================
+    # 2) Padronizar FATURADO (volume = QTD)
+    # ============================
+    df_fat = df_fat0.copy() if df_fat0 is not None else pd.DataFrame()
+
+    rename_fat = {
+        "ANALISTA": "ANALISTA",
+        "EscrV": "ESTADO",
+        "Data fat.": "DATA_FAT",
+        "EqVs": "COD_SUP",
+        "RG": "COD_VEND",
+        "Região de vendas": "VENDEDOR",
+        "Hierarquia de produtos": "HIERARQUIA",
+        "Nº artigo": "SKU_NOME",
+        "Qtd Vendas (S/Dec)": "QTD",
+        "LocInc": "CIDADE",
+        "Cliente": "CLIENTE_NOME",
+        "Cliente.1": "CLIENTE_COD",
+    }
+
+    for old, new in rename_fat.items():
+        if old in df_fat.columns and new not in df_fat.columns:
+            df_fat = df_fat.rename(columns={old: new})
+
+    # Ajustes de possíveis duplicatas de cliente
+    if "CLIENTE_COD" not in df_fat.columns:
+        candidates = [c for c in df_fat.columns if "cód" in c.lower() and "cliente" in c.lower()]
+        if candidates:
+            df_fat = df_fat.rename(columns={candidates[0]: "CLIENTE_COD"})
+
+    if "CLIENTE_NOME" not in df_fat.columns:
+        candidates = [c for c in df_fat.columns if "cliente" in c.lower() and "cod" not in c.lower() and "cód" not in c.lower()]
+        if candidates:
+            df_fat = df_fat.rename(columns={candidates[0]: "CLIENTE_NOME"})
+
+    if not df_fat.empty:
+        if "DATA_FAT" in df_fat.columns:
+            df_fat["DATA_FAT"] = pd.to_datetime(df_fat["DATA_FAT"], errors="coerce")
+        if "QTD" in df_fat.columns:
+            df_fat["QTD"] = _to_num(df_fat["QTD"])
+        for c in ["ANALISTA", "ESTADO", "CIDADE", "VENDEDOR", "HIERARQUIA", "SKU_NOME", "CLIENTE_NOME"]:
+            if c in df_fat.columns:
+                df_fat[c] = df_fat[c].apply(_safe_str)
+        for c in ["COD_SUP", "COD_VEND", "CLIENTE_COD"]:
+            if c in df_fat.columns:
+                df_fat[c] = df_fat[c].apply(_safe_str)
+
+        # UF limpa
+        if "ESTADO" in df_fat.columns:
+            df_fat["UF"] = df_fat["ESTADO"].apply(_clean_uf)
+
+        # remove sem data
+        if "DATA_FAT" in df_fat.columns:
+            df_fat = df_fat.dropna(subset=["DATA_FAT"]).copy()
+
+    # ============================
+    # 3) Padronizar SALDO (volume = QTD_NAO_FAT)
+    # ============================
+    df_saldo = df_saldo0.copy() if df_saldo0 is not None else pd.DataFrame()
+
+    rename_saldo = {
+        "Dt.criação": "DATA_CRIACAO",
+        "Liberaç.": "DATA_LIBERACAO",
+        "EscrV": "ESTADO",
+        "Cidade": "CIDADE",
+        "EqVs": "COD_SUP",
+        "Vendedor": "COD_VEND",
+        "Emissor da ordem": "CLIENTE_NOME",
+        "EmissorOrd": "CLIENTE_COD",
+        "Doc.venda": "DOC_VENDA",
+        "SGCr": "SGCR",
+        "Nível 3": "HIERARQUIA",
+        "Denominação de item": "SKU_NOME",
+        "Qtde. não Faturada": "QTD_NAO_FAT",
+        "Qtde. Pedida": "QTD_PEDIDA",
+        "Qtde. Faturada": "QTD_FAT",
+        "Qtde. Logística": "QTD_LOG",
+        "Qtde. Remessa": "QTD_REMESSA",
+        "Qtde. Expedição": "QTD_EXPEDICAO",
+        "Qtde. Pallet Pendente": "PALLET_PEND",
+    }
+
+    for old, new in rename_saldo.items():
+        if old in df_saldo.columns and new not in df_saldo.columns:
+            df_saldo = df_saldo.rename(columns={old: new})
+
+    if not df_saldo.empty:
+        if "DATA_CRIACAO" in df_saldo.columns:
+            df_saldo["DATA_CRIACAO"] = pd.to_datetime(df_saldo["DATA_CRIACAO"], errors="coerce")
+        if "DATA_LIBERACAO" in df_saldo.columns:
+            df_saldo["DATA_LIBERACAO"] = pd.to_datetime(df_saldo["DATA_LIBERACAO"], errors="coerce")
+
+        for c in ["QTD_NAO_FAT", "QTD_PEDIDA", "QTD_FAT", "QTD_LOG", "QTD_REMESSA", "QTD_EXPEDICAO", "PALLET_PEND"]:
+            if c in df_saldo.columns:
+                df_saldo[c] = _to_num(df_saldo[c])
+
+        for c in ["ESTADO", "CIDADE", "COD_SUP", "COD_VEND", "CLIENTE_NOME", "CLIENTE_COD", "DOC_VENDA", "SGCR", "HIERARQUIA", "SKU_NOME"]:
+            if c in df_saldo.columns:
+                df_saldo[c] = df_saldo[c].apply(_safe_str)
+
+        if "ESTADO" in df_saldo.columns:
+            df_saldo["UF"] = df_saldo["ESTADO"].apply(_clean_uf)
+
+        # Bloqueio: SGCR == B
+        if "SGCR" in df_saldo.columns:
+            df_saldo["IS_BLOQUEADO"] = df_saldo["SGCR"].astype(str).str.upper().eq("B")
+        else:
+            df_saldo["IS_BLOQUEADO"] = False
+
+        # remove sem data criação
+        if "DATA_CRIACAO" in df_saldo.columns:
+            df_saldo = df_saldo.dropna(subset=["DATA_CRIACAO"]).copy()
+
+    # ============================
+    # 4) Filtros executivos (mesmo período pros 2)
+    # ============================
+    st.markdown("---")
+    st.subheader("🎛️ Filtros (Diretoria)")
+
+    colf1, colf2, colf3, colf4 = st.columns(4)
+
+    # Datas default: interseção do que existir
+    fat_min = df_fat["DATA_FAT"].min() if (not df_fat.empty and "DATA_FAT" in df_fat.columns) else pd.NaT
+    fat_max = df_fat["DATA_FAT"].max() if (not df_fat.empty and "DATA_FAT" in df_fat.columns) else pd.NaT
+    sal_min = df_saldo["DATA_CRIACAO"].min() if (not df_saldo.empty and "DATA_CRIACAO" in df_saldo.columns) else pd.NaT
+    sal_max = df_saldo["DATA_CRIACAO"].max() if (not df_saldo.empty and "DATA_CRIACAO" in df_saldo.columns) else pd.NaT
+
+    min_dt = pd.to_datetime(min([d for d in [fat_min, sal_min] if pd.notna(d)]), errors="coerce") if (pd.notna(fat_min) or pd.notna(sal_min)) else pd.Timestamp(datetime.now().date() - timedelta(days=30))
+    max_dt = pd.to_datetime(max([d for d in [fat_max, sal_max] if pd.notna(d)]), errors="coerce") if (pd.notna(fat_max) or pd.notna(sal_max)) else pd.Timestamp(datetime.now().date())
+
+    with colf1:
+        dt_ini = st.date_input("Data inicial", value=min_dt.date())
+    with colf2:
+        dt_fim = st.date_input("Data final", value=max_dt.date())
+
+    # “Cortar” por dimensão (filtra os dois, quando existir coluna)
+    dim_opts = ["(Sem corte)", "Analista", "Vendedor", "Supervisor", "Hierarquia", "Estado"]
+    with colf3:
+        dim_corte = st.selectbox("Corte", options=dim_opts, index=0, key="dir_dim_corte")
+
+    with colf4:
+        dim_val = "(Todos)"
+        # monta lista conforme corte (prioriza FATURADO, mas tenta saldo também)
+        if dim_corte == "(Sem corte)":
+            dim_val = "(Todos)"
+            st.caption("Sem filtro por dimensão")
+        elif dim_corte == "Analista":
+            vals = []
+            if "ANALISTA" in df_fat.columns and not df_fat.empty:
+                vals = sorted([x for x in df_fat["ANALISTA"].dropna().unique().tolist() if x != ""])
+            dim_val = st.selectbox("Selecione", options=["(Todos)"] + vals, index=0, key="dir_dim_analista")
+        elif dim_corte == "Vendedor":
+            vals = []
+            if "COD_VEND" in df_fat.columns and not df_fat.empty:
+                vals = sorted([x for x in df_fat["COD_VEND"].dropna().unique().tolist() if x != ""])
+            elif "COD_VEND" in df_saldo.columns and not df_saldo.empty:
+                vals = sorted([x for x in df_saldo["COD_VEND"].dropna().unique().tolist() if x != ""])
+            dim_val = st.selectbox("Selecione (cód.)", options=["(Todos)"] + vals, index=0, key="dir_dim_vend")
+        elif dim_corte == "Supervisor":
+            vals = []
+            if "COD_SUP" in df_fat.columns and not df_fat.empty:
+                vals = sorted([x for x in df_fat["COD_SUP"].dropna().unique().tolist() if x != ""])
+            elif "COD_SUP" in df_saldo.columns and not df_saldo.empty:
+                vals = sorted([x for x in df_saldo["COD_SUP"].dropna().unique().tolist() if x != ""])
+            dim_val = st.selectbox("Selecione (cód.)", options=["(Todos)"] + vals, index=0, key="dir_dim_sup")
+        elif dim_corte == "Hierarquia":
+            vals = []
+            if "HIERARQUIA" in df_fat.columns and not df_fat.empty:
+                vals = sorted([x for x in df_fat["HIERARQUIA"].dropna().unique().tolist() if x != ""])
+            elif "HIERARQUIA" in df_saldo.columns and not df_saldo.empty:
+                vals = sorted([x for x in df_saldo["HIERARQUIA"].dropna().unique().tolist() if x != ""])
+            dim_val = st.selectbox("Selecione", options=["(Todos)"] + vals, index=0, key="dir_dim_hier")
+        elif dim_corte == "Estado":
+            vals = []
+            if "UF" in df_fat.columns and not df_fat.empty:
+                vals = sorted([x for x in df_fat["UF"].dropna().unique().tolist() if x != ""])
+            elif "UF" in df_saldo.columns and not df_saldo.empty:
+                vals = sorted([x for x in df_saldo["UF"].dropna().unique().tolist() if x != ""])
+            dim_val = st.selectbox("Selecione (UF)", options=["(Todos)"] + vals, index=0, key="dir_dim_uf")
+
+    # Aplica período
+    df_fat_f = df_fat.copy()
+    if not df_fat_f.empty and "DATA_FAT" in df_fat_f.columns:
+        df_fat_f = df_fat_f[(df_fat_f["DATA_FAT"].dt.date >= dt_ini) & (df_fat_f["DATA_FAT"].dt.date <= dt_fim)].copy()
+
+    df_saldo_f = df_saldo.copy()
+    if not df_saldo_f.empty and "DATA_CRIACAO" in df_saldo_f.columns:
+        df_saldo_f = df_saldo_f[(df_saldo_f["DATA_CRIACAO"].dt.date >= dt_ini) & (df_saldo_f["DATA_CRIACAO"].dt.date <= dt_fim)].copy()
+
+    # Aplica corte por dimensão (quando existir)
+    if dim_val != "(Todos)" and dim_corte != "(Sem corte)":
+        if dim_corte == "Analista":
+            if "ANALISTA" in df_fat_f.columns:
+                df_fat_f = df_fat_f[df_fat_f["ANALISTA"] == dim_val].copy()
+        elif dim_corte == "Vendedor":
+            if "COD_VEND" in df_fat_f.columns:
+                df_fat_f = df_fat_f[df_fat_f["COD_VEND"] == dim_val].copy()
+            if "COD_VEND" in df_saldo_f.columns:
+                df_saldo_f = df_saldo_f[df_saldo_f["COD_VEND"] == dim_val].copy()
+        elif dim_corte == "Supervisor":
+            if "COD_SUP" in df_fat_f.columns:
+                df_fat_f = df_fat_f[df_fat_f["COD_SUP"] == dim_val].copy()
+            if "COD_SUP" in df_saldo_f.columns:
+                df_saldo_f = df_saldo_f[df_saldo_f["COD_SUP"] == dim_val].copy()
+        elif dim_corte == "Hierarquia":
+            if "HIERARQUIA" in df_fat_f.columns:
+                df_fat_f = df_fat_f[df_fat_f["HIERARQUIA"] == dim_val].copy()
+            if "HIERARQUIA" in df_saldo_f.columns:
+                df_saldo_f = df_saldo_f[df_saldo_f["HIERARQUIA"] == dim_val].copy()
+        elif dim_corte == "Estado":
+            if "UF" in df_fat_f.columns:
+                df_fat_f = df_fat_f[df_fat_f["UF"] == dim_val].copy()
+            if "UF" in df_saldo_f.columns:
+                df_saldo_f = df_saldo_f[df_saldo_f["UF"] == dim_val].copy()
+
+    # ============================
+    # 5) KPIs executivos
+    # ============================
+    st.markdown("---")
+    st.subheader("📌 KPIs executivos (Volume)")
+
+    fat_qtd = float(df_fat_f["QTD"].sum()) if (not df_fat_f.empty and "QTD" in df_fat_f.columns) else 0.0
+    fat_ped = int(df_fat_f["ORD_CLIENTE"].nunique()) if (not df_fat_f.empty and "ORD_CLIENTE" in df_fat_f.columns) else 0
+    fat_cli = int(df_fat_f["CLIENTE_NOME"].nunique()) if (not df_fat_f.empty and "CLIENTE_NOME" in df_fat_f.columns) else 0
+
+    saldo_qtd = float(df_saldo_f["QTD_NAO_FAT"].sum()) if (not df_saldo_f.empty and "QTD_NAO_FAT" in df_saldo_f.columns) else 0.0
+    saldo_ped = int(df_saldo_f["DOC_VENDA"].nunique()) if (not df_saldo_f.empty and "DOC_VENDA" in df_saldo_f.columns) else 0
+    saldo_cli = int(df_saldo_f["CLIENTE_NOME"].nunique()) if (not df_saldo_f.empty and "CLIENTE_NOME" in df_saldo_f.columns) else 0
+    saldo_bloq = int(df_saldo_f[df_saldo_f.get("IS_BLOQUEADO", False)].shape[0]) if (not df_saldo_f.empty and "IS_BLOQUEADO" in df_saldo_f.columns) else 0
+
+    # Atraso médio do saldo (por data criação)
+    if not df_saldo_f.empty and "DATA_CRIACAO" in df_saldo_f.columns:
+        hoje = pd.Timestamp(datetime.now()).normalize()
+        dias_aberto = (hoje - df_saldo_f["DATA_CRIACAO"].dt.normalize()).dt.days
+        dias_aberto = pd.to_numeric(dias_aberto, errors="coerce").fillna(0)
+        saldo_dias_med = float(dias_aberto.mean()) if len(dias_aberto) else 0.0
+        saldo_dias_p90 = float(np.percentile(dias_aberto, 90)) if len(dias_aberto) else 0.0
+    else:
+        saldo_dias_med = 0.0
+        saldo_dias_p90 = 0.0
+
+    # Razão saldo / faturado (só referência executiva)
+    ratio = (saldo_qtd / fat_qtd * 100.0) if fat_qtd > 0 else 0.0
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Faturado (Qtd)", _fmt_int_pt(fat_qtd))
+    c2.metric("Saldo aberto (Qtd não fat.)", _fmt_int_pt(saldo_qtd))
+    c3.metric("Saldo / Faturado", f"{ratio:.1f}%".replace(".", ","))
+    c4.metric("Pedidos em saldo", _fmt_int_pt(saldo_ped))
+    c5.metric("Atraso médio (dias)", f"{saldo_dias_med:.1f}".replace(".", ","))
+
+    st.caption(f"P90 de atraso do saldo (dias): **{str(round(saldo_dias_p90, 0)).replace('.', ',')}** | Linhas bloqueadas (SGCr=B): **{_fmt_int_pt(saldo_bloq)}**")
+
+    # ============================
+    # 6) Tendências (sem tabela)
+    # ============================
+    st.markdown("---")
+    st.subheader("📈 Tendências (executivo)")
+
+    colT1, colT2 = st.columns(2)
+
+    with colT1:
+        st.markdown("#### Faturado por semana (Qtd)")
+        if not df_fat_f.empty and "DATA_FAT" in df_fat_f.columns and "QTD" in df_fat_f.columns:
+            tf = df_fat_f.copy()
+            tf["SEMANA"] = tf["DATA_FAT"].apply(_week_label)
+            g = tf.groupby("SEMANA", as_index=False)["QTD"].sum().sort_values("SEMANA")
+            if not g.empty:
+                st.line_chart(g.set_index("SEMANA")["QTD"])
+        else:
+            st.info("Sem dados suficientes para a tendência de faturado.")
+
+    with colT2:
+        st.markdown("#### Saldo criado por semana (Qtd não fat.)")
+        if not df_saldo_f.empty and "DATA_CRIACAO" in df_saldo_f.columns and "QTD_NAO_FAT" in df_saldo_f.columns:
+            ts = df_saldo_f.copy()
+            ts["SEMANA"] = ts["DATA_CRIACAO"].apply(_week_label)
+            g = ts.groupby("SEMANA", as_index=False)["QTD_NAO_FAT"].sum().sort_values("SEMANA")
+            if not g.empty:
+                st.line_chart(g.set_index("SEMANA")["QTD_NAO_FAT"])
+        else:
+            st.info("Sem dados suficientes para a tendência de saldo.")
+
+    # ============================
+    # 7) Mapa executivo (UF) — 2 visões lado a lado
+    # ============================
+    st.markdown("---")
+    st.subheader("🗺️ Mapa executivo por UF (Faturado x Gargalo de Saldo)")
+
+    st.caption(
+        "Mapa por UF (sigla). No SAP vem como SE1/AL1/BA1, aqui a gente limpa pra SE/AL/BA automaticamente."
+    )
+
+    # Carrega geojson (mesma pasta do main.py)
+    geojson_path = "brazil_states.geojson"
+    geo = None
+    featureidkey = None
+
+    try:
+        geo = _load_geojson(geojson_path)
+        featureidkey = _guess_featureidkey(geo)
+    except Exception as e:
+        st.warning(f"Não consegui abrir o arquivo GeoJSON ({geojson_path}). Erro: {e}")
+        geo = None
+
+    if geo is None or featureidkey is None:
+        st.info("GeoJSON não disponível (ou sem chave de UF). Assim que estiver ok, o mapa aparece aqui.")
+    else:
+        try:
+            import plotly.express as px
+
+            colM1, colM2 = st.columns(2)
+
+            with colM1:
+                st.markdown("#### 🟦 Faturado (Qtd) por UF")
+                if not df_fat_f.empty and "UF" in df_fat_f.columns and "QTD" in df_fat_f.columns:
+                    g = df_fat_f.groupby("UF", as_index=False)["QTD"].sum()
+                    g = g[g["UF"].astype(str).str.len() == 2].copy()
+
+                    fig = px.choropleth(
+                        g,
+                        geojson=geo,
+                        locations="UF",
+                        featureidkey=featureidkey,
+                        color="QTD",
+                        color_continuous_scale="Blues",
+                        title="Faturado (Qtd) por UF",
+                    )
+                    fig.update_geos(fitbounds="locations", visible=False)
+                    fig.update_layout(margin=dict(t=50, l=10, r=10, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Sem dados de faturado para montar o mapa.")
+
+            with colM2:
+                st.markdown("#### 🟥 Saldo em aberto (Qtd não fat.) por UF")
+                if not df_saldo_f.empty and "UF" in df_saldo_f.columns and "QTD_NAO_FAT" in df_saldo_f.columns:
+                    g = df_saldo_f.groupby("UF", as_index=False)["QTD_NAO_FAT"].sum()
+                    g = g[g["UF"].astype(str).str.len() == 2].copy()
+
+                    fig = px.choropleth(
+                        g,
+                        geojson=geo,
+                        locations="UF",
+                        featureidkey=featureidkey,
+                        color="QTD_NAO_FAT",
+                        color_continuous_scale="Reds",
+                        title="Saldo (Qtd não faturada) por UF",
+                    )
+                    fig.update_geos(fitbounds="locations", visible=False)
+                    fig.update_layout(margin=dict(t=50, l=10, r=10, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Sem dados de saldo para montar o mapa.")
+        except Exception as e:
+            st.warning(f"Erro ao montar mapas com Plotly: {e}")
+
+    # ============================
+    # 8) Top 5 (sem tabela pesada) — só bullets executivos
+    # ============================
+    st.markdown("---")
+    st.subheader("🎯 Onde agir primeiro (top 5)")
+
+    colP1, colP2 = st.columns(2)
+
+    with colP1:
+        st.markdown("#### Top 5 UFs por Faturado (Qtd)")
+        if not df_fat_f.empty and "UF" in df_fat_f.columns and "QTD" in df_fat_f.columns:
+            g = df_fat_f.groupby("UF", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(5)
+            if g.empty:
+                st.info("Sem dados.")
+            else:
+                for _, r in g.iterrows():
+                    st.write(f"- **{r['UF']}**: {_fmt_int_pt(r['QTD'])}")
+        else:
+            st.info("Sem dados de faturado.")
+
+    with colP2:
+        st.markdown("#### Top 5 UFs por Saldo (Qtd não fat.)")
+        if not df_saldo_f.empty and "UF" in df_saldo_f.columns and "QTD_NAO_FAT" in df_saldo_f.columns:
+            g = df_saldo_f.groupby("UF", as_index=False)["QTD_NAO_FAT"].sum().sort_values("QTD_NAO_FAT", ascending=False).head(5)
+            if g.empty:
+                st.info("Sem dados.")
+            else:
+                for _, r in g.iterrows():
+                    st.write(f"- **{r['UF']}**: {_fmt_int_pt(r['QTD_NAO_FAT'])}")
+        else:
+            st.info("Sem dados de saldo.")
+
+    # ============================
+    # 9) Gargalos principais (explicável, sem tabela)
+    # ============================
+    st.markdown("---")
+    st.subheader("🚧 Gargalos principais (resumo)")
+
+    # % bloqueado no saldo (linhas)
+    if not df_saldo_f.empty and "IS_BLOQUEADO" in df_saldo_f.columns:
+        pct_bloq = (df_saldo_f["IS_BLOQUEADO"].mean() * 100.0) if len(df_saldo_f) else 0.0
+    else:
+        pct_bloq = 0.0
+
+    # falta de produto: Pedida > Logística (quando existir)
+    falta_total = 0.0
+    if not df_saldo_f.empty and "QTD_PEDIDA" in df_saldo_f.columns and "QTD_LOG" in df_saldo_f.columns:
+        tmp = df_saldo_f.copy()
+        tmp["QTD_FALTA"] = (tmp["QTD_PEDIDA"] - tmp["QTD_LOG"]).clip(lower=0)
+        falta_total = float(tmp["QTD_FALTA"].sum())
+
+    colG1, colG2, colG3 = st.columns(3)
+
+    with colG1:
+        st.metric("Linhas bloqueadas (%)", f"{pct_bloq:.1f}%".replace(".", ","))
+    with colG2:
+        st.metric("Falta de estoque (Qtd faltante)", _fmt_int_pt(falta_total))
+    with colG3:
+        st.metric("Atraso P90 (dias)", f"{saldo_dias_p90:.0f}".replace(".", ","))
+
+    st.caption(
+        "Leitura rápida: Bloqueio alto = travas comerciais/financeiras; Falta de estoque = gargalo operacional; "
+        "Atraso alto = risco de perder venda / insatisfação."
+    )
+
 
 
                     
