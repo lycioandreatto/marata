@@ -3593,31 +3593,60 @@ elif menu == "🗺️ INSIGHTS FATURADO":
                 else:
                     st.info("Coluna CLIENTE_NOME não encontrada.")
 
-            # =========================================================
-            # 13) NOVO: MAPA / HEATMAP Cidade x Estado (volume) — LocInc + EscrV
-            # =========================================================
+                        # ============================
+            # 13) NOVO: Treemap — Volume por Estado > Cidade (substitui o heatmap)
+            # ============================
             st.markdown("---")
-            st.subheader("🗺️ Mapa de calor (Heatmap) — Volume por Cidade x Estado")
+            st.subheader("🧩 Treemap — Volume por Estado > Cidade")
 
             if "ESTADO" not in df_f.columns or "CIDADE" not in df_f.columns:
-                st.info("Preciso de ESTADO (EscrV) e CIDADE (LocInc) para o mapa de calor.")
+                st.info("Preciso de ESTADO (EscrV) e CIDADE (LocInc) para montar o Treemap.")
             else:
-                # Top N cidades para não explodir a tela
-                top_n = st.slider("Quantidade de cidades no heatmap (Top por volume)", 10, 80, 25, key="heat_top_n_cidades")
-                df_city = df_f.groupby(["ESTADO", "CIDADE"], as_index=False)["QTD"].sum()
-                df_city = df_city.sort_values("QTD", ascending=False)
+                import plotly.express as px
 
-                top_cidades = df_city.groupby("CIDADE", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(top_n)["CIDADE"].tolist()
-                df_city = df_city[df_city["CIDADE"].isin(top_cidades)].copy()
+                # Slider: quantas cidades considerar (Top por volume)
+                st.caption("Quanto maior o bloco, maior o volume. (Hierarquia: Estado → Cidade)")
+                top_n_cidades = st.slider(
+                    "Quantidade de cidades no treemap (Top por volume)",
+                    min_value=10,
+                    max_value=200,
+                    value=60,
+                    step=5,
+                    key="slider_treemap_cidades"
+                )
 
-                pivot = df_city.pivot_table(index="CIDADE", columns="ESTADO", values="QTD", aggfunc="sum", fill_value=0.0)
+                # Agrega volume por Estado x Cidade
+                g_ec = df_f.groupby(["ESTADO", "CIDADE"], as_index=False)["QTD"].sum()
+                g_ec = g_ec.sort_values("QTD", ascending=False).head(int(top_n_cidades))
 
-                st.caption("Quanto mais escuro, maior volume. (Top cidades por volume no período filtrado)")
-                try:
-                    sty = pivot.style.format(lambda x: _fmt_int_pt(x)).background_gradient(axis=None)
-                    st.dataframe(sty, use_container_width=True)
-                except Exception:
-                    st.dataframe(pivot, use_container_width=True)
+                if g_ec.empty:
+                    st.info("Sem dados para o filtro atual.")
+                else:
+                    # Treemap
+                    fig = px.treemap(
+                        g_ec,
+                        path=["ESTADO", "CIDADE"],
+                        values="QTD",
+                        hover_data={"QTD": ":,.0f"},
+                    )
+
+                    fig.update_traces(
+                        texttemplate="%{label}<br>%{value:,.0f}",
+                        textfont_size=12
+                    )
+
+                    fig.update_layout(
+                        height=650,
+                        margin=dict(t=10, l=10, r=10, b=10)
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # Tabela de apoio (Top 30)
+                    st.markdown("#### Top 30 Estado x Cidade (Volume)")
+                    top30 = g_ec.sort_values("QTD", ascending=False).head(30).copy()
+                    top30["QTD"] = top30["QTD"].apply(_fmt_int_pt)
+                    st.dataframe(top30, use_container_width=True, hide_index=True)
 
             # =========================================================
             # 14) NOVO: Curva ABC de SKUs por vendedor (risco de dependência 1–3 SKUs)
