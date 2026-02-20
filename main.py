@@ -1243,6 +1243,7 @@ with st.sidebar:
     
     opcoes_menu.append("📊 ACOMP. DIÁRIO")
     opcoes_menu.append("📚 Perfil do Cliente")
+    opcoes_menu.append("💼 SALDO")
     # ✅ NOVA PÁGINA: Simulador de Metas (Atual x Capacidade)
     opcoes_menu.append("📈 Simulador de Metas (SIM)")
 
@@ -5363,6 +5364,584 @@ elif menu_interna == "🧪 TESTES":
             )
 
     st.markdown("---")
+
+
+
+# --- PÁGINA: SALDO ---
+elif menu == "💼 SALDO":
+    import pandas as pd
+    import numpy as np
+    import streamlit as st
+    from datetime import datetime, timedelta
+
+    st.header("💼 SALDO (Pedidos em aberto / Atrasos / Bloqueios)")
+
+    # ============================
+    # Helpers locais
+    # ============================
+    def _fmt_int_pt(v):
+        try:
+            return f"{float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(v)
+
+    def _safe_str(x):
+        try:
+            return str(x).strip()
+        except Exception:
+            return ""
+
+    def _to_num(s):
+        return pd.to_numeric(s, errors="coerce").fillna(0.0)
+
+    def _bucket_days(d):
+        try:
+            d = int(d)
+        except Exception:
+            return "Sem info"
+        if d <= 2:
+            return "0–2"
+        if d <= 7:
+            return "3–7"
+        if d <= 15:
+            return "8–15"
+        if d <= 30:
+            return "16–30"
+        return "31+"
+
+    # ============================
+    # 1) Leitura da aba SALDO (Sheets)
+    # ============================
+    try:
+        df_saldo = conn.read(spreadsheet=url_planilha, worksheet="saldo")
+    except Exception as e:
+        st.error(f"Erro ao ler a aba SALDO no Sheets: {e}")
+        df_saldo = None
+
+    if df_saldo is None or df_saldo.empty:
+        st.warning("A aba SALDO está vazia ou não foi carregada.")
+    else:
+        df_raw = df_saldo.copy()
+
+        # ============================
+        # 2) Padronização de colunas (camada de compatibilidade)
+        # ============================
+        rename_map = {
+            "Dt.criação": "DATA_CRIACAO",
+            "Liberaç.": "DATA_LIBERACAO",
+            "DtDesjRem.": "DATA_DESEJ_REMESSA",  # opcional (você vai usar data criação como base)
+            "EscrV": "ESTADO",
+            "Cidade": "CIDADE",
+            "EqVs": "COD_SUP",
+            "Vendedor": "COD_VEND",
+            "Emissor da ordem": "CLIENTE_NOME",
+            "EmissorOrd": "CLIENTE_COD",
+            "Doc.venda": "DOC_VENDA",
+            "Sua ref.": "SUA_REF",
+            "Referência cliente": "REF_CLIENTE",
+            "CondPagamento": "COND_PAG",
+            "Nível 3": "HIERARQUIA",
+            "Denominação de item": "SKU_NOME",
+            "Material": "SKU_COD",
+            "Qtde. Pedida": "QTD_PEDIDA",
+            "Qtde. não Faturada": "QTD_NAO_FAT",
+            "Qtde. Faturada": "QTD_FAT",
+            "Qtde. Logística": "QTD_LOG",
+            "Qtde. Remessa": "QTD_REMESSA",
+            "Qtde. Expedição": "QTD_EXPEDICAO",
+            "Qtde. Pallet Pendente": "PALLET_PEND",
+            "SGCr": "SGCR",
+            "BlqR": "BLQR",
+            "Zona Transp": "ZONA_TRANSP",
+        }
+
+        for old, new in rename_map.items():
+            if old in df_raw.columns and new not in df_raw.columns:
+                df_raw = df_raw.rename(columns={old: new})
+
+        # ============================
+        # 3) Limpeza e tipos
+        # ============================
+        required_cols = ["DATA_CRIACAO", "QTD_NAO_FAT"]
+        missing = [c for c in required_cols if c not in df_raw.columns]
+        if missing:
+            st.error(f"Faltando colunas obrigatórias na SALDO: {missing}")
+        else:
+            df = df_raw.copy()
+
+            # Datas
+            df["DATA_CRIACAO"] = pd.to_datetime(df["DATA_CRIACAO"], errors="coerce")
+            if "DATA_LIBERACAO" in df.columns:
+                df["DATA_LIBERACAO"] = pd.to_datetime(df["DATA_LIBERACAO"], errors="coerce")
+            if "DATA_DESEJ_REMESSA" in df.columns:
+                df["DATA_DESEJ_REMESSA"] = pd.to_datetime(df["DATA_DESEJ_REMESSA"], errors="coerce")
+
+            # Numéricos
+            for c in ["QTD_PEDIDA", "QTD_NAO_FAT", "QTD_FAT", "QTD_LOG", "QTD_REMESSA", "QTD_EXPEDICAO", "PALLET_PEND"]:
+                if c in df.columns:
+                    df[c] = _to_num(df[c])
+
+            # Strings
+            for c in [
+                "ESTADO", "CIDADE", "COD_SUP", "COD_VEND", "CLIENTE_NOME", "CLIENTE_COD",
+                "DOC_VENDA", "SUA_REF", "REF_CLIENTE", "COND_PAG", "HIERARQUIA", "SKU_NOME", "SKU_COD",
+                "SGCR", "BLQR", "ZONA_TRANSP"
+            ]:
+                if c in df.columns:
+                    df[c] = df[c].apply(_safe_str)
+
+            # Remove linhas sem data de criação
+            df = df.dropna(subset=["DATA_CRIACAO"]).copy()
+
+            # ============================
+            # 4) Filtros
+            # ============================
+            st.markdown("---")
+            st.subheader("🎛️ Filtros")
+
+            colf1, colf2, colf3, colf4, colf5 = st.columns(5)
+
+            min_dt = df["DATA_CRIACAO"].min()
+            max_dt = df["DATA_CRIACAO"].max()
+
+            with colf1:
+                dt_ini = st.date_input("Criação - Data inicial", value=min_dt.date() if pd.notna(min_dt) else datetime.now().date())
+            with colf2:
+                dt_fim = st.date_input("Criação - Data final", value=max_dt.date() if pd.notna(max_dt) else datetime.now().date())
+
+            df_f = df[(df["DATA_CRIACAO"].dt.date >= dt_ini) & (df["DATA_CRIACAO"].dt.date <= dt_fim)].copy()
+
+            with colf3:
+                if "ESTADO" in df_f.columns:
+                    estados = ["(Todos)"] + sorted([e for e in df_f["ESTADO"].dropna().unique().tolist() if e != ""])
+                    sel_estado = st.selectbox("Estado", options=estados, index=0, key="saldo_estado")
+                else:
+                    sel_estado = "(Todos)"
+                    st.info("Sem coluna ESTADO.")
+
+            with colf4:
+                if "COD_SUP" in df_f.columns:
+                    sups = ["(Todos)"] + sorted([s for s in df_f["COD_SUP"].dropna().unique().tolist() if s != ""])
+                    sel_sup = st.selectbox("Supervisor (cód.)", options=sups, index=0, key="saldo_sup")
+                else:
+                    sel_sup = "(Todos)"
+                    st.info("Sem coluna COD_SUP.")
+
+            with colf5:
+                sel_sgcr = "(Todos)"
+                if "SGCR" in df_f.columns:
+                    sgcrs = ["(Todos)"] + sorted([s for s in df_f["SGCR"].dropna().unique().tolist() if s != ""])
+                    sel_sgcr = st.selectbox("Status SGCr", options=sgcrs, index=0, key="saldo_sgcr")
+                else:
+                    st.info("Sem coluna SGCR.")
+
+            if sel_estado != "(Todos)" and "ESTADO" in df_f.columns:
+                df_f = df_f[df_f["ESTADO"] == sel_estado].copy()
+
+            if sel_sup != "(Todos)" and "COD_SUP" in df_f.columns:
+                df_f = df_f[df_f["COD_SUP"] == sel_sup].copy()
+
+            if sel_sgcr != "(Todos)" and "SGCR" in df_f.columns:
+                df_f = df_f[df_f["SGCR"] == sel_sgcr].copy()
+
+            # ============================
+            # 5) Colunas derivadas (atraso baseado na DATA_CRIACAO)
+            # ============================
+            hoje = pd.Timestamp(datetime.now()).normalize()
+            df_f["DIAS_ABERTO"] = (hoje - df_f["DATA_CRIACAO"].dt.normalize()).dt.days
+            df_f["FAIXA_ATRASO"] = df_f["DIAS_ABERTO"].apply(_bucket_days)
+
+            # Bloqueio (você disse: B = bloqueado)
+            if "SGCR" in df_f.columns:
+                df_f["IS_BLOQUEADO"] = df_f["SGCR"].astype(str).str.upper().eq("B")
+            else:
+                df_f["IS_BLOQUEADO"] = False
+
+            # ============================
+            # 6) KPIs
+            # ============================
+            st.markdown("---")
+            st.subheader("📌 KPIs")
+
+            qtd_nao_fat = float(df_f["QTD_NAO_FAT"].sum()) if "QTD_NAO_FAT" in df_f.columns else 0.0
+            pedidos = df_f["DOC_VENDA"].nunique() if "DOC_VENDA" in df_f.columns else 0
+            clientes = df_f["CLIENTE_COD"].nunique() if "CLIENTE_COD" in df_f.columns else (df_f["CLIENTE_NOME"].nunique() if "CLIENTE_NOME" in df_f.columns else 0)
+            bloqueados = int(df_f[df_f["IS_BLOQUEADO"]].shape[0]) if "IS_BLOQUEADO" in df_f.columns else 0
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Qtde. não faturada (total)", _fmt_int_pt(qtd_nao_fat))
+            c2.metric("Pedidos (Doc.venda)", _fmt_int_pt(pedidos))
+            c3.metric("Clientes únicos", _fmt_int_pt(clientes))
+            c4.metric("Linhas bloqueadas (SGCr=B)", _fmt_int_pt(bloqueados))
+
+            # ============================
+            # 7) Aging (faixas de atraso)
+            # ============================
+            st.markdown("---")
+            st.subheader("⏳ Aging do saldo (por faixa de atraso — base: Data de Criação)")
+
+            colA1, colA2 = st.columns([0.55, 0.45])
+
+            with colA1:
+                g_age = df_f.groupby("FAIXA_ATRASO", as_index=False)["QTD_NAO_FAT"].sum()
+                order = ["0–2", "3–7", "8–15", "16–30", "31+", "Sem info"]
+                g_age["ord"] = g_age["FAIXA_ATRASO"].apply(lambda x: order.index(x) if x in order else 999)
+                g_age = g_age.sort_values("ord").drop(columns=["ord"])
+
+                if g_age.empty:
+                    st.info("Sem dados para o filtro atual.")
+                else:
+                    st.dataframe(g_age, use_container_width=True, hide_index=True)
+
+            with colA2:
+                st.markdown("#### Top pedidos mais atrasados (por dias aberto)")
+                cols_need = ["DOC_VENDA", "CLIENTE_NOME", "COD_VEND", "COD_SUP", "ESTADO", "CIDADE", "DIAS_ABERTO", "QTD_NAO_FAT"]
+                cols_ok = [c for c in cols_need if c in df_f.columns]
+                if "DOC_VENDA" in df_f.columns:
+                    # por pedido: pega a maior idade do pedido e soma saldo
+                    ped = df_f.groupby("DOC_VENDA", as_index=False).agg(
+                        DIAS_ABERTO=("DIAS_ABERTO", "max"),
+                        QTD_NAO_FAT=("QTD_NAO_FAT", "sum"),
+                    ).sort_values(["DIAS_ABERTO", "QTD_NAO_FAT"], ascending=[False, False]).head(20)
+                    st.dataframe(ped, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sem DOC_VENDA para listar pedidos.")
+
+            # ============================
+            # 8) Funil — onde travou
+            # ============================
+            st.markdown("---")
+            st.subheader("🧭 Funil do pedido (onde travou)")
+
+            # Regras de estágio (no nível linha)
+            # - Gerado: sempre (tem data criação)
+            # - Liberado: data lib existe
+            # - Faturado parcial: QTD_FAT > 0 e QTD_NAO_FAT > 0
+            # - Não faturado: QTD_FAT == 0 e QTD_NAO_FAT > 0
+            # - Em remessa/expedição: QTD_REMESSA > 0 ou QTD_EXPEDICAO > 0
+            df_stage = df_f.copy()
+            df_stage["STAGE_LIBERADO"] = df_stage["DATA_LIBERACAO"].notna() if "DATA_LIBERACAO" in df_stage.columns else False
+
+            if "QTD_FAT" in df_stage.columns:
+                df_stage["STAGE_FAT_PARC"] = (df_stage["QTD_FAT"] > 0) & (df_stage["QTD_NAO_FAT"] > 0)
+                df_stage["STAGE_NAO_FAT"] = (df_stage["QTD_FAT"] <= 0) & (df_stage["QTD_NAO_FAT"] > 0)
+            else:
+                df_stage["STAGE_FAT_PARC"] = False
+                df_stage["STAGE_NAO_FAT"] = df_stage["QTD_NAO_FAT"] > 0
+
+            if "QTD_REMESSA" in df_stage.columns or "QTD_EXPEDICAO" in df_stage.columns:
+                rem = df_stage["QTD_REMESSA"] if "QTD_REMESSA" in df_stage.columns else 0.0
+                exp = df_stage["QTD_EXPEDICAO"] if "QTD_EXPEDICAO" in df_stage.columns else 0.0
+                df_stage["STAGE_REM_EXP"] = (rem > 0) | (exp > 0)
+            else:
+                df_stage["STAGE_REM_EXP"] = False
+
+            # Medidas (por pedido)
+            if "DOC_VENDA" in df_stage.columns:
+                funil = pd.DataFrame({
+                    "Etapa": [
+                        "Pedidos gerados",
+                        "Pedidos liberados",
+                        "Pedidos não faturados",
+                        "Pedidos faturados parcial",
+                        "Pedidos com remessa/expedição",
+                    ],
+                    "Qtd pedidos": [
+                        df_stage["DOC_VENDA"].nunique(),
+                        df_stage[df_stage["STAGE_LIBERADO"]]["DOC_VENDA"].nunique(),
+                        df_stage[df_stage["STAGE_NAO_FAT"]]["DOC_VENDA"].nunique(),
+                        df_stage[df_stage["STAGE_FAT_PARC"]]["DOC_VENDA"].nunique(),
+                        df_stage[df_stage["STAGE_REM_EXP"]]["DOC_VENDA"].nunique(),
+                    ],
+                })
+                st.dataframe(funil, use_container_width=True, hide_index=True)
+            else:
+                st.info("Sem DOC_VENDA para calcular funil por pedido.")
+
+            # ============================
+            # 9) Bloqueios (SGCr=B) — ranking por time
+            # ============================
+            st.markdown("---")
+            st.subheader("🔒 Bloqueios (SGCr=B) — impacto no saldo")
+
+            colB1, colB2 = st.columns(2)
+
+            with colB1:
+                st.markdown("#### Bloqueio por Vendedor (Qtde. não faturada)")
+                if "COD_VEND" in df_f.columns:
+                    blk = df_f[df_f["IS_BLOQUEADO"]].copy()
+                    if blk.empty:
+                        st.success("Nenhuma linha bloqueada no filtro atual.")
+                    else:
+                        g = blk.groupby("COD_VEND", as_index=False)["QTD_NAO_FAT"].sum().sort_values("QTD_NAO_FAT", ascending=False).head(30)
+                        g["QTD_NAO_FAT"] = g["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                        st.dataframe(g, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sem COD_VEND.")
+
+            with colB2:
+                st.markdown("#### Bloqueio por Supervisor (Qtde. não faturada)")
+                if "COD_SUP" in df_f.columns:
+                    blk = df_f[df_f["IS_BLOQUEADO"]].copy()
+                    if blk.empty:
+                        st.success("Nenhuma linha bloqueada no filtro atual.")
+                    else:
+                        g = blk.groupby("COD_SUP", as_index=False)["QTD_NAO_FAT"].sum().sort_values("QTD_NAO_FAT", ascending=False).head(30)
+                        g["QTD_NAO_FAT"] = g["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                        st.dataframe(g, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sem COD_SUP.")
+
+            # ============================
+            # 10) Cortes / falta de produto (Pedida > Logística)
+            # ============================
+            st.markdown("---")
+            st.subheader("📉 Cortes / Falta de produto (Pedida > Logística)")
+
+            if "QTD_PEDIDA" in df_f.columns and "QTD_LOG" in df_f.columns:
+                df_cut = df_f.copy()
+                df_cut["QTD_FALTA"] = (df_cut["QTD_PEDIDA"] - df_cut["QTD_LOG"]).clip(lower=0)
+
+                colC1, colC2 = st.columns(2)
+
+                with colC1:
+                    st.markdown("#### Top SKUs mais ‘faltantes’ (Qtde faltante)")
+                    if "SKU_NOME" in df_cut.columns:
+                        g = df_cut.groupby("SKU_NOME", as_index=False)["QTD_FALTA"].sum().sort_values("QTD_FALTA", ascending=False).head(25)
+                        g["QTD_FALTA"] = g["QTD_FALTA"].apply(_fmt_int_pt)
+                        st.dataframe(g, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Sem SKU_NOME.")
+
+                with colC2:
+                    st.markdown("#### Top clientes impactados por corte (Qtde faltante)")
+                    if "CLIENTE_NOME" in df_cut.columns:
+                        g = df_cut.groupby("CLIENTE_NOME", as_index=False)["QTD_FALTA"].sum().sort_values("QTD_FALTA", ascending=False).head(25)
+                        g["QTD_FALTA"] = g["QTD_FALTA"].apply(_fmt_int_pt)
+                        st.dataframe(g, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Sem CLIENTE_NOME.")
+            else:
+                st.info("Preciso de QTD_PEDIDA e QTD_LOG para calcular cortes.")
+
+            # ============================
+            # 11) Priorização (Score) — “qual pedido dói mais”
+            # ============================
+            st.markdown("---")
+            st.subheader("🔥 Prioridade de ação (Score) — Top pedidos para atacar agora")
+
+            # Score simples e “explicável”
+            # - dias aberto pesa bastante
+            # - saldo não faturado pesa
+            # - bloqueado adiciona penalidade
+            # - pallet pendente adiciona penalidade
+            df_score = df_f.copy()
+
+            if "PALLET_PEND" not in df_score.columns:
+                df_score["PALLET_PEND"] = 0.0
+
+            df_score["PEN_BLOQ"] = df_score["IS_BLOQUEADO"].apply(lambda x: 80 if bool(x) else 0)
+            df_score["PEN_PALLET"] = df_score["PALLET_PEND"].apply(lambda x: 25 if float(x) > 0 else 0)
+
+            df_score["SCORE"] = (
+                df_score["DIAS_ABERTO"].fillna(0).clip(lower=0) * 3.0
+                + df_score["QTD_NAO_FAT"].fillna(0).clip(lower=0) * 0.25
+                + df_score["PEN_BLOQ"]
+                + df_score["PEN_PALLET"]
+            )
+
+            cols_show = []
+            for c in ["DOC_VENDA", "CLIENTE_NOME", "CLIENTE_COD", "COD_VEND", "COD_SUP", "ESTADO", "CIDADE", "SGCR", "DIAS_ABERTO", "QTD_NAO_FAT", "PALLET_PEND", "SCORE"]:
+                if c in df_score.columns:
+                    cols_show.append(c)
+
+            if "DOC_VENDA" in df_score.columns:
+                # consolida por pedido
+                agg_cols = {
+                    "DIAS_ABERTO": "max",
+                    "QTD_NAO_FAT": "sum",
+                    "SCORE": "sum",
+                    "PALLET_PEND": "sum",
+                }
+                # mantém “primeiro valor” de dimensões
+                first_cols = [c for c in ["CLIENTE_NOME", "CLIENTE_COD", "COD_VEND", "COD_SUP", "ESTADO", "CIDADE", "SGCR"] if c in df_score.columns]
+
+                g = df_score.groupby("DOC_VENDA", as_index=False).agg(
+                    **{k: (k, v) for k, v in agg_cols.items()},
+                    **{c: (c, "first") for c in first_cols}
+                )
+
+                g = g.sort_values(["SCORE", "QTD_NAO_FAT", "DIAS_ABERTO"], ascending=[False, False, False]).head(30)
+
+                if not g.empty:
+                    out = g.copy()
+                    if "QTD_NAO_FAT" in out.columns:
+                        out["QTD_NAO_FAT"] = out["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                    if "PALLET_PEND" in out.columns:
+                        out["PALLET_PEND"] = out["PALLET_PEND"].apply(_fmt_int_pt)
+                    if "DIAS_ABERTO" in out.columns:
+                        out["DIAS_ABERTO"] = out["DIAS_ABERTO"].apply(_fmt_int_pt)
+                    if "SCORE" in out.columns:
+                        out["SCORE"] = out["SCORE"].apply(lambda x: f"{float(x):.1f}".replace(".", ","))
+
+                    st.dataframe(out, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sem dados para o score no filtro atual.")
+            else:
+                st.info("Sem DOC_VENDA para consolidar score por pedido.")
+
+            st.caption(
+                "Score (simples e explicável): "
+                "Dias em aberto * 3 + Qtde não faturada * 0,25 + Penalidade bloqueio + Penalidade pallet pendente."
+            )
+
+            # ============================
+            # 12) Treemap (Estado → Cidade) com saldo não faturado
+            # ============================
+            st.markdown("---")
+            st.subheader("🗺️ Treemap (Estado → Cidade) — Qtde. não faturada")
+
+            if "ESTADO" in df_f.columns and "CIDADE" in df_f.columns:
+                geo = df_f.groupby(["ESTADO", "CIDADE"], as_index=False)["QTD_NAO_FAT"].sum()
+                geo = geo[geo["QTD_NAO_FAT"] > 0].copy()
+
+                if geo.empty:
+                    st.info("Sem volume de saldo (Qtde. não faturada) para exibir no treemap.")
+                else:
+                    try:
+                        import plotly.express as px
+
+                        fig = px.treemap(
+                            geo,
+                            path=["ESTADO", "CIDADE"],
+                            values="QTD_NAO_FAT",
+                            title="Qtde. não faturada por Estado e Cidade"
+                        )
+                        fig.update_traces(root_color="lightgrey")
+                        fig.update_layout(margin=dict(t=50, l=10, r=10, b=10))
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        geo_show = geo.sort_values("QTD_NAO_FAT", ascending=False).head(50).copy()
+                        geo_show["QTD_NAO_FAT"] = geo_show["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                        st.dataframe(geo_show, use_container_width=True, hide_index=True)
+                    except Exception as e:
+                        st.info("Plotly não disponível/erro ao montar treemap. Mostrando tabela.")
+                        geo_show = geo.sort_values("QTD_NAO_FAT", ascending=False).head(100).copy()
+                        geo_show["QTD_NAO_FAT"] = geo_show["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                        st.dataframe(geo_show, use_container_width=True, hide_index=True)
+            else:
+                st.info("Preciso de ESTADO e CIDADE para o treemap.")
+
+            # ============================
+            # 13) Alertas automáticos — “pedido em risco”
+            # ============================
+            st.markdown("---")
+            st.subheader("🚨 Alertas automáticos — pedidos/vendedores em risco")
+
+            # Regras simples:
+            # - em risco: dias aberto alto + saldo alto + bloqueado OU pallet pendente
+            df_alert = df_f.copy()
+
+            # thresholds dinâmicos
+            q75_days = float(np.percentile(df_alert["DIAS_ABERTO"], 75)) if len(df_alert) >= 5 else float(df_alert["DIAS_ABERTO"].max())
+            q75_saldo = float(np.percentile(df_alert["QTD_NAO_FAT"], 75)) if len(df_alert) >= 5 else float(df_alert["QTD_NAO_FAT"].max())
+
+            df_alert["FLAG_RISCO"] = (
+                (df_alert["DIAS_ABERTO"] >= q75_days)
+                & (df_alert["QTD_NAO_FAT"] >= q75_saldo)
+                & ((df_alert["IS_BLOQUEADO"]) | (df_alert["PALLET_PEND"].fillna(0) > 0))
+            )
+
+            colR1, colR2 = st.columns(2)
+
+            with colR1:
+                st.markdown("#### Pedidos em risco (Top 30)")
+                if "DOC_VENDA" in df_alert.columns:
+                    z = df_alert[df_alert["FLAG_RISCO"]].copy()
+                    if z.empty:
+                        st.success("Nenhum pedido bateu a regra de risco no filtro atual.")
+                    else:
+                        z = z.groupby("DOC_VENDA", as_index=False).agg(
+                            DIAS_ABERTO=("DIAS_ABERTO", "max"),
+                            QTD_NAO_FAT=("QTD_NAO_FAT", "sum"),
+                            BLOQ=("IS_BLOQUEADO", "max"),
+                            PALLET_PEND=("PALLET_PEND", "sum"),
+                            CLIENTE_NOME=("CLIENTE_NOME", "first") if "CLIENTE_NOME" in z.columns else ("DOC_VENDA", "first"),
+                            COD_VEND=("COD_VEND", "first") if "COD_VEND" in z.columns else ("DOC_VENDA", "first"),
+                            COD_SUP=("COD_SUP", "first") if "COD_SUP" in z.columns else ("DOC_VENDA", "first"),
+                            ESTADO=("ESTADO", "first") if "ESTADO" in z.columns else ("DOC_VENDA", "first"),
+                            CIDADE=("CIDADE", "first") if "CIDADE" in z.columns else ("DOC_VENDA", "first"),
+                        )
+
+                        z = z.sort_values(["DIAS_ABERTO", "QTD_NAO_FAT"], ascending=[False, False]).head(30)
+
+                        out = z.copy()
+                        out["DIAS_ABERTO"] = out["DIAS_ABERTO"].apply(_fmt_int_pt)
+                        out["QTD_NAO_FAT"] = out["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                        out["PALLET_PEND"] = out["PALLET_PEND"].apply(_fmt_int_pt)
+                        out["BLOQ"] = out["BLOQ"].apply(lambda x: "SIM" if bool(x) else "NÃO")
+
+                        st.dataframe(out, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sem DOC_VENDA para listar pedidos em risco.")
+
+            with colR2:
+                st.markdown("#### Vendedores com maior risco (saldo em pedidos críticos)")
+                if "COD_VEND" in df_alert.columns:
+                    z = df_alert[df_alert["FLAG_RISCO"]].copy()
+                    if z.empty:
+                        st.success("Sem vendedores em risco pela regra atual.")
+                    else:
+                        g = z.groupby("COD_VEND", as_index=False).agg(
+                            LINHAS_CRIT=("COD_VEND", "size"),
+                            QTD_NAO_FAT=("QTD_NAO_FAT", "sum"),
+                            DIAS_MED=("DIAS_ABERTO", "mean"),
+                            PEDIDOS=("DOC_VENDA", "nunique") if "DOC_VENDA" in z.columns else ("COD_VEND", "size"),
+                        ).sort_values(["QTD_NAO_FAT", "LINHAS_CRIT"], ascending=[False, False]).head(30)
+
+                        out = g.copy()
+                        out["LINHAS_CRIT"] = out["LINHAS_CRIT"].apply(_fmt_int_pt)
+                        out["PEDIDOS"] = out["PEDIDOS"].apply(_fmt_int_pt)
+                        out["QTD_NAO_FAT"] = out["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                        out["DIAS_MED"] = out["DIAS_MED"].apply(lambda x: f"{float(x):.1f}".replace(".", ","))
+
+                        st.dataframe(out, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sem COD_VEND para ranking de vendedores em risco.")
+
+            # ============================
+            # 14) Drill-down (pedido / vendedor / cliente)
+            # ============================
+            st.markdown("---")
+            st.subheader("🔎 Drill-down")
+
+            colD1, colD2 = st.columns(2)
+
+            with colD1:
+                st.markdown("#### Buscar por Doc.venda")
+                if "DOC_VENDA" in df_f.columns:
+                    docs = sorted([d for d in df_f["DOC_VENDA"].dropna().unique().tolist() if d != ""])
+                    if docs:
+                        pick = st.selectbox("Doc.venda", options=docs, key="saldo_pick_doc")
+                        d = df_f[df_f["DOC_VENDA"] == pick].copy()
+
+                        st.caption(f"Linhas do pedido: **{len(d)}** | Qtde não faturada: **{_fmt_int_pt(d['QTD_NAO_FAT'].sum())}**")
+                        cols = [c for c in ["CLIENTE_NOME", "COD_VEND", "COD_SUP", "ESTADO", "CIDADE", "SGCR", "DATA_CRIACAO", "DATA_LIBERACAO", "SKU_NOME", "QTD_PEDIDA", "QTD_LOG", "QTD_FAT", "QTD_NAO_FAT", "PALLET_PEND"] if c in d.columns]
+                        st.dataframe(d[cols], use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Sem Doc.venda no filtro atual.")
+                else:
+                    st.info("Sem DOC_VENDA para drill-down.")
+
+            with colD2:
+                st.markdown("#### Top clientes com saldo (Qtde. não faturada)")
+                if "CLIENTE_NOME" in df_f.columns:
+                    g = df_f.groupby("CLIENTE_NOME", as_index=False)["QTD_NAO_FAT"].sum().sort_values("QTD_NAO_FAT", ascending=False).head(30)
+                    g["QTD_NAO_FAT"] = g["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                    st.dataframe(g, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sem CLIENTE_NOME para ranking.")
+
 
 
 # --- PÁGINA: PERFIL DO CLIENTE (CURVA DE APRENDIZADO) ---
