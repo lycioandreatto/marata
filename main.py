@@ -3810,8 +3810,9 @@ elif menu == "🗺️ INSIGHTS FATURADO":
                     det["QTD"] = det["QTD"].apply(_fmt_int_pt)
                     st.dataframe(det, use_container_width=True, hide_index=True)
 
-            # =========================================================
+                       # =========================================================
             # 16) NOVO: Detecção de “pedido repetido” (mesmo carrinho) usando OrdCliente
+            #     + Mix do vendedor vs catálogo (aba SKUS): quantos SKUs já positivou vs faltam
             # =========================================================
             st.markdown("---")
             st.subheader("🔁 Detecção de pedido repetido (mesmo carrinho) — trava expansão de mix")
@@ -3819,7 +3820,35 @@ elif menu == "🗺️ INSIGHTS FATURADO":
             if "ORD_CLIENTE" not in df_f.columns or "COD_VEND" not in df_f.columns or "SKU_NOME" not in df_f.columns:
                 st.info("Preciso de ORD_CLIENTE, COD_VEND e SKU_NOME para detectar pedido repetido.")
             else:
-                # Assinatura do carrinho = conjunto de SKUs no pedido (por vendedor)
+                # ============================
+                # (A) Lê catálogo de SKUs (aba SKUS)
+                # ============================
+                try:
+                    df_skus_cat = conn.read(spreadsheet=url_planilha, worksheet="SKUS")
+                except Exception:
+                    df_skus_cat = None
+
+                if df_skus_cat is None or df_skus_cat.empty:
+                    skus_catalogo = []
+                else:
+                    df_cat = df_skus_cat.copy()
+
+                    # compat: tenta padronizar nomes
+                    if "Hierarquia de produtos" in df_cat.columns and "HIERARQUIA" not in df_cat.columns:
+                        df_cat = df_cat.rename(columns={"Hierarquia de produtos": "HIERARQUIA"})
+                    if "SKU" in df_cat.columns and "SKU_NOME" not in df_cat.columns:
+                        df_cat = df_cat.rename(columns={"SKU": "SKU_NOME"})
+
+                    # normaliza
+                    if "SKU_NOME" in df_cat.columns:
+                        df_cat["SKU_NOME"] = df_cat["SKU_NOME"].apply(_safe_str)
+                        skus_catalogo = sorted(list(set([x for x in df_cat["SKU_NOME"].dropna().tolist() if x != ""])))
+                    else:
+                        skus_catalogo = []
+
+                # ============================
+                # (B) Assinatura do carrinho = conjunto de SKUs no pedido (por vendedor)
+                # ============================
                 d_ord = df_f[["COD_VEND", "VENDEDOR", "ORD_CLIENTE", "SKU_NOME"]].dropna().copy()
                 d_ord["SKU_NOME"] = d_ord["SKU_NOME"].apply(_safe_str)
 
@@ -3840,6 +3869,20 @@ elif menu == "🗺️ INSIGHTS FATURADO":
                 rep_v = total_ped_v.merge(rep_ped, on=["COD_VEND", "VENDEDOR"], how="left").fillna({"PEDIDOS_REPETIDOS": 0})
                 rep_v["%_REPETICAO"] = rep_v.apply(lambda r: (r["PEDIDOS_REPETIDOS"] / r["PEDIDOS"] * 100.0) if r["PEDIDOS"] > 0 else 0.0, axis=1)
 
+                # ============================
+                # (C) NOVO: Mix do vendedor vs catálogo (aba SKUS)
+                # ============================
+                mix_v = d_ord.groupby(["COD_VEND", "VENDEDOR"], as_index=False)["SKU_NOME"].nunique().rename(columns={"SKU_NOME": "SKUS_POSITIVADOS"})
+                rep_v = rep_v.merge(mix_v, on=["COD_VEND", "VENDEDOR"], how="left").fillna({"SKUS_POSITIVADOS": 0})
+
+                total_cat = len(skus_catalogo)
+                if total_cat > 0:
+                    rep_v["SKUS_FALTANDO"] = rep_v["SKUS_POSITIVADOS"].apply(lambda x: max(int(total_cat - int(x)), 0))
+                    rep_v["%_CATALOGO"] = rep_v["SKUS_POSITIVADOS"].apply(lambda x: (float(x) / float(total_cat) * 100.0) if total_cat > 0 else 0.0)
+                else:
+                    rep_v["SKUS_FALTANDO"] = 0
+                    rep_v["%_CATALOGO"] = 0.0
+
                 # Ranking: repetição alta (com mínimo de pedidos)
                 min_ped = st.number_input("Mínimo de pedidos para entrar no ranking", value=20, min_value=0, step=5, key="min_ped_rep")
                 rank_rep = rep_v[rep_v["PEDIDOS"] >= int(min_ped)].copy()
@@ -3856,7 +3899,24 @@ elif menu == "🗺️ INSIGHTS FATURADO":
                         out["PEDIDOS"] = out["PEDIDOS"].apply(_fmt_int_pt)
                         out["PEDIDOS_REPETIDOS"] = out["PEDIDOS_REPETIDOS"].apply(_fmt_int_pt)
                         out["%_REPETICAO"] = out["%_REPETICAO"].map(lambda x: f"{x:.1f}%".replace(".", ","))
-                        st.dataframe(out[["COD_VEND", "VENDEDOR", "PEDIDOS", "PEDIDOS_REPETIDOS", "%_REPETICAO"]], use_container_width=True, hide_index=True)
+                        out["SKUS_POSITIVADOS"] = out["SKUS_POSITIVADOS"].apply(_fmt_int_pt)
+                        out["SKUS_FALTANDO"] = out["SKUS_FALTANDO"].apply(_fmt_int_pt)
+                        out["%_CATALOGO"] = out["%_CATALOGO"].map(lambda x: f"{x:.1f}%".replace(".", ","))
+
+                        if total_cat > 0:
+                            st.caption(f"Catálogo (aba SKUS): **{_fmt_int_pt(total_cat)}** SKUs no total.")
+                        else:
+                            st.caption("Catálogo (aba SKUS) não carregado/sem coluna SKU. Mix por catálogo ficará zerado.")
+
+                        st.dataframe(
+                            out[[
+                                "COD_VEND", "VENDEDOR",
+                                "PEDIDOS", "PEDIDOS_REPETIDOS", "%_REPETICAO",
+                                "SKUS_POSITIVADOS", "SKUS_FALTANDO", "%_CATALOGO"
+                            ]],
+                            use_container_width=True,
+                            hide_index=True
+                        )
 
                 with colr2:
                     st.markdown("#### Detalhe (assinaturas mais repetidas)")
@@ -3867,12 +3927,35 @@ elif menu == "🗺️ INSIGHTS FATURADO":
                         nome_v = f2["VENDEDOR"].iloc[0] if not f2.empty else ""
                         st.caption(f"Vendedor: **{nome_v}** | Código: **{vend_pick}**")
 
+                        # (1) assinaturas repetidas
                         f2 = f2.sort_values("QTD_PEDIDOS_IGUAIS", ascending=False).head(15)
                         if f2.empty:
                             st.info("Sem assinaturas para esse vendedor.")
                         else:
                             st.dataframe(f2[["QTD_PEDIDOS_IGUAIS", "BASKET_SIG"]], use_container_width=True, hide_index=True)
 
+                        # (2) NOVO: SKUs que faltam positivar (vs catálogo)
+                        st.markdown("#### SKUs que faltam positivar (vs catálogo)")
+                        if total_cat <= 0:
+                            st.info("A aba SKUS não carregou (ou não tem a coluna SKU). Não dá pra calcular faltantes.")
+                        else:
+                            skus_vend = d_ord[d_ord["COD_VEND"] == vend_pick]["SKU_NOME"].dropna().tolist()
+                            skus_vend = set([_safe_str(x) for x in skus_vend if _safe_str(x) != ""])
+                            faltantes = [s for s in skus_catalogo if s not in skus_vend]
+
+                            st.caption(
+                                f"Positivados no período filtrado: **{_fmt_int_pt(len(skus_vend))}** | "
+                                f"Faltando do catálogo: **{_fmt_int_pt(len(faltantes))}**"
+                            )
+
+                            # mostra top 80 faltantes (lista grande vira um inferno)
+                            if len(faltantes) == 0:
+                                st.success("Esse vendedor já positivou todos os SKUs do catálogo (no período filtrado).")
+                            else:
+                                falt_df = pd.DataFrame({"SKU_FALTANDO": faltantes[:80]})
+                                st.dataframe(falt_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Sem vendedores no filtro atual.")
             # =========================================================
             # 17) NOVO: Plano de ação automático por vendedor
             # Top 3 clientes grandes com mix baixo + Top 5 SKUs faltando
