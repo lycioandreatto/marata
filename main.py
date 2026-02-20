@@ -8582,105 +8582,131 @@ elif menu == "👔 DIRETORIA":
         else:
             st.info("Sem dados suficientes para a tendência de saldo.")
 
-    # ============================
-    # 7) Mapa executivo (UF) — 2 visões lado a lado
-    # ============================
-    st.markdown("---")
-    st.subheader("🗺️ Mapa executivo por UF (Faturado x Gargalo de Saldo)")
+               # ============================
+            # 7) Mapa executivo (UF) — 2 visões lado a lado
+            # ============================
+            st.markdown("---")
+            st.subheader("🗺️ Mapa executivo por UF (Faturado x Gargalo de Saldo)")
 
-    st.caption(
-        "Mapa por UF (sigla). No SAP vem como SE1/AL1/BA1, aqui a gente limpa pra SE/AL/BA automaticamente."
-    )
+            st.caption(
+                "Mapa por UF (sigla). No SAP vem como SE1/AL1/BA1, aqui a gente limpa pra SE/AL/BA automaticamente."
+            )
 
-    # Carrega geojson (mesma pasta do main.py)
-    geojson_path = "brazil_states.geojson"
-    geo = None
-    featureidkey = None
+            # Carrega geojson (mesma pasta do main.py)
+            geojson_path = "brazil_states.geojson"
+            geo = None
+            featureidkey = None
 
-    try:
-        geo = _load_geojson(geojson_path)
-        featureidkey = _guess_featureidkey(geo)
-    except Exception as e:
-        st.warning(f"Não consegui abrir o arquivo GeoJSON ({geojson_path}). Erro: {e}")
-        geo = None
+            try:
+                geo = _load_geojson(geojson_path)
+                featureidkey = _guess_featureidkey(geo)
+            except Exception as e:
+                st.warning(f"Não consegui abrir o arquivo GeoJSON ({geojson_path}). Erro: {e}")
+                geo = None
 
-    if geo is None or featureidkey is None:
-        st.info("GeoJSON não disponível (ou sem chave de UF). Assim que estiver ok, o mapa aparece aqui.")
-    else:
-        try:
-            import plotly.express as px
+            if geo is None or featureidkey is None:
+                st.info("GeoJSON não disponível (ou sem chave de UF). Assim que estiver ok, o mapa aparece aqui.")
+            else:
+                try:
+                    import plotly.express as px
 
-            colM1, colM2 = st.columns(2)
+                    colM1, colM2 = st.columns(2)
 
-            with colM1:
-                st.markdown("#### 🟦 Faturado (Qtd) por UF")
-                if not df_fat_f.empty and "UF" in df_fat_f.columns and "QTD" in df_fat_f.columns:
-                    g = df_fat_f.groupby("UF", as_index=False)["QTD"].sum()
-                    g["UF"] = g["UF"].apply(_clean_uf)
+                    with colM1:
+                        st.markdown("#### 🟦 Faturado (Qtd) por UF")
+                        if not df_fat_f.empty and "UF" in df_fat_f.columns and "QTD" in df_fat_f.columns:
+                            g = df_fat_f.groupby("UF", as_index=False)["QTD"].sum()
+                            g["UF"] = g["UF"].apply(_clean_uf)
 
-                    fig = px.choropleth(
-                        g,
-                        geojson=geo,
-                        locations="UF",
-                        featureidkey=featureidkey,
-                        color="QTD",
-                        color_continuous_scale="Blues",
-                        title="Faturado (Qtd) por UF",
-                    )
+                            fig = px.choropleth(
+                                g,
+                                geojson=geo,
+                                locations="UF",
+                                featureidkey=featureidkey,
+                                color="QTD",
+                                color_continuous_scale="Blues",
+                                title="Faturado (Qtd) por UF",
+                            )
 
-                    # ✅ Mantém o Brasil inteiro sempre (sem zoom nos estados com dado)
-                    fig.update_geos(
-                        visible=False,
-                        scope="south america",
-                        projection_type="mercator",
-                        center={"lat": -14, "lon": -55},
-                        lataxis_range=[-35, 6],
-                        lonaxis_range=[-75, -32],
-                        showcountries=False,
-                        showcoastlines=False,
-                        showland=True
-                    )
+                            # ✅ Brasil inteiro + fundo branco + bordas dos estados visíveis
+                            fig.update_geos(
+                                scope="south america",
+                                projection_type="mercator",
+                                center={"lat": -14, "lon": -55},
+                                lataxis_range=[-35, 6],
+                                lonaxis_range=[-75, -32],
 
-                    fig.update_layout(margin=dict(t=50, l=10, r=10, b=10))
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("Sem dados de faturado para montar o mapa.")
+                                bgcolor="white",
+                                showland=True,
+                                landcolor="white",
+                                showocean=True,
+                                oceancolor="white",
 
-            with colM2:
-                st.markdown("#### 🟥 Saldo em aberto (Qtd não fat.) por UF")
-                if not df_saldo_f.empty and "UF" in df_saldo_f.columns and "QTD_NAO_FAT" in df_saldo_f.columns:
-                    g = df_saldo_f.groupby("UF", as_index=False)["QTD_NAO_FAT"].sum()
-                    g["UF"] = g["UF"].apply(_clean_uf)
+                                visible=True,
+                                showsubunits=True,
+                                subunitcolor="#9aa0a6",
+                                subunitwidth=0.7,
+                                showcountries=False,
+                                showcoastlines=False
+                            )
 
-                    fig = px.choropleth(
-                        g,
-                        geojson=geo,
-                        locations="UF",
-                        featureidkey=featureidkey,
-                        color="QTD_NAO_FAT",
-                        color_continuous_scale="Reds",
-                        title="Saldo (Qtd não faturada) por UF",
-                    )
+                            fig.update_layout(
+                                paper_bgcolor="white",
+                                plot_bgcolor="white",
+                                margin=dict(t=50, l=10, r=10, b=10)
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.info("Sem dados de faturado para montar o mapa.")
 
-                    # ✅ Mantém o Brasil inteiro sempre (sem zoom nos estados com dado)
-                    fig.update_geos(
-                        visible=False,
-                        scope="south america",
-                        projection_type="mercator",
-                        center={"lat": -14, "lon": -55},
-                        lataxis_range=[-35, 6],
-                        lonaxis_range=[-75, -32],
-                        showcountries=False,
-                        showcoastlines=False,
-                        showland=True
-                    )
+                    with colM2:
+                        st.markdown("#### 🟥 Saldo em aberto (Qtd não fat.) por UF")
+                        if not df_saldo_f.empty and "UF" in df_saldo_f.columns and "QTD_NAO_FAT" in df_saldo_f.columns:
+                            g = df_saldo_f.groupby("UF", as_index=False)["QTD_NAO_FAT"].sum()
+                            g["UF"] = g["UF"].apply(_clean_uf)
 
-                    fig.update_layout(margin=dict(t=50, l=10, r=10, b=10))
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("Sem dados de saldo para montar o mapa.")
-        except Exception as e:
-            st.warning(f"Erro ao montar mapas com Plotly: {e}")
+                            fig = px.choropleth(
+                                g,
+                                geojson=geo,
+                                locations="UF",
+                                featureidkey=featureidkey,
+                                color="QTD_NAO_FAT",
+                                color_continuous_scale="Reds",
+                                title="Saldo (Qtd não faturada) por UF",
+                            )
+
+                            # ✅ Brasil inteiro + fundo branco + bordas dos estados visíveis
+                            fig.update_geos(
+                                scope="south america",
+                                projection_type="mercator",
+                                center={"lat": -14, "lon": -55},
+                                lataxis_range=[-35, 6],
+                                lonaxis_range=[-75, -32],
+
+                                bgcolor="white",
+                                showland=True,
+                                landcolor="white",
+                                showocean=True,
+                                oceancolor="white",
+
+                                visible=True,
+                                showsubunits=True,
+                                subunitcolor="#9aa0a6",
+                                subunitwidth=0.7,
+                                showcountries=False,
+                                showcoastlines=False
+                            )
+
+                            fig.update_layout(
+                                paper_bgcolor="white",
+                                plot_bgcolor="white",
+                                margin=dict(t=50, l=10, r=10, b=10)
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.info("Sem dados de saldo para montar o mapa.")
+                except Exception as e:
+                    st.warning(f"Erro ao montar mapa com Plotly: {e}")
 
     # ============================
     # 8) Top 5 (sem tabela pesada) — só bullets executivos
