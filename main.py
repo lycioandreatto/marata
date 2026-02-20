@@ -2937,30 +2937,27 @@ E-mail gerado automaticamente pelo Sistema Maratá GVP.
 
 # --- PÁGINA: INSIGHTS FATURADO ---
 elif menu == "🗺️ INSIGHTS FATURADO":
-    col_titulo, col_btn = st.columns([0.8, 0.2])
+    import pandas as pd
+    import numpy as np
+    import streamlit as st
+    from datetime import datetime, timedelta
 
-    with col_titulo:
-        st.header("🗺️ INSIGHTS FATURADO")
-
-    with col_btn:
-        if st.button("🔄 Atualizar", key="btn_refresh_insights_faturado"):
-            st.cache_data.clear()
-            st.rerun()
+    st.header("🗺️ INSIGHTS FATURADO (Foco em Volume)")
 
     # ============================
-    # Helpers
+    # Helpers locais (pra não quebrar a página)
     # ============================
-    def _fmt_money_pt(v):
-        try:
-            return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except Exception:
-            return "R$ 0,00"
-
     def _fmt_int_pt(v):
         try:
             return f"{float(v):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
-            return "0"
+            return str(v)
+
+    def _fmt_money_pt(v):
+        try:
+            return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(v)
 
     def _safe_str(x):
         try:
@@ -2968,59 +2965,34 @@ elif menu == "🗺️ INSIGHTS FATURADO":
         except Exception:
             return ""
 
-    def _safe_upper(x):
-        try:
-            return str(x).strip().upper()
-        except Exception:
-            return ""
-
-    def _to_datetime(s):
-        try:
-            return pd.to_datetime(s, dayfirst=True, errors="coerce")
-        except Exception:
-            return pd.to_datetime(s, errors="coerce")
-
-    def _dedup_columns(cols):
-        """
-        Se vier coluna duplicada (ex: Cliente 2x), renomeia automaticamente:
-        Cliente -> Cliente | Cliente_2 -> Cliente_3 ...
-        """
-        seen = {}
-        out = []
-        for c in cols:
-            base = c
-            if base not in seen:
-                seen[base] = 1
-                out.append(base)
-            else:
-                seen[base] += 1
-                out.append(f"{base}_{seen[base]}")
-        return out
-
     # ============================
-    # Leitura (cache)
+    # 1) Leitura da aba FATURADO (Sheets)
     # ============================
-    @st.cache_data(ttl=300)
-    def _load_faturado():
-        df = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
-        if df is None or df.empty:
-            return None
+    try:
+        df_fat = conn.read(spreadsheet=url_planilha, worksheet="FATURADO")
+    except Exception as e:
+        st.error(f"Erro ao ler a aba FATURADO no Sheets: {e}")
+        df_fat = None
 
-        df = df.dropna(how="all").copy()
-        df.columns = _dedup_columns([_safe_str(c) for c in df.columns])
+    if df_fat is None or df_fat.empty:
+        st.warning("A aba FATURADO está vazia ou não foi carregada.")
+    else:
+        df_raw = df_fat.copy()
 
-        # Padroniza nomes esperados (se existirem)
-        # (mantém o que já vier do Sheets, mas cria aliases úteis)
-        col_map = {
+        # ============================
+        # 2) Padronização de colunas (mapeando pro que a página usa)
+        # ============================
+        # Observação: seus nomes têm acentos/pontos. Aqui eu faço uma camada de compatibilidade
+        rename_map = {
             "ANALISTA": "ANALISTA",
             "EscrV": "ESTADO",
             "Data fat.": "DATA_FAT",
             "EqVs": "COD_SUP",
             "RG": "COD_VEND",
             "Região de vendas": "VENDEDOR",
-            "Cliente": "CLIENTE_NOME",
-            "Cliente_2": "CLIENTE_COD",
-            "OrdCliente": "PEDIDO",
+            "Cliente": "CLIENTE_NOME",           # nome do cliente (se vier assim)
+            "Cliente.1": "CLIENTE_COD",          # caso exista duplicada (depende de como o Sheets exporta)
+            "OrdCliente": "ORD_CLIENTE",
             "Hierarquia de produtos": "HIERARQUIA",
             "Hierarq.produtos": "HIERARQUIA_COD",
             "Nº artigo": "SKU_NOME",
@@ -3030,387 +3002,596 @@ elif menu == "🗺️ INSIGHTS FATURADO":
             "LocInc": "CIDADE",
         }
 
-        for k, v in col_map.items():
-            if k in df.columns:
-                df.rename(columns={k: v}, inplace=True)
+        # Aplica renome se a coluna existir
+        for old, new in rename_map.items():
+            if old in df_raw.columns and new not in df_raw.columns:
+                df_raw = df_raw.rename(columns={old: new})
 
-        # Tipos
-        if "DATA_FAT" in df.columns:
-            df["DATA_FAT"] = _to_datetime(df["DATA_FAT"])
+        # Alguns Sheets duplicam "Cliente" automaticamente (Cliente, Cliente.1 etc)
+        # Tenta identificar melhor se CLIENTE_COD não existir
+        if "CLIENTE_COD" not in df_raw.columns:
+            # tenta achar coluna com "código do cliente" se veio com nome diferente
+            candidates = [c for c in df_raw.columns if "cód" in c.lower() and "cliente" in c.lower()]
+            if candidates:
+                df_raw = df_raw.rename(columns={candidates[0]: "CLIENTE_COD"})
+
+        if "CLIENTE_NOME" not in df_raw.columns:
+            # tenta achar uma coluna "nome do cliente" se veio diferente
+            candidates = [c for c in df_raw.columns if "cliente" in c.lower() and "cod" not in c.lower() and "cód" not in c.lower()]
+            if candidates:
+                df_raw = df_raw.rename(columns={candidates[0]: "CLIENTE_NOME"})
+
+        # ============================
+        # 3) Limpeza e tipos
+        # ============================
+        # Campos obrigatórios mínimos
+        required_cols = ["DATA_FAT", "QTD"]
+        missing = [c for c in required_cols if c not in df_raw.columns]
+        if missing:
+            st.error(f"Faltando colunas obrigatórias na FATURADO: {missing}")
         else:
-            df["DATA_FAT"] = pd.NaT
+            df = df_raw.copy()
 
-        if "RECEITA" in df.columns:
-            df["RECEITA"] = pd.to_numeric(df["RECEITA"], errors="coerce").fillna(0.0)
-        else:
-            df["RECEITA"] = 0.0
-
-        if "QTD" in df.columns:
+            # Tipos
+            df["DATA_FAT"] = pd.to_datetime(df["DATA_FAT"], errors="coerce")
             df["QTD"] = pd.to_numeric(df["QTD"], errors="coerce").fillna(0.0)
-        else:
-            df["QTD"] = 0.0
 
-        # Normalizações de texto
-        for c in ["ANALISTA", "ESTADO", "VENDEDOR", "COD_SUP", "COD_VEND", "CLIENTE_NOME", "CLIENTE_COD", "HIERARQUIA", "SKU_NOME", "SKU_COD", "CIDADE"]:
-            if c in df.columns:
-                df[c] = df[c].apply(_safe_str)
+            if "RECEITA" in df.columns:
+                df["RECEITA"] = pd.to_numeric(df["RECEITA"], errors="coerce").fillna(0.0)
 
-        # Datas auxiliares
-        df["ANO_MES"] = df["DATA_FAT"].dt.strftime("%Y-%m")
-        return df
+            # Normalizações (strings)
+            for col in ["ANALISTA", "ESTADO", "CIDADE", "VENDEDOR", "HIERARQUIA", "SKU_NOME", "CLIENTE_NOME"]:
+                if col in df.columns:
+                    df[col] = df[col].apply(_safe_str)
 
-    df_fat = _load_faturado()
+            # Códigos
+            for col in ["COD_SUP", "COD_VEND", "SKU_COD", "CLIENTE_COD", "HIERARQUIA_COD", "ORD_CLIENTE"]:
+                if col in df.columns:
+                    df[col] = df[col].apply(_safe_str)
 
-    if df_fat is None or df_fat.empty:
-        st.warning("A aba FATURADO está vazia ou não foi possível ler. Verifique o nome da aba e as permissões.")
-    else:
-        # ============================
-        # Filtros
-        # ============================
-        st.markdown("### 🎛️ Filtros")
+            # Remove linhas sem data
+            df = df.dropna(subset=["DATA_FAT"]).copy()
 
-        # Range de datas
-        min_dt = df_fat["DATA_FAT"].min()
-        max_dt = df_fat["DATA_FAT"].max()
+            # ============================
+            # 4) Filtros
+            # ============================
+            st.markdown("---")
+            st.subheader("🎛️ Filtros")
 
-        colf1, colf2, colf3, colf4 = st.columns([0.32, 0.22, 0.22, 0.24])
+            colf1, colf2, colf3, colf4 = st.columns(4)
 
-        with colf1:
-            dt_ini = st.date_input(
-                "Data inicial",
-                value=(min_dt.date() if pd.notna(min_dt) else datetime.now().date()),
-                key="fat_dt_ini",
-            )
+            min_dt = df["DATA_FAT"].min()
+            max_dt = df["DATA_FAT"].max()
 
-        with colf2:
-            dt_fim = st.date_input(
-                "Data final",
-                value=(max_dt.date() if pd.notna(max_dt) else datetime.now().date()),
-                key="fat_dt_fim",
-            )
+            with colf1:
+                dt_ini = st.date_input("Data inicial", value=min_dt.date() if pd.notna(min_dt) else datetime.now().date())
+            with colf2:
+                dt_fim = st.date_input("Data final", value=max_dt.date() if pd.notna(max_dt) else datetime.now().date())
 
-        df = df_fat.copy()
-        df = df[(df["DATA_FAT"].dt.date >= dt_ini) & (df["DATA_FAT"].dt.date <= dt_fim)].copy()
+            df_f = df[(df["DATA_FAT"].dt.date >= dt_ini) & (df["DATA_FAT"].dt.date <= dt_fim)].copy()
 
-        # Dropdowns (dependem do que existir)
-        estados = sorted([x for x in df["ESTADO"].unique().tolist() if _safe_str(x) != ""]) if "ESTADO" in df.columns else []
-        analistas = sorted([x for x in df["ANALISTA"].unique().tolist() if _safe_str(x) != ""]) if "ANALISTA" in df.columns else []
-        supers = sorted([x for x in df["COD_SUP"].unique().tolist() if _safe_str(x) != ""]) if "COD_SUP" in df.columns else []
-        vendedores = sorted([x for x in df["VENDEDOR"].unique().tolist() if _safe_str(x) != ""]) if "VENDEDOR" in df.columns else []
-
-        with colf3:
-            estado_sel = st.multiselect("Estado", options=estados, default=[], key="fat_estado_sel")
-
-        with colf4:
-            analista_sel = st.multiselect("Analista", options=analistas, default=[], key="fat_analista_sel")
-
-        colf5, colf6 = st.columns(2)
-        with colf5:
-            sup_sel = st.multiselect("Supervisor (cód.)", options=supers, default=[], key="fat_sup_sel")
-        with colf6:
-            vend_sel = st.multiselect("Vendedor (nome)", options=vendedores, default=[], key="fat_vend_sel")
-
-        if estado_sel and "ESTADO" in df.columns:
-            df = df[df["ESTADO"].isin(estado_sel)]
-        if analista_sel and "ANALISTA" in df.columns:
-            df = df[df["ANALISTA"].isin(analista_sel)]
-        if sup_sel and "COD_SUP" in df.columns:
-            df = df[df["COD_SUP"].isin(sup_sel)]
-        if vend_sel and "VENDEDOR" in df.columns:
-            df = df[df["VENDEDOR"].isin(vend_sel)]
-
-        st.markdown("---")
-
-        # ============================
-        # KPIs principais
-        # ============================
-        receita_total = float(df["RECEITA"].sum())
-        qtd_total = float(df["QTD"].sum())
-        clientes_unicos = df["CLIENTE_COD"].nunique() if "CLIENTE_COD" in df.columns else df["CLIENTE_NOME"].nunique()
-        skus_unicos = df["SKU_COD"].nunique() if "SKU_COD" in df.columns else df["SKU_NOME"].nunique()
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Receita", _fmt_money_pt(receita_total))
-        c2.metric("Quantidade", _fmt_int_pt(qtd_total))
-        c3.metric("Clientes únicos", _fmt_int_pt(clientes_unicos))
-        c4.metric("SKUs únicos", _fmt_int_pt(skus_unicos))
-
-        st.markdown("---")
-
-        # ============================
-        # Visões: Estado / Analista / Hierarquia / SKU / Cliente
-        # ============================
-        st.markdown("### 📌 Visões principais")
-
-        colv1, colv2 = st.columns(2)
-
-        with colv1:
-            st.subheader("Faturado por Estado")
-            if "ESTADO" in df.columns:
-                g = df.groupby("ESTADO", as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(15)
-                st.bar_chart(g.set_index("ESTADO")["RECEITA"])
-                st.dataframe(g, use_container_width=True, hide_index=True)
-            else:
-                st.info("Coluna de Estado não encontrada.")
-
-        with colv2:
-            st.subheader("Faturado por Analista")
-            if "ANALISTA" in df.columns:
-                g = df.groupby("ANALISTA", as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False)
-                st.bar_chart(g.set_index("ANALISTA")["RECEITA"])
-                st.dataframe(g, use_container_width=True, hide_index=True)
-            else:
-                st.info("Coluna ANALISTA não encontrada.")
-
-        colv3, colv4 = st.columns(2)
-
-        with colv3:
-            st.subheader("Top Hierarquias (Receita)")
-            if "HIERARQUIA" in df.columns:
-                g = df.groupby("HIERARQUIA", as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(20)
-                st.dataframe(g, use_container_width=True, hide_index=True)
-            else:
-                st.info("Coluna HIERARQUIA não encontrada.")
-
-        with colv4:
-            st.subheader("Top SKUs (Receita)")
-            sku_col = "SKU_NOME" if "SKU_NOME" in df.columns else ("Nº artigo" if "Nº artigo" in df.columns else None)
-            if sku_col is not None:
-                g = df.groupby(sku_col, as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(20)
-                st.dataframe(g, use_container_width=True, hide_index=True)
-            else:
-                st.info("Coluna SKU não encontrada.")
-
-        st.markdown("---")
-
-        # ============================
-        # SKUs mais vendidos por Analista / Supervisor / Estado
-        # ============================
-        st.markdown("### 🧠 Insights de “Top SKUs” por dimensão")
-
-        colx1, colx2, colx3 = st.columns(3)
-
-        sku_name_col = "SKU_NOME" if "SKU_NOME" in df.columns else None
-        if sku_name_col is None:
-            st.info("Sem SKU_NOME na base para montar os insights de Top SKUs por dimensão.")
-        else:
-            with colx1:
-                st.subheader("Top SKUs por Analista")
-                if "ANALISTA" in df.columns:
-                    dim = st.selectbox("Selecione um Analista", options=sorted(df["ANALISTA"].unique().tolist()), key="sel_analista_topsku")
-                    dfx = df[df["ANALISTA"] == dim].copy()
-                    g = dfx.groupby(sku_name_col, as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(10)
-                    st.dataframe(g, use_container_width=True, hide_index=True)
+            with colf3:
+                if "ESTADO" in df_f.columns:
+                    estados = ["(Todos)"] + sorted([e for e in df_f["ESTADO"].dropna().unique().tolist() if e != ""])
+                    sel_estado = st.selectbox("Estado", options=estados, index=0)
                 else:
-                    st.info("Coluna ANALISTA não encontrada.")
+                    sel_estado = "(Todos)"
+                    st.info("Sem coluna ESTADO para filtro.")
 
-            with colx2:
-                st.subheader("Top SKUs por Supervisor")
-                if "COD_SUP" in df.columns:
-                    dim = st.selectbox("Selecione um Supervisor (cód.)", options=sorted(df["COD_SUP"].unique().tolist()), key="sel_sup_topsku")
-                    dfx = df[df["COD_SUP"] == dim].copy()
-                    g = dfx.groupby(sku_name_col, as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(10)
-                    st.dataframe(g, use_container_width=True, hide_index=True)
+            with colf4:
+                if "ANALISTA" in df_f.columns:
+                    analistas = ["(Todos)"] + sorted([a for a in df_f["ANALISTA"].dropna().unique().tolist() if a != ""])
+                    sel_analista = st.selectbox("Analista", options=analistas, index=0)
                 else:
-                    st.info("Coluna COD_SUP não encontrada.")
+                    sel_analista = "(Todos)"
+                    st.info("Sem coluna ANALISTA para filtro.")
 
-            with colx3:
-                st.subheader("Top SKUs por Estado")
-                if "ESTADO" in df.columns:
-                    dim = st.selectbox("Selecione um Estado", options=sorted(df["ESTADO"].unique().tolist()), key="sel_estado_topsku")
-                    dfx = df[df["ESTADO"] == dim].copy()
-                    g = dfx.groupby(sku_name_col, as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(10)
-                    st.dataframe(g, use_container_width=True, hide_index=True)
+            if sel_estado != "(Todos)" and "ESTADO" in df_f.columns:
+                df_f = df_f[df_f["ESTADO"] == sel_estado].copy()
+
+            if sel_analista != "(Todos)" and "ANALISTA" in df_f.columns:
+                df_f = df_f[df_f["ANALISTA"] == sel_analista].copy()
+
+            # ============================
+            # 5) KPIs (FOCO EM VOLUME)
+            # ============================
+            st.markdown("---")
+            st.subheader("📌 KPIs (Volume)")
+
+            qtd_total = float(df_f["QTD"].sum())
+
+            if "CLIENTE_COD" in df_f.columns and df_f["CLIENTE_COD"].astype(str).str.len().sum() > 0:
+                clientes_unicos = df_f["CLIENTE_COD"].nunique()
+            else:
+                clientes_unicos = df_f["CLIENTE_NOME"].nunique() if "CLIENTE_NOME" in df_f.columns else 0
+
+            if "SKU_COD" in df_f.columns and df_f["SKU_COD"].astype(str).str.len().sum() > 0:
+                skus_unicos = df_f["SKU_COD"].nunique()
+            else:
+                skus_unicos = df_f["SKU_NOME"].nunique() if "SKU_NOME" in df_f.columns else 0
+
+            pedidos_unicos = df_f["ORD_CLIENTE"].nunique() if "ORD_CLIENTE" in df_f.columns else 0
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Volume total (Qtd)", _fmt_int_pt(qtd_total))
+            c2.metric("Clientes únicos", _fmt_int_pt(clientes_unicos))
+            c3.metric("SKUs únicos", _fmt_int_pt(skus_unicos))
+            c4.metric("Pedidos (OrdCliente)", _fmt_int_pt(pedidos_unicos))
+
+            # ============================
+            # 6) Visões principais (Volume)
+            # ============================
+            st.markdown("---")
+            st.subheader("📊 Visões principais (por Volume)")
+
+            colv1, colv2 = st.columns(2)
+
+            with colv1:
+                st.markdown("#### Volume por Estado")
+                if "ESTADO" in df_f.columns:
+                    g = df_f.groupby("ESTADO", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(15)
+                    if not g.empty:
+                        st.bar_chart(g.set_index("ESTADO")["QTD"])
+                        st.dataframe(g, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Sem dados para o filtro atual.")
                 else:
                     st.info("Coluna ESTADO não encontrada.")
 
-        st.markdown("---")
-
-        # ============================
-        # ALERTA 1: Queda de vendas (30d vs 30d anteriores)
-        # ============================
-        st.markdown("### 🚨 Alertas de queda de vendas (últimos 30 dias vs 30 dias anteriores)")
-
-        # Define janelas com base na data máxima do filtro atual
-        max_data = df["DATA_FAT"].max()
-        if pd.isna(max_data):
-            st.info("Sem datas válidas para calcular queda de vendas.")
-        else:
-            end_1 = max_data.normalize()
-            start_1 = end_1 - pd.Timedelta(days=29)
-            end_0 = start_1 - pd.Timedelta(days=1)
-            start_0 = end_0 - pd.Timedelta(days=29)
-
-            df_1 = df[(df["DATA_FAT"] >= start_1) & (df["DATA_FAT"] <= end_1)].copy()
-            df_0 = df[(df["DATA_FAT"] >= start_0) & (df["DATA_FAT"] <= end_0)].copy()
-
-            colq1, colq2 = st.columns(2)
-
-            with colq1:
-                st.subheader("Vendedores em queda")
-                if "COD_VEND" in df.columns:
-                    g1 = df_1.groupby(["COD_VEND", "VENDEDOR"], as_index=False)["RECEITA"].sum().rename(columns={"RECEITA": "REC_30D"})
-                    g0 = df_0.groupby(["COD_VEND", "VENDEDOR"], as_index=False)["RECEITA"].sum().rename(columns={"RECEITA": "REC_30D_ANT"})
-                    gx = g1.merge(g0, on=["COD_VEND", "VENDEDOR"], how="outer").fillna(0.0)
-                    gx["VAR_R$"] = gx["REC_30D"] - gx["REC_30D_ANT"]
-                    gx["VAR_%"] = gx.apply(lambda r: (r["VAR_R$"] / r["REC_30D_ANT"] * 100.0) if r["REC_30D_ANT"] > 0 else (100.0 if r["REC_30D"] > 0 else 0.0), axis=1)
-
-                    # Queda forte: var% <= -20 e REC_30D_ANT relevante
-                    queda = gx[(gx["REC_30D_ANT"] >= 1000) & (gx["VAR_%"] <= -20)].copy()
-                    queda = queda.sort_values("VAR_%", ascending=True).head(30)
-
-                    if queda.empty:
-                        st.success("Nenhum vendedor com queda relevante (>= R$ 1.000 e <= -20%) nessas janelas.")
+            with colv2:
+                st.markdown("#### Volume por Analista")
+                if "ANALISTA" in df_f.columns:
+                    g = df_f.groupby("ANALISTA", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False)
+                    if not g.empty:
+                        st.bar_chart(g.set_index("ANALISTA")["QTD"])
+                        st.dataframe(g, use_container_width=True, hide_index=True)
                     else:
-                        # Formata
-                        queda["REC_30D"] = queda["REC_30D"].apply(_fmt_money_pt)
-                        queda["REC_30D_ANT"] = queda["REC_30D_ANT"].apply(_fmt_money_pt)
-                        queda["VAR_R$"] = queda["VAR_R$"].apply(_fmt_money_pt)
-                        queda["VAR_%"] = queda["VAR_%"].map(lambda x: f"{x:.1f}%".replace(".", ","))
+                        st.info("Sem dados para o filtro atual.")
+                else:
+                    st.info("Coluna ANALISTA não encontrada.")
+
+            colv3, colv4 = st.columns(2)
+
+            with colv3:
+                st.markdown("#### Top Hierarquias (Volume)")
+                if "HIERARQUIA" in df_f.columns:
+                    g = df_f.groupby("HIERARQUIA", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(20)
+                    st.dataframe(g, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Coluna HIERARQUIA não encontrada.")
+
+            with colv4:
+                st.markdown("#### Top SKUs (Volume)")
+                sku_col = "SKU_NOME" if "SKU_NOME" in df_f.columns else None
+                if sku_col is not None:
+                    g = df_f.groupby(sku_col, as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(20)
+                    st.dataframe(g, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Coluna SKU_NOME não encontrada.")
+
+            # ============================
+            # 7) Top SKUs por dimensão (Volume)
+            # ============================
+            st.markdown("---")
+            st.subheader("🧠 Top SKUs por dimensão (Volume)")
+
+            sku_col = "SKU_NOME" if "SKU_NOME" in df_f.columns else None
+
+            if sku_col is None:
+                st.info("Sem SKU_NOME na base para montar os insights de Top SKUs por dimensão.")
+            else:
+                colx1, colx2, colx3 = st.columns(3)
+
+                with colx1:
+                    st.markdown("#### Top SKUs por Analista")
+                    if "ANALISTA" in df_f.columns:
+                        opts = sorted([x for x in df_f["ANALISTA"].dropna().unique().tolist() if x != ""])
+                        if opts:
+                            dim = st.selectbox("Selecione um Analista", options=opts, key="sel_analista_topsku_vol")
+                            dfx = df_f[df_f["ANALISTA"] == dim].copy()
+                            g = dfx.groupby(sku_col, as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(10)
+                            st.dataframe(g, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Sem analistas no filtro atual.")
+                    else:
+                        st.info("Coluna ANALISTA não encontrada.")
+
+                with colx2:
+                    st.markdown("#### Top SKUs por Supervisor")
+                    if "COD_SUP" in df_f.columns:
+                        opts = sorted([x for x in df_f["COD_SUP"].dropna().unique().tolist() if x != ""])
+                        if opts:
+                            dim = st.selectbox("Selecione um Supervisor (cód.)", options=opts, key="sel_sup_topsku_vol")
+                            dfx = df_f[df_f["COD_SUP"] == dim].copy()
+                            g = dfx.groupby(sku_col, as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(10)
+                            st.dataframe(g, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Sem supervisores no filtro atual.")
+                    else:
+                        st.info("Coluna COD_SUP não encontrada.")
+
+                with colx3:
+                    st.markdown("#### Top SKUs por Estado")
+                    if "ESTADO" in df_f.columns:
+                        opts = sorted([x for x in df_f["ESTADO"].dropna().unique().tolist() if x != ""])
+                        if opts:
+                            dim = st.selectbox("Selecione um Estado", options=opts, key="sel_estado_topsku_vol")
+                            dfx = df_f[df_f["ESTADO"] == dim].copy()
+                            g = dfx.groupby(sku_col, as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(10)
+                            st.dataframe(g, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Sem estados no filtro atual.")
+                    else:
+                        st.info("Coluna ESTADO não encontrada.")
+
+            # ============================
+            # 8) ALERTA: Queda de volume (30d vs 30d anteriores)
+            # ============================
+            st.markdown("---")
+            st.subheader("🚨 Alertas de queda de Volume (últimos 30 dias vs 30 dias anteriores)")
+
+            max_data = df_f["DATA_FAT"].max()
+            if pd.isna(max_data):
+                st.info("Sem datas válidas para calcular queda de volume.")
+            else:
+                end_1 = max_data.normalize()
+                start_1 = end_1 - pd.Timedelta(days=29)
+                end_0 = start_1 - pd.Timedelta(days=1)
+                start_0 = end_0 - pd.Timedelta(days=29)
+
+                df_1 = df_f[(df_f["DATA_FAT"] >= start_1) & (df_f["DATA_FAT"] <= end_1)].copy()
+                df_0 = df_f[(df_f["DATA_FAT"] >= start_0) & (df_f["DATA_FAT"] <= end_0)].copy()
+
+                colq1, colq2 = st.columns(2)
+
+                with colq1:
+                    st.markdown("#### Vendedores em queda (Volume)")
+                    if "COD_VEND" in df_f.columns and "VENDEDOR" in df_f.columns:
+                        g1 = df_1.groupby(["COD_VEND", "VENDEDOR"], as_index=False)["QTD"].sum().rename(columns={"QTD": "QTD_30D"})
+                        g0 = df_0.groupby(["COD_VEND", "VENDEDOR"], as_index=False)["QTD"].sum().rename(columns={"QTD": "QTD_30D_ANT"})
+                        gx = g1.merge(g0, on=["COD_VEND", "VENDEDOR"], how="outer").fillna(0.0)
+                        gx["VAR_QTD"] = gx["QTD_30D"] - gx["QTD_30D_ANT"]
+                        gx["VAR_%"] = gx.apply(
+                            lambda r: (r["VAR_QTD"] / r["QTD_30D_ANT"] * 100.0) if r["QTD_30D_ANT"] > 0 else (100.0 if r["QTD_30D"] > 0 else 0.0),
+                            axis=1
+                        )
+
+                        queda = gx[(gx["QTD_30D_ANT"] >= 50) & (gx["VAR_%"] <= -20)].copy()
+                        queda = queda.sort_values("VAR_%", ascending=True).head(30)
 
                         st.caption(f"Janela atual: {start_1.date()} → {end_1.date()} | Janela anterior: {start_0.date()} → {end_0.date()}")
-                        st.dataframe(
-                            queda[["COD_VEND", "VENDEDOR", "REC_30D_ANT", "REC_30D", "VAR_R$", "VAR_%"]],
-                            use_container_width=True,
-                            hide_index=True,
-                        )
-                else:
-                    st.info("Coluna COD_VEND não encontrada.")
 
-            with colq2:
-                st.subheader("Supervisores em queda")
-                if "COD_SUP" in df.columns:
-                    g1 = df_1.groupby("COD_SUP", as_index=False)["RECEITA"].sum().rename(columns={"RECEITA": "REC_30D"})
-                    g0 = df_0.groupby("COD_SUP", as_index=False)["RECEITA"].sum().rename(columns={"RECEITA": "REC_30D_ANT"})
-                    gx = g1.merge(g0, on="COD_SUP", how="outer").fillna(0.0)
-                    gx["VAR_R$"] = gx["REC_30D"] - gx["REC_30D_ANT"]
-                    gx["VAR_%"] = gx.apply(lambda r: (r["VAR_R$"] / r["REC_30D_ANT"] * 100.0) if r["REC_30D_ANT"] > 0 else (100.0 if r["REC_30D"] > 0 else 0.0), axis=1)
+                        if queda.empty:
+                            st.success("Nenhum vendedor com queda relevante (>= 50 un. e <= -20%) nessas janelas.")
+                        else:
+                            out = queda.copy()
+                            out["QTD_30D"] = out["QTD_30D"].apply(_fmt_int_pt)
+                            out["QTD_30D_ANT"] = out["QTD_30D_ANT"].apply(_fmt_int_pt)
+                            out["VAR_QTD"] = out["VAR_QTD"].apply(_fmt_int_pt)
+                            out["VAR_%"] = out["VAR_%"].map(lambda x: f"{x:.1f}%".replace(".", ","))
 
-                    queda = gx[(gx["REC_30D_ANT"] >= 5000) & (gx["VAR_%"] <= -15)].copy()
-                    queda = queda.sort_values("VAR_%", ascending=True).head(30)
-
-                    if queda.empty:
-                        st.success("Nenhum supervisor com queda relevante (>= R$ 5.000 e <= -15%) nessas janelas.")
+                            st.dataframe(
+                                out[["COD_VEND", "VENDEDOR", "QTD_30D_ANT", "QTD_30D", "VAR_QTD", "VAR_%"]],
+                                use_container_width=True,
+                                hide_index=True
+                            )
                     else:
-                        queda["REC_30D"] = queda["REC_30D"].apply(_fmt_money_pt)
-                        queda["REC_30D_ANT"] = queda["REC_30D_ANT"].apply(_fmt_money_pt)
-                        queda["VAR_R$"] = queda["VAR_R$"].apply(_fmt_money_pt)
-                        queda["VAR_%"] = queda["VAR_%"].map(lambda x: f"{x:.1f}%".replace(".", ","))
+                        st.info("Preciso de COD_VEND e VENDEDOR para calcular queda por vendedor.")
+
+                with colq2:
+                    st.markdown("#### Supervisores em queda (Volume)")
+                    if "COD_SUP" in df_f.columns:
+                        g1 = df_1.groupby("COD_SUP", as_index=False)["QTD"].sum().rename(columns={"QTD": "QTD_30D"})
+                        g0 = df_0.groupby("COD_SUP", as_index=False)["QTD"].sum().rename(columns={"QTD": "QTD_30D_ANT"})
+                        gx = g1.merge(g0, on="COD_SUP", how="outer").fillna(0.0)
+                        gx["VAR_QTD"] = gx["QTD_30D"] - gx["QTD_30D_ANT"]
+                        gx["VAR_%"] = gx.apply(
+                            lambda r: (r["VAR_QTD"] / r["QTD_30D_ANT"] * 100.0) if r["QTD_30D_ANT"] > 0 else (100.0 if r["QTD_30D"] > 0 else 0.0),
+                            axis=1
+                        )
+
+                        queda = gx[(gx["QTD_30D_ANT"] >= 200) & (gx["VAR_%"] <= -15)].copy()
+                        queda = queda.sort_values("VAR_%", ascending=True).head(30)
 
                         st.caption(f"Janela atual: {start_1.date()} → {end_1.date()} | Janela anterior: {start_0.date()} → {end_0.date()}")
+
+                        if queda.empty:
+                            st.success("Nenhum supervisor com queda relevante (>= 200 un. e <= -15%) nessas janelas.")
+                        else:
+                            out = queda.copy()
+                            out["QTD_30D"] = out["QTD_30D"].apply(_fmt_int_pt)
+                            out["QTD_30D_ANT"] = out["QTD_30D_ANT"].apply(_fmt_int_pt)
+                            out["VAR_QTD"] = out["VAR_QTD"].apply(_fmt_int_pt)
+                            out["VAR_%"] = out["VAR_%"].map(lambda x: f"{x:.1f}%".replace(".", ","))
+
+                            st.dataframe(
+                                out[["COD_SUP", "QTD_30D_ANT", "QTD_30D", "VAR_QTD", "VAR_%"]],
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                    else:
+                        st.info("Preciso de COD_SUP para calcular queda por supervisor.")
+
+            # ============================
+            # 9) ALERTA: “Não expande mix” (Volume concentrado no SKU #1)
+            # ============================
+            st.markdown("---")
+            st.subheader("🧩 Alertas de “não expande mix” (mix baixo + volume concentrado no SKU #1)")
+
+            sku_col = "SKU_NOME" if "SKU_NOME" in df_f.columns else None
+            if "COD_VEND" not in df_f.columns or "VENDEDOR" not in df_f.columns or sku_col is None:
+                st.info("Preciso de COD_VEND, VENDEDOR e SKU_NOME para calcular mix por vendedor.")
+            else:
+                mix = df_f.groupby(["COD_VEND", "VENDEDOR"], as_index=False).agg(
+                    QTD=("QTD", "sum"),
+                    SKUS_UNICOS=(sku_col, "nunique"),
+                )
+
+                # Top SKU por vendedor
+                g_sku = df_f.groupby(["COD_VEND", "VENDEDOR", sku_col], as_index=False)["QTD"].sum()
+                g_sku = g_sku.sort_values(["COD_VEND", "QTD"], ascending=[True, False])
+
+                top_sku = g_sku.groupby(["COD_VEND", "VENDEDOR"], as_index=False).first().rename(
+                    columns={sku_col: "SKU_TOP", "QTD": "QTD_SKU_TOP"}
+                )
+
+                mix = mix.merge(top_sku, on=["COD_VEND", "VENDEDOR"], how="left").fillna({"QTD_SKU_TOP": 0.0, "SKU_TOP": ""})
+                mix["SHARE_TOP_SKU"] = mix.apply(lambda r: (r["QTD_SKU_TOP"] / r["QTD"] * 100.0) if r["QTD"] > 0 else 0.0, axis=1)
+
+                # Regras (volume): SKUs <= 5 e share top SKU >= 55%
+                suspeitos = mix[(mix["SKUS_UNICOS"] <= 5) & (mix["SHARE_TOP_SKU"] >= 55)].copy()
+                suspeitos = suspeitos.sort_values(["SHARE_TOP_SKU", "QTD"], ascending=[False, False]).head(50)
+
+                colm1, colm2 = st.columns([0.55, 0.45])
+
+                with colm1:
+                    st.markdown("#### Ranking (mix baixo + volume concentrado)")
+                    if suspeitos.empty:
+                        st.success("Nenhum vendedor bateu as regras de alerta no período filtrado.")
+                    else:
+                        out = suspeitos.copy()
+                        out["QTD"] = out["QTD"].apply(_fmt_int_pt)
+                        out["QTD_SKU_TOP"] = out["QTD_SKU_TOP"].apply(_fmt_int_pt)
+                        out["SHARE_TOP_SKU"] = out["SHARE_TOP_SKU"].map(lambda x: f"{x:.1f}%".replace(".", ","))
+
                         st.dataframe(
-                            queda[["COD_SUP", "REC_30D_ANT", "REC_30D", "VAR_R$", "VAR_%"]],
+                            out[["COD_VEND", "VENDEDOR", "QTD", "SKUS_UNICOS", "SKU_TOP", "QTD_SKU_TOP", "SHARE_TOP_SKU"]],
                             use_container_width=True,
-                            hide_index=True,
+                            hide_index=True
                         )
+
+                with colm2:
+                    st.markdown("#### Detalhe do vendedor (mix)")
+                    vend_options = sorted([x for x in df_f["COD_VEND"].dropna().unique().tolist() if x != ""])
+                    if vend_options:
+                        vend_pick = st.selectbox("Escolha o código do vendedor", options=vend_options, key="pick_vend_mix_vol")
+
+                        d = df_f[df_f["COD_VEND"] == vend_pick].copy()
+                        nome_v = d["VENDEDOR"].iloc[0] if not d.empty else ""
+                        st.caption(f"Vendedor: **{nome_v}** | Código: **{vend_pick}**")
+
+                        top = d.groupby(sku_col, as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(15)
+                        st.markdown("**Top SKUs (Volume)**")
+                        st.dataframe(top, use_container_width=True, hide_index=True)
+
+                        if "CLIENTE_NOME" in d.columns:
+                            topc = d.groupby("CLIENTE_NOME", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(15)
+                            st.markdown("**Top Clientes (Volume)**")
+                            st.dataframe(topc, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Sem vendedores no filtro atual.")
+
+            # =========================================================
+            # 10) NOVO: Volume por pedido (OrdCliente) — pedido pequeno vs puxa volume
+            # =========================================================
+            st.markdown("---")
+            st.subheader("📦 Volume por Pedido (OrdCliente) — quem tira pedido pequeno vs quem puxa volume")
+
+            if "ORD_CLIENTE" not in df_f.columns or "COD_VEND" not in df_f.columns or "VENDEDOR" not in df_f.columns:
+                st.info("Preciso de ORD_CLIENTE, COD_VEND e VENDEDOR para calcular volume por pedido.")
+            else:
+                # Volume por pedido (no nível pedido x vendedor)
+                ped = df_f.groupby(["COD_VEND", "VENDEDOR", "ORD_CLIENTE"], as_index=False)["QTD"].sum()
+
+                # Agregado por vendedor: pedidos, qtd total, qtd média por pedido, mediana e p90 (pra ver “puxa volume”)
+                vend_ped = ped.groupby(["COD_VEND", "VENDEDOR"], as_index=False).agg(
+                    PEDIDOS=("ORD_CLIENTE", "nunique"),
+                    QTD_TOTAL=("QTD", "sum"),
+                    QTD_MED=("QTD", "mean"),
+                    QTD_MEDIANA=("QTD", "median"),
+                    QTD_P90=("QTD", lambda s: float(np.percentile(s, 90)) if len(s) > 0 else 0.0),
+                )
+
+                # Regras simples pra destacar:
+                # - "Pedido pequeno": QTD_MED baixa e muitos pedidos
+                # - "Puxa volume": QTD_P90 alto (capacidade de tracionar pedido grande)
+                if not vend_ped.empty:
+                    p25_med = float(np.percentile(vend_ped["QTD_MED"], 25)) if len(vend_ped) >= 4 else vend_ped["QTD_MED"].min()
+                    p75_p90 = float(np.percentile(vend_ped["QTD_P90"], 75)) if len(vend_ped) >= 4 else vend_ped["QTD_P90"].max()
+
+                    vend_ped["PERFIL_PEDIDO"] = "Neutro"
+                    vend_ped.loc[(vend_ped["QTD_MED"] <= p25_med) & (vend_ped["PEDIDOS"] >= 20), "PERFIL_PEDIDO"] = "Só pedido pequeno"
+                    vend_ped.loc[(vend_ped["QTD_P90"] >= p75_p90) & (vend_ped["QTD_TOTAL"] >= 500), "PERFIL_PEDIDO"] = "Puxa volume"
+
+                    colp1, colp2 = st.columns(2)
+
+                    with colp1:
+                        st.markdown("#### Ranking — “Só pedido pequeno”")
+                        small = vend_ped[vend_ped["PERFIL_PEDIDO"] == "Só pedido pequeno"].copy()
+                        small = small.sort_values(["QTD_MED", "PEDIDOS"], ascending=[True, False]).head(30)
+
+                        if small.empty:
+                            st.success("Nenhum vendedor caiu como “só pedido pequeno” com as regras atuais.")
+                        else:
+                            out = small.copy()
+                            out["PEDIDOS"] = out["PEDIDOS"].apply(_fmt_int_pt)
+                            out["QTD_TOTAL"] = out["QTD_TOTAL"].apply(_fmt_int_pt)
+                            out["QTD_MED"] = out["QTD_MED"].apply(lambda x: _fmt_int_pt(round(float(x), 0)))
+                            out["QTD_MEDIANA"] = out["QTD_MEDIANA"].apply(lambda x: _fmt_int_pt(round(float(x), 0)))
+                            out["QTD_P90"] = out["QTD_P90"].apply(lambda x: _fmt_int_pt(round(float(x), 0)))
+                            st.dataframe(
+                                out[["COD_VEND", "VENDEDOR", "PEDIDOS", "QTD_TOTAL", "QTD_MED", "QTD_MEDIANA", "QTD_P90"]],
+                                use_container_width=True,
+                                hide_index=True
+                            )
+
+                    with colp2:
+                        st.markdown("#### Ranking — “Puxa volume”")
+                        pux = vend_ped[vend_ped["PERFIL_PEDIDO"] == "Puxa volume"].copy()
+                        pux = pux.sort_values(["QTD_P90", "QTD_TOTAL"], ascending=[False, False]).head(30)
+
+                        if pux.empty:
+                            st.success("Nenhum vendedor caiu como “puxa volume” com as regras atuais.")
+                        else:
+                            out = pux.copy()
+                            out["PEDIDOS"] = out["PEDIDOS"].apply(_fmt_int_pt)
+                            out["QTD_TOTAL"] = out["QTD_TOTAL"].apply(_fmt_int_pt)
+                            out["QTD_MED"] = out["QTD_MED"].apply(lambda x: _fmt_int_pt(round(float(x), 0)))
+                            out["QTD_MEDIANA"] = out["QTD_MEDIANA"].apply(lambda x: _fmt_int_pt(round(float(x), 0)))
+                            out["QTD_P90"] = out["QTD_P90"].apply(lambda x: _fmt_int_pt(round(float(x), 0)))
+                            st.dataframe(
+                                out[["COD_VEND", "VENDEDOR", "PEDIDOS", "QTD_TOTAL", "QTD_MED", "QTD_MEDIANA", "QTD_P90"]],
+                                use_container_width=True,
+                                hide_index=True
+                            )
                 else:
-                    st.info("Coluna COD_SUP não encontrada.")
+                    st.info("Sem dados suficientes para calcular volume por pedido.")
 
-        st.markdown("---")
+                st.markdown("#### Drill-down: distribuição de volumes por pedido (por vendedor)")
+                vend_options = sorted([x for x in df_f["COD_VEND"].dropna().unique().tolist() if x != ""])
+                if vend_options:
+                    vend_pick = st.selectbox("Selecione o vendedor (cód.)", options=vend_options, key="pick_vend_pedido_vol")
+                    ped_v = ped[ped["COD_VEND"] == vend_pick].copy()
 
-        # ============================
-        # ALERTA 2: Vendedor sem expansão de mix (poucos SKUs + alta concentração)
-        # ============================
-        st.markdown("### 🧩 Alertas de “não expandiu mix” (poucos SKUs + 1 SKU domina)")
+                    nome_v = ped_v["VENDEDOR"].iloc[0] if not ped_v.empty else ""
+                    st.caption(f"Vendedor: **{nome_v}** | Código: **{vend_pick}**")
 
-        if "COD_VEND" not in df.columns or sku_name_col is None:
-            st.info("Preciso de COD_VEND e SKU_NOME para calcular mix por vendedor.")
-        else:
-            # Mix por vendedor no período filtrado
-            mix = df.groupby(["COD_VEND", "VENDEDOR"], as_index=False).agg(
-                RECEITA=("RECEITA", "sum"),
-                QTD=("QTD", "sum"),
-                SKUS_UNICOS=(sku_name_col, "nunique"),
-                CLIENTES_UNICOS=("CLIENTE_COD" if "CLIENTE_COD" in df.columns else "CLIENTE_NOME", "nunique"),
-            )
+                    if ped_v.empty:
+                        st.info("Sem pedidos para esse vendedor no filtro atual.")
+                    else:
+                        # Top pedidos por volume
+                        top_ped = ped_v.sort_values("QTD", ascending=False).head(20)
+                        st.markdown("**Top 20 pedidos por volume (Qtd)**")
+                        st.dataframe(top_ped, use_container_width=True, hide_index=True)
 
-            # Concentração: % da receita no SKU top do vendedor
-            g_sku = df.groupby(["COD_VEND", "VENDEDOR", sku_name_col], as_index=False)["RECEITA"].sum()
-            g_sku = g_sku.sort_values(["COD_VEND", "RECEITA"], ascending=[True, False])
+                        # Indicadores rápidos
+                        st.markdown("**Resumo do vendedor (pedido)**")
+                        st.write(
+                            f"- Pedidos: **{_fmt_int_pt(ped_v['ORD_CLIENTE'].nunique())}**  "
+                            f"- Qtd total: **{_fmt_int_pt(ped_v['QTD'].sum())}**  "
+                            f"- Qtd média/pedido: **{_fmt_int_pt(round(float(ped_v['QTD'].mean()), 0))}**"
+                        )
 
-            top_sku = g_sku.groupby(["COD_VEND", "VENDEDOR"], as_index=False).first().rename(
-                columns={sku_name_col: "SKU_TOP", "RECEITA": "REC_SKU_TOP"}
-            )
+            # =========================================================
+            # 11) NOVO: Penetração de mix por cliente (SKUs diferentes por cliente do vendedor)
+            # =========================================================
+            st.markdown("---")
+            st.subheader("🧬 Penetração de mix por cliente (SKUs diferentes por cliente do vendedor)")
 
-            mix = mix.merge(top_sku, on=["COD_VEND", "VENDEDOR"], how="left").fillna({"REC_SKU_TOP": 0.0, "SKU_TOP": ""})
-            mix["SHARE_TOP_SKU"] = mix.apply(lambda r: (r["REC_SKU_TOP"] / r["RECEITA"] * 100.0) if r["RECEITA"] > 0 else 0.0, axis=1)
-
-            # Regras (ajuste depois como quiser)
-            # - SKUs únicos <= 5
-            # - Top SKU share >= 55%
-            suspeitos = mix[(mix["SKUS_UNICOS"] <= 5) & (mix["SHARE_TOP_SKU"] >= 55)].copy()
-            suspeitos = suspeitos.sort_values(["SHARE_TOP_SKU", "RECEITA"], ascending=[False, False]).head(50)
-
-            colm1, colm2 = st.columns([0.55, 0.45])
-
-            with colm1:
-                st.subheader("Ranking de vendedores “viciados” (mix baixo + concentração alta)")
-                if suspeitos.empty:
-                    st.success("Nenhum vendedor bateu as regras de alerta no período filtrado.")
+            if "COD_VEND" not in df_f.columns or "VENDEDOR" not in df_f.columns or "CLIENTE_NOME" not in df_f.columns:
+                st.info("Preciso de COD_VEND, VENDEDOR e CLIENTE_NOME para penetração de mix por cliente.")
+            else:
+                sku_col = "SKU_NOME" if "SKU_NOME" in df_f.columns else None
+                if sku_col is None:
+                    st.info("Preciso de SKU_NOME para calcular quantos SKUs diferentes cada cliente compra.")
                 else:
-                    out = suspeitos.copy()
-                    out["RECEITA"] = out["RECEITA"].apply(_fmt_money_pt)
-                    out["QTD"] = out["QTD"].apply(_fmt_int_pt)
-                    out["SHARE_TOP_SKU"] = out["SHARE_TOP_SKU"].map(lambda x: f"{x:.1f}%".replace(".", ","))
-                    st.dataframe(
-                        out[["COD_VEND", "VENDEDOR", "RECEITA", "QTD", "SKUS_UNICOS", "CLIENTES_UNICOS", "SKU_TOP", "SHARE_TOP_SKU"]],
-                        use_container_width=True,
-                        hide_index=True,
+                    # Cliente x vendedor: quantos SKUs diferentes + volume total
+                    cli_mix = df_f.groupby(["COD_VEND", "VENDEDOR", "CLIENTE_NOME"], as_index=False).agg(
+                        SKUS_DIF=(sku_col, "nunique"),
+                        QTD=("QTD", "sum"),
                     )
 
-            with colm2:
-                st.subheader("Detalhe do vendedor")
-                vend_options = sorted(df["COD_VEND"].unique().tolist())
-                vend_pick = st.selectbox("Escolha o código do vendedor", options=vend_options, key="pick_vend_mix")
+                    # Agrega por vendedor: média de SKUs por cliente, % clientes com >=3 SKUs, etc.
+                    vend_mix = cli_mix.groupby(["COD_VEND", "VENDEDOR"], as_index=False).agg(
+                        CLIENTES=("CLIENTE_NOME", "nunique"),
+                        QTD_TOTAL=("QTD", "sum"),
+                        SKUS_MED_POR_CLIENTE=("SKUS_DIF", "mean"),
+                        SKUS_MEDIANA_POR_CLIENTE=("SKUS_DIF", "median"),
+                        CLIENTES_1SKU=("SKUS_DIF", lambda s: int((s <= 1).sum())),
+                        CLIENTES_3SKU=("SKUS_DIF", lambda s: int((s >= 3).sum())),
+                        CLIENTES_5SKU=("SKUS_DIF", lambda s: int((s >= 5).sum())),
+                    )
 
-                d = df[df["COD_VEND"] == vend_pick].copy()
-                nome_v = d["VENDEDOR"].iloc[0] if "VENDEDOR" in d.columns and not d.empty else ""
+                    vend_mix["%_CLIENTES_1SKU"] = vend_mix.apply(lambda r: (r["CLIENTES_1SKU"] / r["CLIENTES"] * 100.0) if r["CLIENTES"] > 0 else 0.0, axis=1)
+                    vend_mix["%_CLIENTES_3SKU+"] = vend_mix.apply(lambda r: (r["CLIENTES_3SKU"] / r["CLIENTES"] * 100.0) if r["CLIENTES"] > 0 else 0.0, axis=1)
+                    vend_mix["%_CLIENTES_5SKU+"] = vend_mix.apply(lambda r: (r["CLIENTES_5SKU"] / r["CLIENTES"] * 100.0) if r["CLIENTES"] > 0 else 0.0, axis=1)
 
-                st.caption(f"Vendedor: **{nome_v}** | Código: **{vend_pick}**")
+                    colmA, colmB = st.columns(2)
 
-                # Top SKUs desse vendedor
-                top = d.groupby(sku_name_col, as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(15)
-                st.markdown("**Top SKUs (Receita)**")
-                st.dataframe(top, use_container_width=True, hide_index=True)
+                    with colmA:
+                        st.markdown("#### Vendedores com pior penetração (mix baixo no cliente)")
+                        # Ordena por média de SKUs por cliente (baixo) e volume (alto) pra priorizar onde tem impacto
+                        low = vend_mix[vend_mix["CLIENTES"] >= 10].copy()
+                        low = low.sort_values(["SKUS_MED_POR_CLIENTE", "QTD_TOTAL"], ascending=[True, False]).head(30)
 
-                # Mix por cliente (top clientes)
-                cli_col = "CLIENTE_NOME" if "CLIENTE_NOME" in d.columns else None
-                if cli_col is not None:
-                    topc = d.groupby(cli_col, as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(15)
-                    st.markdown("**Top Clientes (Receita)**")
-                    st.dataframe(topc, use_container_width=True, hide_index=True)
+                        if low.empty:
+                            st.success("Sem vendedores suficientes (mínimo 10 clientes) no filtro atual.")
+                        else:
+                            out = low.copy()
+                            out["CLIENTES"] = out["CLIENTES"].apply(_fmt_int_pt)
+                            out["QTD_TOTAL"] = out["QTD_TOTAL"].apply(_fmt_int_pt)
+                            out["SKUS_MED_POR_CLIENTE"] = out["SKUS_MED_POR_CLIENTE"].map(lambda x: f"{x:.2f}".replace(".", ","))
+                            out["SKUS_MEDIANA_POR_CLIENTE"] = out["SKUS_MEDIANA_POR_CLIENTE"].map(lambda x: f"{float(x):.0f}".replace(".", ","))
+                            out["%_CLIENTES_1SKU"] = out["%_CLIENTES_1SKU"].map(lambda x: f"{x:.1f}%".replace(".", ","))
+                            out["%_CLIENTES_3SKU+"] = out["%_CLIENTES_3SKU+"].map(lambda x: f"{x:.1f}%".replace(".", ","))
+                            out["%_CLIENTES_5SKU+"] = out["%_CLIENTES_5SKU+"].map(lambda x: f"{x:.1f}%".replace(".", ","))
 
-        st.markdown("---")
+                            st.dataframe(
+                                out[[
+                                    "COD_VEND", "VENDEDOR", "CLIENTES", "QTD_TOTAL",
+                                    "SKUS_MED_POR_CLIENTE", "SKUS_MEDIANA_POR_CLIENTE",
+                                    "%_CLIENTES_1SKU", "%_CLIENTES_3SKU+", "%_CLIENTES_5SKU+"
+                                ]],
+                                use_container_width=True,
+                                hide_index=True
+                            )
 
-        # ============================
-        # Drill-down: Vendedor / Cliente / Hierarquia
-        # ============================
-        st.markdown("### 🔎 Drill-down rápido (pra investigação)")
+                    with colmB:
+                        st.markdown("#### Drill-down: mix por cliente (do vendedor)")
+                        vend_options = sorted([x for x in df_f["COD_VEND"].dropna().unique().tolist() if x != ""])
+                        if vend_options:
+                            vend_pick = st.selectbox("Selecione o vendedor (cód.)", options=vend_options, key="pick_vend_mix_cli_vol")
+                            d = cli_mix[cli_mix["COD_VEND"] == vend_pick].copy()
 
-        colz1, colz2 = st.columns(2)
+                            nome_v = d["VENDEDOR"].iloc[0] if not d.empty else ""
+                            st.caption(f"Vendedor: **{nome_v}** | Código: **{vend_pick}**")
 
-        with colz1:
-            st.subheader("Faturado por Vendedor")
-            if "VENDEDOR" in df.columns:
-                g = df.groupby("VENDEDOR", as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(30)
-                st.dataframe(g, use_container_width=True, hide_index=True)
-            else:
-                st.info("Coluna VENDEDOR não encontrada.")
+                            if d.empty:
+                                st.info("Sem clientes para esse vendedor no filtro atual.")
+                            else:
+                                # Clientes com menor mix (1 SKU) e maior volume (oportunidade clara)
+                                d1 = d.sort_values(["SKUS_DIF", "QTD"], ascending=[True, False]).head(25)
+                                d2 = d.sort_values(["QTD"], ascending=False).head(25)
 
-        with colz2:
-            st.subheader("Faturado por Cliente")
-            cli_col = "CLIENTE_NOME" if "CLIENTE_NOME" in df.columns else None
-            if cli_col is not None:
-                g = df.groupby(cli_col, as_index=False)["RECEITA"].sum().sort_values("RECEITA", ascending=False).head(30)
-                st.dataframe(g, use_container_width=True, hide_index=True)
-            else:
-                st.info("Coluna de Cliente não encontrada.")
+                                st.markdown("**Clientes com mix baixo (ordenado por SKUs diferentes e volume)**")
+                                st.dataframe(d1, use_container_width=True, hide_index=True)
 
-        st.markdown("---")
+                                st.markdown("**Top clientes por volume (para atacar mix)**")
+                                st.dataframe(d2, use_container_width=True, hide_index=True)
 
-        with st.expander("📄 Ver amostra da base filtrada"):
-            st.dataframe(df.head(200), use_container_width=True)
+            # ============================
+            # 12) Drill-down geral (Volume)
+            # ============================
+            st.markdown("---")
+            st.subheader("🔎 Drill-down rápido (Volume)")
 
+            colz1, colz2 = st.columns(2)
+
+            with colz1:
+                st.markdown("#### Volume por Vendedor")
+                if "VENDEDOR" in df_f.columns:
+                    g = df_f.groupby("VENDEDOR", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(30)
+                    st.dataframe(g, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Coluna VENDEDOR não encontrada.")
+
+            with colz2:
+                st.markdown("#### Volume por Cliente")
+                if "CLIENTE_NOME" in df_f.columns:
+                    g = df_f.groupby("CLIENTE_NOME", as_index=False)["QTD"].sum().sort_values("QTD", ascending=False).head(30)
+                    st.dataframe(g, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Coluna CLIENTE_NOME não encontrada.")
 
 
 
