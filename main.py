@@ -5917,7 +5917,19 @@ elif menu == "💼 SALDO":
                 else:
                     st.info("Sem CLIENTE_NOME para ranking.")
 
-            # =========================================================
+                        # ============================
+            # (Apoio) Chave padrão de cliente (Nome + Código)
+            # ============================
+            if "CLIENTE_NOME" in df_f.columns and "CLIENTE_COD" in df_f.columns:
+                df_f["CLIENTE_CHAVE"] = df_f["CLIENTE_NOME"].astype(str).str.strip() + " (" + df_f["CLIENTE_COD"].astype(str).str.strip() + ")"
+            elif "CLIENTE_NOME" in df_f.columns:
+                df_f["CLIENTE_CHAVE"] = df_f["CLIENTE_NOME"].astype(str).str.strip()
+            elif "CLIENTE_COD" in df_f.columns:
+                df_f["CLIENTE_CHAVE"] = df_f["CLIENTE_COD"].astype(str).str.strip()
+            else:
+                df_f["CLIENTE_CHAVE"] = ""
+
+                        # =========================================================
             # 15) (NOVO) Concentração do saldo (Pareto 80/20)
             # =========================================================
             st.markdown("---")
@@ -5939,32 +5951,37 @@ elif menu == "💼 SALDO":
                     st.markdown("#### Top 10 / Top 30 pedidos (quanto destrava)")
                     st.write(f"- Top 10 pedidos: **{_fmt_int_pt(top10)}** ( **{str(round(p10, 1)).replace('.', ',')}%** do saldo )")
                     st.write(f"- Top 30 pedidos: **{_fmt_int_pt(top30)}** ( **{str(round(p30, 1)).replace('.', ',')}%** do saldo )")
-                    st.dataframe(ped_p.head(30), use_container_width=True, hide_index=True)
+
+                    show_ped = ped_p.head(30).copy()
+                    show_ped["QTD_NAO_FAT"] = show_ped["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                    st.dataframe(show_ped, use_container_width=True, hide_index=True)
 
                 with colP2:
                     st.markdown("#### Top 10 clientes (quanto destrava)")
-                    if "CLIENTE_COD" in df_f.columns or "CLIENTE_NOME" in df_f.columns:
-                        cli_key = "CLIENTE_COD" if "CLIENTE_COD" in df_f.columns else "CLIENTE_NOME"
-                        cli_p = df_f.groupby(cli_key, as_index=False)["QTD_NAO_FAT"].sum().sort_values("QTD_NAO_FAT", ascending=False)
+                    if "CLIENTE_CHAVE" in df_f.columns and df_f["CLIENTE_CHAVE"].astype(str).str.len().sum() > 0:
+                        cli_p = df_f.groupby("CLIENTE_CHAVE", as_index=False)["QTD_NAO_FAT"].sum().sort_values("QTD_NAO_FAT", ascending=False)
                         total_cli = float(cli_p["QTD_NAO_FAT"].sum()) if not cli_p.empty else 0.0
                         top10c = float(cli_p.head(10)["QTD_NAO_FAT"].sum()) if total_cli > 0 else 0.0
                         p10c = (top10c / total_cli * 100.0) if total_cli > 0 else 0.0
 
                         st.write(f"- Top 10 clientes: **{_fmt_int_pt(top10c)}** ( **{str(round(p10c, 1)).replace('.', ',')}%** do saldo )")
-                        st.dataframe(cli_p.head(30), use_container_width=True, hide_index=True)
+
+                        show_cli = cli_p.head(30).copy()
+                        show_cli["QTD_NAO_FAT"] = show_cli["QTD_NAO_FAT"].apply(_fmt_int_pt)
+                        st.dataframe(show_cli, use_container_width=True, hide_index=True)
                     else:
-                        st.info("Sem CLIENTE para Pareto por cliente.")
+                        st.info("Sem dados de CLIENTE (nome/código) para Pareto por cliente.")
             else:
                 st.info("Sem DOC_VENDA para Pareto por pedidos.")
 
-            # =========================================================
+                        # =========================================================
             # 16) (NOVO) Score por cliente (consolidado)
             # =========================================================
             st.markdown("---")
             st.subheader("🧠 Score por Cliente (prioridade comercial)")
 
-            if "CLIENTE_COD" in df_f.columns or "CLIENTE_NOME" in df_f.columns:
-                cli_key = "CLIENTE_COD" if "CLIENTE_COD" in df_f.columns else "CLIENTE_NOME"
+            if "CLIENTE_CHAVE" in df_f.columns and df_f["CLIENTE_CHAVE"].astype(str).str.len().sum() > 0:
+                cli_key = "CLIENTE_CHAVE"
 
                 base_cli = df_f.copy()
                 base_cli["FLAG_31P"] = base_cli["DIAS_ABERTO"].fillna(0).astype(float) >= 31
@@ -6005,10 +6022,13 @@ elif menu == "💼 SALDO":
                 out["%_SALDO_31P"] = out["%_SALDO_31P"].apply(lambda x: f"{float(x):.1f}%".replace(".", ","))
                 out["SCORE_CLIENTE"] = out["SCORE_CLIENTE"].apply(lambda x: f"{float(x):.3f}".replace(".", ","))
 
-                st.dataframe(out[[cli_key, "SALDO", "PEDIDOS", "DIAS_MED", "DIAS_MAX", "%_SALDO_31P", "%_BLOQ", "SCORE_CLIENTE"]],
-                             use_container_width=True, hide_index=True)
+                st.dataframe(
+                    out[[cli_key, "SALDO", "PEDIDOS", "DIAS_MED", "DIAS_MAX", "%_SALDO_31P", "%_BLOQ", "SCORE_CLIENTE"]],
+                    use_container_width=True,
+                    hide_index=True
+                )
             else:
-                st.info("Sem CLIENTE_COD/CLIENTE_NOME para score por cliente.")
+                st.info("Sem CLIENTE_NOME/CLIENTE_COD para score por cliente.")
 
             # =========================================================
             # 17) (NOVO) “Vendedor com saldo recorrente”
