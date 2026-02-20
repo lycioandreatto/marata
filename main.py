@@ -8612,11 +8612,11 @@ elif menu == "👔 DIRETORIA":
 
             colM1, colM2 = st.columns(2)
 
-            with colM1:
+                        with colM1:
                 st.markdown("#### 🟦 Faturado (Qtd) por UF")
                 if not df_fat_f.empty and "UF" in df_fat_f.columns and "QTD" in df_fat_f.columns:
                     g = df_fat_f.groupby("UF", as_index=False)["QTD"].sum()
-                    g = g[g["UF"].astype(str).str.len() == 2].copy()
+                    g["UF"] = g["UF"].apply(_clean_uf)
 
                     fig = px.choropleth(
                         g,
@@ -8627,7 +8627,20 @@ elif menu == "👔 DIRETORIA":
                         color_continuous_scale="Blues",
                         title="Faturado (Qtd) por UF",
                     )
-                    fig.update_geos(fitbounds="locations", visible=False)
+
+                    # ✅ Mantém o Brasil inteiro sempre (sem zoom nos estados com dado)
+                    fig.update_geos(
+                        visible=False,
+                        scope="south america",
+                        projection_type="mercator",
+                        center={"lat": -14, "lon": -55},
+                        lataxis_range=[-35, 6],
+                        lonaxis_range=[-75, -32],
+                        showcountries=False,
+                        showcoastlines=False,
+                        showland=True
+                    )
+
                     fig.update_layout(margin=dict(t=50, l=10, r=10, b=10))
                     st.plotly_chart(fig, use_container_width=True)
                 else:
@@ -8637,7 +8650,7 @@ elif menu == "👔 DIRETORIA":
                 st.markdown("#### 🟥 Saldo em aberto (Qtd não fat.) por UF")
                 if not df_saldo_f.empty and "UF" in df_saldo_f.columns and "QTD_NAO_FAT" in df_saldo_f.columns:
                     g = df_saldo_f.groupby("UF", as_index=False)["QTD_NAO_FAT"].sum()
-                    g = g[g["UF"].astype(str).str.len() == 2].copy()
+                    g["UF"] = g["UF"].apply(_clean_uf)
 
                     fig = px.choropleth(
                         g,
@@ -8648,7 +8661,20 @@ elif menu == "👔 DIRETORIA":
                         color_continuous_scale="Reds",
                         title="Saldo (Qtd não faturada) por UF",
                     )
-                    fig.update_geos(fitbounds="locations", visible=False)
+
+                    # ✅ Mantém o Brasil inteiro sempre (sem zoom nos estados com dado)
+                    fig.update_geos(
+                        visible=False,
+                        scope="south america",
+                        projection_type="mercator",
+                        center={"lat": -14, "lon": -55},
+                        lataxis_range=[-35, 6],
+                        lonaxis_range=[-75, -32],
+                        showcountries=False,
+                        showcoastlines=False,
+                        showland=True
+                    )
+
                     fig.update_layout(margin=dict(t=50, l=10, r=10, b=10))
                     st.plotly_chart(fig, use_container_width=True)
                 else:
