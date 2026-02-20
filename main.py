@@ -8612,7 +8612,7 @@ elif menu == "👔 DIRETORIA":
 
             colM1, colM2 = st.columns(2)
 
-                        with colM1:
+            with colM1:
                 st.markdown("#### 🟦 Faturado (Qtd) por UF")
                 if not df_fat_f.empty and "UF" in df_fat_f.columns and "QTD" in df_fat_f.columns:
                     g = df_fat_f.groupby("UF", as_index=False)["QTD"].sum()
