@@ -5581,136 +5581,124 @@ elif menu == "💼 SALDO":
         # ============================
         # 10) Insight Comercial Inteligente (com sugestão de SKUs)
         # ============================
-        st.markdown("---")
-        st.subheader("🧠 Insight Comercial Inteligente (cliente em atraso + sugestão de SKUs)")
+                    st.markdown("---")
+            st.subheader("🧠 Insight Comercial Inteligente (cliente em atraso + sugestão de SKUs)")
 
-        st.caption(
-            "Lógica: pega pedidos críticos do SALDO e sugere SKUs com base no histórico do FATURADO "
-            "(cliente primeiro, depois carteira do vendedor). Se não houver histórico suficiente, usa a aba SKUS por hierarquia."
-        )
+            st.caption(
+                "Lógica: pega pedidos críticos do SALDO e sugere SKUs com base no histórico do FATURADO "
+                "(cliente primeiro, depois carteira do vendedor), sempre respeitando a mesma hierarquia. "
+                "Se não houver histórico suficiente, usa a aba SKUS por hierarquia."
+            )
 
-        # base de pedidos críticos
-        ped_crit = ped[(ped["DIAS_ABERTO"] >= 10)].head(15).copy()
+            if insights_rows:
+                df_insights = pd.DataFrame(insights_rows).copy()
 
-        if ped_crit.empty:
-            st.success("Nenhum pedido com 10+ dias no filtro atual.")
-        else:
-            insights_rows = []
+                # ✅ garante colunas (caso alguma venha faltando)
+                colunas_esperadas = [
+                    "CLIENTE_NOME",
+                    "CLIENTE_COD",
+                    "DOC_VENDA",
+                    "DIAS_ABERTO",
+                    "STATUS_PEDIDO",
+                    "SALDO_PEDIDO",
+                    "HIERARQUIA",
+                    "SKUS_PEDIDO",
+                    "SUGESTAO_SKUS",
+                    "FONTE_SUGESTAO",
+                ]
+                for c in colunas_esperadas:
+                    if c not in df_insights.columns:
+                        df_insights[c] = ""
 
-            for _, p in ped_crit.iterrows():
-                doc = _safe_str(p.get("DOC_VENDA", ""))
-                cliente_cod = _safe_str(p.get("CLIENTE_COD_N", ""))
-                cliente_nome = _safe_str(p.get("CLIENTE_NOME", ""))
-                cod_vend = _safe_str(p.get("COD_VEND", ""))
-                dias = int(p.get("DIAS_ABERTO", 0) or 0)
-                status_op = _safe_str(p.get("STATUS_OPERACIONAL", ""))
-                qtd_nf = float(p.get("QTD_NAO_FAT", 0) or 0)
+                # ✅ renomeia para exibição
+                df_show = df_insights.rename(columns={
+                    "CLIENTE_NOME": "Cliente",
+                    "CLIENTE_COD": "Cód. Cliente",
+                    "DOC_VENDA": "Pedido",
+                    "DIAS_ABERTO": "Dias sem faturar",
+                    "STATUS_PEDIDO": "Status",
+                    "SALDO_PEDIDO": "Saldo",
+                    "HIERARQUIA": "Hierarquia",
+                    "SKUS_PEDIDO": "SKUs no pedido",
+                    "SUGESTAO_SKUS": "Sugestão comercial",
+                    "FONTE_SUGESTAO": "Fonte sugestão",
+                }).copy()
 
-                linhas_pedido = df_f[df_f["DOC_VENDA"] == doc].copy()
-                skus_pedido = _top_list(linhas_pedido["SKU_NOME"].tolist() if "SKU_NOME" in linhas_pedido.columns else [], n=8)
-                hiers_pedido = _top_list(linhas_pedido["HIERARQUIA"].tolist() if "HIERARQUIA" in linhas_pedido.columns else [], n=5)
+                # ✅ formatos
+                if "Saldo" in df_show.columns:
+                    df_show["Saldo"] = pd.to_numeric(df_show["Saldo"], errors="coerce").fillna(0).apply(
+                        lambda x: f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    )
 
-                fonte_sug = "Sem sugestão"
-                sugestoes = []
+                if "Dias sem faturar" in df_show.columns:
+                    df_show["Dias sem faturar"] = pd.to_numeric(df_show["Dias sem faturar"], errors="coerce").fillna(0).astype(int)
 
-                # 1) Histórico do cliente no FATURADO
-                if df_fat is not None and not df_fat.empty:
-                    fat_cliente = df_fat.copy()
+                # ✅ ordenação (mais críticos primeiro)
+                df_show = df_show.sort_values(
+                    by=["Dias sem faturar"],
+                    ascending=False
+                ).reset_index(drop=True)
 
-                    # filtro por cliente código (preferencial)
-                    if cliente_cod:
-                        fat_cliente = fat_cliente[fat_cliente["CLIENTE_COD_N"] == cliente_cod].copy()
-                    else:
-                        fat_cliente = fat_cliente[fat_cliente["CLIENTE_NOME_N"] == _norm_txt(cliente_nome)].copy()
+                # ✅ filtros rápidos (opcional e útil)
+                col_i1, col_i2 = st.columns([0.35, 0.65])
 
-                    # se histórico do cliente insuficiente, tenta carteira do vendedor
-                    fat_carteira = pd.DataFrame()
-                    if cod_vend and "COD_VEND_N" in df_fat.columns:
-                        fat_carteira = df_fat[df_fat["COD_VEND_N"] == _norm_txt(cod_vend)].copy()
+                with col_i1:
+                    lista_hier = ["(Todas)"] + sorted([
+                        str(x) for x in df_show["Hierarquia"].dropna().astype(str).unique().tolist()
+                        if str(x).strip() != ""
+                    ])
+                    filtro_hier = st.selectbox(
+                        "Filtrar por hierarquia",
+                        lista_hier,
+                        index=0,
+                        key="insight_hierarquia_tbl"
+                    )
 
-                    # prioridade 1: cliente
-                    if not fat_cliente.empty and "SKU_NOME" in fat_cliente.columns:
-                        # prioriza SKUs da mesma hierarquia do pedido
-                        if hiers_pedido and "HIERARQUIA" in fat_cliente.columns:
-                            hist_same_h = fat_cliente[fat_cliente["HIERARQUIA"].isin(hiers_pedido)].copy()
-                        else:
-                            hist_same_h = fat_cliente.copy()
+                with col_i2:
+                    busca_cliente = st.text_input(
+                        "Buscar cliente / pedido / SKU",
+                        key="insight_busca_tbl",
+                        placeholder="Ex.: 1456470 ou MARATINHO ou nome do cliente"
+                    ).strip().upper()
 
-                        if not hist_same_h.empty:
-                            g_sku = (
-                                hist_same_h.groupby("SKU_NOME", as_index=False)
-                                .agg(QTD=("QTD_FATURADA", "sum") if "QTD_FATURADA" in hist_same_h.columns else ("SKU_NOME", "size"))
-                                .sort_values("QTD", ascending=False)
-                            )
-                            cand = [s for s in g_sku["SKU_NOME"].tolist() if _norm_txt(s) not in [_norm_txt(x) for x in skus_pedido]]
-                            sugestoes = _top_list(cand, n=5)
+                df_filtrado_ins = df_show.copy()
 
-                        if sugestoes:
-                            fonte_sug = "Histórico do cliente (FATURADO)"
+                if filtro_hier != "(Todas)":
+                    df_filtrado_ins = df_filtrado_ins[
+                        df_filtrado_ins["Hierarquia"].astype(str) == str(filtro_hier)
+                    ].copy()
 
-                    # prioridade 2: carteira do vendedor
-                    if (not sugestoes) and (not fat_carteira.empty) and ("SKU_NOME" in fat_carteira.columns):
-                        if hiers_pedido and "HIERARQUIA" in fat_carteira.columns:
-                            hist_cart_h = fat_carteira[fat_carteira["HIERARQUIA"].isin(hiers_pedido)].copy()
-                        else:
-                            hist_cart_h = fat_carteira.copy()
+                if busca_cliente:
+                    mask_busca = (
+                        df_filtrado_ins["Cliente"].astype(str).str.upper().str.contains(busca_cliente, na=False)
+                        | df_filtrado_ins["Pedido"].astype(str).str.upper().str.contains(busca_cliente, na=False)
+                        | df_filtrado_ins["SKUs no pedido"].astype(str).str.upper().str.contains(busca_cliente, na=False)
+                        | df_filtrado_ins["Sugestão comercial"].astype(str).str.upper().str.contains(busca_cliente, na=False)
+                    )
+                    df_filtrado_ins = df_filtrado_ins[mask_busca].copy()
 
-                        if not hist_cart_h.empty:
-                            g_sku2 = (
-                                hist_cart_h.groupby("SKU_NOME", as_index=False)
-                                .agg(QTD=("QTD_FATURADA", "sum") if "QTD_FATURADA" in hist_cart_h.columns else ("SKU_NOME", "size"))
-                                .sort_values("QTD", ascending=False)
-                            )
-                            cand2 = [s for s in g_sku2["SKU_NOME"].tolist() if _norm_txt(s) not in [_norm_txt(x) for x in skus_pedido]]
-                            sugestoes = _top_list(cand2, n=5)
-
-                        if sugestoes:
-                            fonte_sug = "Carteira do vendedor (FATURADO)"
-
-                # 3) Fallback SKUS (por hierarquia)
-                if (not sugestoes) and (df_skus is not None) and hiers_pedido:
-                    base_skus = df_skus[df_skus["HIERARQUIA"].isin(hiers_pedido)].copy()
-                    if not base_skus.empty:
-                        cand3 = [s for s in base_skus["SKU_NOME"].tolist() if _norm_txt(s) not in [_norm_txt(x) for x in skus_pedido]]
-                        sugestoes = _top_list(cand3, n=5)
-                        if sugestoes:
-                            fonte_sug = "Aba SKUS (fallback por hierarquia)"
-
-                texto_skus_pedido = ", ".join(skus_pedido[:4]) if skus_pedido else "-"
-                texto_sug = ", ".join(sugestoes) if sugestoes else "-"
-
-                insight_txt = (
-                    f"Cliente {cliente_nome} ({cliente_cod}) está com pedido {doc} há {dias} dias sem faturar "
-                    f"(status: {status_op}; saldo: {_fmt_int_pt(qtd_nf)}). "
-                    f"SKUs no pedido: {texto_skus_pedido}. "
-                    f"Sugestão comercial: {texto_sug}."
+                # ✅ tabela final
+                st.dataframe(
+                    df_filtrado_ins[
+                        [
+                            "Cliente",
+                            "Cód. Cliente",
+                            "Pedido",
+                            "Dias sem faturar",
+                            "Status",
+                            "Saldo",
+                            "Hierarquia",
+                            "SKUs no pedido",
+                            "Sugestão comercial",
+                            "Fonte sugestão",
+                        ]
+                    ],
+                    use_container_width=True,
+                    hide_index=True
                 )
 
-                insights_rows.append({
-                    "CLIENTE": cliente_nome,
-                    "CÓDIGO": cliente_cod,
-                    "PEDIDO": doc,
-                    "DIAS_ABERTO": dias,
-                    "STATUS": status_op,
-                    "QTD_NAO_FAT": _fmt_int_pt(qtd_nf),
-                    "HIERARQUIA(S)": ", ".join(hiers_pedido) if hiers_pedido else "-",
-                    "SKUS_NO_PEDIDO": texto_skus_pedido,
-                    "SUGESTAO_SKUS": texto_sug,
-                    "FONTE_SUGESTAO": fonte_sug,
-                    "INSIGHT": insight_txt,
-                })
-
-            df_ins = pd.DataFrame(insights_rows)
-
-            # mostra cards rápidos com os 3 mais críticos
-            top3 = df_ins.head(3)
-            for _, r in top3.iterrows():
-                st.warning(f"🚨 {r['INSIGHT']}")
-
-            st.markdown("#### Tabela de insights (Top pedidos críticos)")
-            cols_ins = ["CLIENTE", "CÓDIGO", "PEDIDO", "DIAS_ABERTO", "STATUS", "QTD_NAO_FAT", "SKUS_NO_PEDIDO", "SUGESTAO_SKUS", "FONTE_SUGESTAO"]
-            st.dataframe(df_ins[cols_ins], use_container_width=True, hide_index=True)
-
+            else:
+                st.info("Nenhum insight comercial encontrado no filtro atual.")
         # ============================
         # 11) Cruzamento com FATURADO (visão por cliente / analista / estado)
         # ============================
