@@ -5803,7 +5803,7 @@ elif menu == "💼 SALDO":
             # 11) Priorização (Score) — “qual pedido dói mais”
             # ============================
             st.markdown("---")
-            st.subheader("🔥 Prioridade de ação (Score) — Top pedidos para atacar agora")
+            st.subheader("🔥 Prioridade de ação (Score)")
 
             df_score = df_f.copy()
 
