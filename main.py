@@ -6995,7 +6995,8 @@ elif menu_interna == "📚 Perfil do Cliente":
             msg_status = ("success", "✅ Cliente dentro do padrão de frequência de compra.")
 
     # Cards
-        # previsão simples com base na frequência média (dias entre pedidos)
+        # Cards
+    # previsão simples com base na frequência média (dias entre pedidos)
     if freq_media and freq_media > 0 and pd.notna(ultima_compra):
         prox_compra_est = ultima_compra + pd.Timedelta(days=float(freq_media))
         prox_compra_est_txt = prox_compra_est.strftime("%d/%m/%Y")
@@ -7006,16 +7007,66 @@ elif menu_interna == "📚 Perfil do Cliente":
     # frequência esperada (texto amigável)
     freq_esperada_txt = f"A cada {freq_media:.1f} dias" if freq_media and freq_media > 0 else "—"
 
+    # helper para card com fonte menor (evita cortar texto)
+    def _card_menor(titulo, valor):
+        st.markdown(
+            f"""
+            <div style="
+                border: 1px solid rgba(49, 51, 63, 0.2);
+                border-radius: 10px;
+                padding: 12px 14px;
+                background: rgba(250, 250, 250, 0.02);
+                min-height: 96px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            ">
+                <div style="
+                    font-size: 0.95rem;
+                    color: rgba(49, 51, 63, 0.75);
+                    margin-bottom: 6px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                ">{titulo}</div>
+                <div style="
+                    font-size: 1.05rem;
+                    font-weight: 600;
+                    line-height: 1.15;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                ">{valor}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
 
-    m1.metric("Última compra", ultima_compra.strftime("%d/%m/%Y"))
-    m2.metric("Dias sem comprar", dias_sem)
-    m3.metric("Pedidos no período", int(pedidos_unicos))
-    m4.metric("Volume total", f"{volume_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    m5.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
-    m6.metric("Frequência esperada", freq_esperada_txt)
-    m7.metric("Próx. compra estimada", prox_compra_est_txt)
-    m8.metric("Regularidade", risco_txt, delta=risco_delta, help=risco_help)
+    with m1:
+        _card_menor("Última compra", ultima_compra.strftime("%d/%m/%Y"))
+
+    with m2:
+        st.metric("Dias sem comprar", dias_sem)
+
+    with m3:
+        st.metric("Pedidos no período", int(pedidos_unicos))
+
+    with m4:
+        st.metric("Volume total", f"{volume_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    with m5:
+        st.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
+
+    with m6:
+        st.metric("Frequência esperada", freq_esperada_txt)
+
+    with m7:
+        st.metric("Próx. compra estimada", prox_compra_est_txt)
+
+    with m8:
+        _card_menor("Regularidade", risco_txt)
 
     if msg_status is not None:
         tipo, texto = msg_status
