@@ -6995,27 +6995,27 @@ elif menu_interna == "📚 Perfil do Cliente":
             msg_status = ("success", "✅ Cliente dentro do padrão de frequência de compra.")
 
     # Cards
-    # previsão simples com base na frequência média (dias entre pedidos)
-if freq_media and freq_media > 0 and pd.notna(ultima_compra):
-    prox_compra_est = ultima_compra + pd.Timedelta(days=float(freq_media))
-    prox_compra_est_txt = prox_compra_est.strftime("%d/%m/%Y")
-else:
-    prox_compra_est = None
-    prox_compra_est_txt = "—"
+        # previsão simples com base na frequência média (dias entre pedidos)
+    if freq_media and freq_media > 0 and pd.notna(ultima_compra):
+        prox_compra_est = ultima_compra + pd.Timedelta(days=float(freq_media))
+        prox_compra_est_txt = prox_compra_est.strftime("%d/%m/%Y")
+    else:
+        prox_compra_est = None
+        prox_compra_est_txt = "—"
 
-# frequência esperada (texto amigável)
-freq_esperada_txt = f"A cada {freq_media:.1f} dias" if freq_media and freq_media > 0 else "—"
+    # frequência esperada (texto amigável)
+    freq_esperada_txt = f"A cada {freq_media:.1f} dias" if freq_media and freq_media > 0 else "—"
 
-m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
+    m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
 
-m1.metric("Última compra", ultima_compra.strftime("%d/%m/%Y"))
-m2.metric("Dias sem comprar", dias_sem)
-m3.metric("Pedidos no período", int(pedidos_unicos))
-m4.metric("Volume total", f"{volume_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
-m5.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
-m6.metric("Frequência esperada", freq_esperada_txt)
-m7.metric("Próx. compra estimada", prox_compra_est_txt)
-m8.metric("Regularidade", risco_txt, delta=risco_delta, help=risco_help)
+    m1.metric("Última compra", ultima_compra.strftime("%d/%m/%Y"))
+    m2.metric("Dias sem comprar", dias_sem)
+    m3.metric("Pedidos no período", int(pedidos_unicos))
+    m4.metric("Volume total", f"{volume_total:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    m5.metric("Mix médio (SKUs/pedido)", f"{mix_medio:.1f}")
+    m6.metric("Frequência esperada", freq_esperada_txt)
+    m7.metric("Próx. compra estimada", prox_compra_est_txt)
+    m8.metric("Regularidade", risco_txt, delta=risco_delta, help=risco_help)
 
     if msg_status is not None:
         tipo, texto = msg_status
