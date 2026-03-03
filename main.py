@@ -3919,16 +3919,23 @@ elif menu == "🍊 LARANJA":
             return "09 - AGROPECUÁRIA"
         return cod
 
-    def _detectar_embalagem(desc_item):
+        def _detectar_embalagem(desc_item):
         t = _norm_txt(desc_item)
 
-        if ("GRANEL" in t) or (" A GRANEL" in t):
+        # granel / kg solto
+        if ("GRANEL" in t) or (t.endswith(" KG")) or (t.endswith("KG") and "SC" not in t):
             return "GRANEL"
-        if ("2,5" in t) or ("2.5" in t) or ("2 KG" in t and "1/2" in t):
+
+        # saco 2,5kg
+        if ("2,5KG" in t) or ("2.5KG" in t) or ("2,5 KG" in t) or ("2.5 KG" in t):
             return "SACO 2,5KG"
-        if ("3KG" in t) or ("3 KG" in t):
+
+        # saco 3kg
+        if ("3,0KG" in t) or ("3.0KG" in t) or ("3KG" in t) or ("3 KG" in t) or ("3,0 KG" in t) or ("3.0 KG" in t):
             return "SACO 3KG"
-        if ("5KG" in t) or ("5 KG" in t) or ("5,0" in t) or ("5.0" in t):
+
+        # saco 5kg
+        if ("5,0KG" in t) or ("5.0KG" in t) or ("5KG" in t) or ("5 KG" in t) or ("5,0 KG" in t) or ("5.0 KG" in t):
             return "SACO 5KG"
 
         return "NÃO IDENTIFICADO"
