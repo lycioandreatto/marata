@@ -4044,7 +4044,16 @@ elif menu == "🍊 LARANJA":
 
         df_laranja["DATA"] = df_laranja["DAT_HOR_EMISSAO"].dt.date
         df_laranja["ANO_MES"] = df_laranja["DAT_HOR_EMISSAO"].dt.strftime("%Y-%m")
-        df_laranja["SEMANA"] = _week_key(df_laranja["DAT_HOR_EMISSAO"])
+        # semana em formato didático: início da semana até fim da semana
+        dt_ref = df_laranja["DAT_HOR_EMISSAO"].dt.normalize()
+        ini_sem = dt_ref - pd.to_timedelta(dt_ref.dt.weekday, unit="D")
+        fim_sem = ini_sem + pd.Timedelta(days=6)
+
+        df_laranja["SEMANA"] = (
+        ini_sem.dt.strftime("%d/%m/%Y")
+        + " a "
+        + fim_sem.dt.strftime("%d/%m/%Y")
+        )
         df_laranja["ANO"] = df_laranja["DAT_HOR_EMISSAO"].dt.year
 
         # ============================
@@ -4114,15 +4123,19 @@ elif menu == "🍊 LARANJA":
         receita_total = float(df_f["VAL_TOTAL_ITEM"].sum())
         caixas_total = float(df_f["CAIXAS_ESTIMADAS"].sum())
 
+                df_f["_DT_REF"] = df_f["DAT_HOR_EMISSAO"].dt.normalize()
+        df_f["_INI_SEM"] = df_f["_DT_REF"] - pd.to_timedelta(df_f["_DT_REF"].dt.weekday, unit="D")
+
         semanal = (
-            df_f.groupby("SEMANA", as_index=False)
+            df_f.groupby(["_INI_SEM", "SEMANA"], as_index=False)
             .agg(
                 PESO=("PESO_ITEM", "sum"),
                 RECEITA=("VAL_TOTAL_ITEM", "sum"),
                 CAIXAS=("CAIXAS_ESTIMADAS", "sum"),
                 CLIENTES=("CLIENTE_COD", "nunique"),
             )
-            .sort_values("SEMANA")
+            .sort_values("_INI_SEM")
+            .drop(columns=["_INI_SEM"])
         )
 
         media_semanal_caixas = float(semanal["CAIXAS"].mean()) if not semanal.empty else 0.0
