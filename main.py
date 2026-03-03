@@ -3931,12 +3931,6 @@ elif menu == "🍊 LARANJA":
             s1 = pd.to_datetime(series, errors="coerce")
         return s1
 
-    def _first_existing(df, candidates):
-        for c in candidates:
-            if c in df.columns:
-                return c
-        return None
-
     def _empresa_label(cod):
         cod = _safe_str(cod)
         if cod == "06":
@@ -3970,6 +3964,11 @@ elif menu == "🍊 LARANJA":
         emb = _safe_str(row.get("EMBALAGEM", ""))
         qtd = float(row.get("QTD_ITEM", 0) or 0)
         peso = float(row.get("PESO_ITEM", 0) or 0)
+        frete = _norm_txt(row.get("FRETE", ""))
+
+        # ✅ FOB = caixas do próprio cliente, então não conta
+        if frete == "FOB":
+            return 0.0
 
         # usa CEIL porque fisicamente precisa arredondar pra cima
         if emb == "GRANEL":
@@ -4049,7 +4048,7 @@ elif menu == "🍊 LARANJA":
         for c in [
             "EMPRESA", "NOTA_FISCAL", "SERIE_NOTA_FISCAL", "CLIENTE_COD", "CLIENTE_NOME",
             "COD_ITEM", "DES_ITEM", "UM", "COD_REPRES", "ESTADO", "CIDADE",
-            "COND_PAGTO", "NOM_TRANSPORTADORA", "TRANSPORTADORA"
+            "COND_PAGTO", "FRETE", "NOM_TRANSPORTADORA", "TRANSPORTADORA"
         ]:
             if c in df_laranja.columns:
                 df_laranja[c] = df_laranja[c].astype(str).str.strip()
@@ -4066,7 +4065,7 @@ elif menu == "🍊 LARANJA":
         df_laranja = df_laranja[df_laranja["DAT_HOR_EMISSAO"].notna()].copy()
 
         for c in ["QTD_ITEM", "PESO_ITEM", "VAL_UNIT_ITEM", "VAL_TOTAL_ITEM", "FRETE"]:
-            if c in df_laranja.columns:
+            if c in df_laranja.columns and c != "FRETE":
                 df_laranja[c] = _to_num(df_laranja[c])
 
         df_laranja["EMPRESA"] = df_laranja["EMPRESA"].astype(str).str.strip().str.zfill(2)
@@ -4185,6 +4184,7 @@ elif menu == "🍊 LARANJA":
         k6.metric("Média semanal de caixas", _fmt_int_pt(media_semanal_caixas))
 
         st.caption(f"Pico semanal estimado de caixas: **{_fmt_int_pt(pico_semanal_caixas)}**")
+        st.caption("⚠️ Pedidos com FRETE = FOB não entram no cálculo de caixas, pois usam caixas do próprio cliente.")
 
         # ============================
         # 6) Controle de caixas
