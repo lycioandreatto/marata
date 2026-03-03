@@ -3893,11 +3893,10 @@ elif menu == "🍊 LARANJA":
         except Exception:
             return ""
 
-        def _to_num(series):
-    if hasattr(series, "copy"):
+    def _to_num(series):
+        if hasattr(series, "copy"):
             s = series.copy()
 
-            # se já for numérico, só converte
             if pd.api.types.is_numeric_dtype(s):
                 return pd.to_numeric(s, errors="coerce").fillna(0.0)
 
@@ -4545,7 +4544,6 @@ elif menu == "🍊 LARANJA":
                 use_container_width=True,
                 hide_index=True
             )
-
 
 
 
