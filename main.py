@@ -3893,10 +3893,37 @@ elif menu == "🍊 LARANJA":
         except Exception:
             return ""
 
-    def _to_num(series):
-        if hasattr(series, "astype"):
-            s = series.astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-            return pd.to_numeric(s, errors="coerce").fillna(0.0)
+        def _to_num(series):
+        if hasattr(series, "copy"):
+            s = series.copy()
+
+            # se já for numérico, só converte
+            if pd.api.types.is_numeric_dtype(s):
+                return pd.to_numeric(s, errors="coerce").fillna(0.0)
+
+            s = s.astype(str).str.strip()
+
+            def _conv(v):
+                v = str(v).strip()
+                if v in ["", "nan", "None"]:
+                    return 0.0
+
+                # formato BR: 1.234,56
+                if "," in v:
+                    v = v.replace(".", "").replace(",", ".")
+                    try:
+                        return float(v)
+                    except Exception:
+                        return 0.0
+
+                # formato normal: 138000.0
+                try:
+                    return float(v)
+                except Exception:
+                    return 0.0
+
+            return s.apply(_conv).fillna(0.0)
+
         return pd.to_numeric(series, errors="coerce").fillna(0.0)
 
     def _to_dt(series):
