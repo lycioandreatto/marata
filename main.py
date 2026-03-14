@@ -1,116 +1,122 @@
 import streamlit as st
 import urllib.parse
 
-# CONFIG
-st.set_page_config(page_title="Match do Espeto", page_icon="🔥", layout="wide")
+st.set_page_config(page_title="Match do Espeto", page_icon="🔥", layout="centered")
 
 # ESTILO
 st.markdown("""
 <style>
-.stApp {
-    background-color: #000000;
-    color: white;
+
+.stApp{
+background-color:#000000;
+color:white;
 }
 
-h1,h2,h3 {
-    color: #ff2e8a;
+h1{
+color:#ff2e8a;
+text-align:center;
 }
 
-button {
-    background-color:#ff2e8a !important;
-    color:white !important;
+.card{
+background:#111;
+padding:15px;
+border-radius:12px;
+margin-bottom:15px;
 }
 
-.item-box {
-    background-color:#111;
-    padding:15px;
-    border-radius:10px;
-    margin-bottom:10px;
+.stButton>button{
+background-color:#ff2e8a;
+color:white;
+border-radius:10px;
+border:none;
+padding:10px 15px;
+font-weight:bold;
 }
+
+.total{
+font-size:22px;
+color:#ff2e8a;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# LOGO / TÍTULO
 st.title("🔥 MATCH DO ESPETO")
-st.subheader("Encontro Perfeito do Sabor")
+st.write("### Encontro Perfeito do Sabor")
 
 # CARDÁPIO
-cardapio = {
-    "Espeto de Carne": 8,
-    "Espeto de Frango": 7,
-    "Espeto de Linguiça": 7,
-    "Queijo Coalho": 9,
-    "Coca Cola Lata": 5,
-    "Guaraná": 5,
-    "Água": 3
+menu = {
+"Espeto de Carne":8,
+"Espeto de Frango":7,
+"Espeto de Linguiça":7,
+"Queijo Coalho":9,
+"Coca Cola":5,
+"Guaraná":5,
+"Água":3
 }
 
-# CARRINHO
-if "carrinho" not in st.session_state:
-    st.session_state.carrinho = {}
+if "cart" not in st.session_state:
+    st.session_state.cart={}
 
 st.header("🍢 Cardápio")
 
-for item, preco in cardapio.items():
-    col1, col2, col3 = st.columns([3,1,1])
+for item,price in menu.items():
+
+    st.markdown(f'<div class="card">',unsafe_allow_html=True)
+
+    col1,col2,col3=st.columns([3,1,1])
 
     with col1:
         st.write(f"**{item}**")
-        st.write(f"R$ {preco}")
+        st.write(f"R$ {price}")
 
     with col2:
-        if st.button(f"Adicionar {item}"):
-            if item in st.session_state.carrinho:
-                st.session_state.carrinho[item] += 1
-            else:
-                st.session_state.carrinho[item] = 1
+        if st.button("+",key=item):
+            st.session_state.cart[item]=st.session_state.cart.get(item,0)+1
 
     with col3:
-        if item in st.session_state.carrinho:
-            st.write(f"x{st.session_state.carrinho[item]}")
+        if item in st.session_state.cart:
+            st.write(f"x{st.session_state.cart[item]}")
+        else:
+            st.write("0")
 
-# CARRINHO
+    st.markdown("</div>",unsafe_allow_html=True)
+
 st.header("🛒 Seu Pedido")
 
-total = 0
-pedido_texto = ""
+total=0
+pedido=""
 
-for item, qtd in st.session_state.carrinho.items():
-    preco = cardapio[item]
-    subtotal = preco * qtd
-    total += subtotal
-
+for item,qtd in st.session_state.cart.items():
+    subtotal=menu[item]*qtd
+    total+=subtotal
+    pedido+=f"{qtd}x {item} - R$ {subtotal}\n"
     st.write(f"{qtd}x {item} - R$ {subtotal}")
-    pedido_texto += f"{qtd}x {item} - R$ {subtotal}\n"
 
-st.subheader(f"Total: R$ {total}")
+st.markdown(f"<p class='total'>Total: R$ {total}</p>",unsafe_allow_html=True)
 
-# DADOS CLIENTE
-st.header("📍 Dados para entrega")
+st.header("📍 Entrega")
 
-nome = st.text_input("Nome")
-telefone = st.text_input("Telefone")
-endereco = st.text_input("Endereço")
-obs = st.text_area("Observação")
+nome=st.text_input("Nome")
+telefone=st.text_input("Telefone")
+endereco=st.text_input("Endereço")
+obs=st.text_area("Observação")
 
-pagamento = st.selectbox(
-    "Forma de pagamento",
-    ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"]
+pagamento=st.selectbox(
+"Forma de pagamento",
+["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito"]
 )
 
-# BOTÃO WHATSAPP
-if st.button("📲 Enviar pedido no WhatsApp"):
+numero="5579998439298"
 
-    numero = "5579998439298"
-
-    mensagem = f"""
-Pedido - Match do Espeto 🔥
+mensagem=f"""
+🔥 Pedido - Match do Espeto
 
 Cliente: {nome}
 Telefone: {telefone}
 
 Itens:
-{pedido_texto}
+{pedido}
 
 Total: R$ {total}
 
@@ -119,12 +125,13 @@ Pagamento: {pagamento}
 Endereço:
 {endereco}
 
-Observação:
+Obs:
 {obs}
 """
 
-    mensagem_codificada = urllib.parse.quote(mensagem)
+link=f"https://wa.me/{numero}?text={urllib.parse.quote(mensagem)}"
 
-    link = f"https://wa.me/{numero}?text={mensagem_codificada}"
-
-    st.markdown(f"[Clique aqui para enviar seu pedido]({link})")
+st.markdown(
+f'<a href="{link}" target="_blank"><button style="width:100%;height:50px;background:#ff2e8a;color:white;border:none;border-radius:10px;font-size:18px;">📲 Enviar Pedido no WhatsApp</button></a>',
+unsafe_allow_html=True
+)
