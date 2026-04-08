@@ -19,35 +19,14 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ===== ESTRUTURA DO CARDÁPIO =====
-# Organizado por categorias para facilitar a navegação
 CARDAPIO_ESTRUTURA = {
-    "🍢 ESPETINHOS": [
-        "CARNE", "FRANGO", "CALABRESA", "MISTO", "CORAÇÃO", "QUEIJO"
-    ],
-    "🥤 BEBIDAS": [
-        "COCA LATA", "FANTA LATA", "GUARANÁ LATA", "ÁGUA MINERAL", 
-        "ITAIPAVA", "AMSTEL", "HEINEKEN", "ICE CABARÉ", 
-        "VINHO - TAÇA", "DOSE PITÚ", "DREHER"
-    ]
+    "🍢 ESPETINHOS": ["CARNE", "FRANGO", "CALABRESA", "MISTO", "CORAÇÃO", "QUEIJO"],
+    "🥤 BEBIDAS": ["COCA LATA", "FANTA LATA", "GUARANÁ LATA", "ÁGUA MINERAL", "ITAIPAVA", "AMSTEL", "HEINEKEN", "ICE CABARÉ", "VINHO - TAÇA", "DOSE PITÚ", "DREHER"]
 }
 
 def carregar_precos():
-    """Busca preços do Firebase ou define padrões iniciais"""
     precos_ref = db.collection("precos").stream()
     carregados = {doc.id: doc.to_dict().get("valor", 0.0) for doc in precos_ref}
-    
-    # Valores padrão caso o banco esteja vazio
-    padrao = {
-        "CARNE": 8.0, "FRANGO": 7.0, "CALABRESA": 7.0, "MISTO": 9.0, "CORAÇÃO": 8.0, "QUEIJO": 7.0,
-        "COCA LATA": 6.0, "FANTA LATA": 6.0, "GUARANÁ LATA": 6.0, "ÁGUA MINERAL": 4.0,
-        "ITAIPAVA": 8.0, "AMSTEL": 9.0, "HEINEKEN": 12.0, "ICE CABARÉ": 10.0,
-        "VINHO - TAÇA": 12.0, "DOSE PITÚ": 5.0, "DREHER": 6.0
-    }
-    
-    for item, valor in padrao.items():
-        if item not in carregados:
-            carregados[item] = valor
-            db.collection("precos").document(item).set({"valor": valor})
     return carregados
 
 def salvar_rascunho_firebase(mesa, itens):
@@ -76,25 +55,66 @@ if "pedidos_ativos" not in st.session_state:
 if "pagina" not in st.session_state: st.session_state.pagina = "mesas"
 if "mesa_atual" not in st.session_state: st.session_state.mesa_atual = None
 
-# ===== ESTILO CSS =====
+# ===== ESTILO CSS (O SEGREDO DA ORGANIZAÇÃO) =====
 st.markdown("""
 <style>
-    .stButton>button { width: 100%; border-radius: 8px; height: 3.5em; font-weight: bold; margin-bottom: 5px; }
-    .card-mesa { padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 10px; }
-    .total-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #ff6600; color: white; 
-                 text-align: center; padding: 15px; font-size: 22px; font-weight: bold; z-index: 999; border-top: 2px solid white; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { background-color: #f0f2f6; border-radius: 5px; padding: 10px; }
+    /* Forçar colunas a ficarem lado a lado no celular */
+    [data-testid="column"] {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0px !important;
+    }
+    
+    /* Diminuir altura dos botões e fontes */
+    .stButton>button {
+        height: 35px !important;
+        padding: 0px !important;
+        font-size: 14px !important;
+        margin: 0px !important;
+    }
+    
+    /* Estilo do Nome do Item */
+    .item-label {
+        font-size: 14px;
+        font-weight: bold;
+        line-height: 1.1;
+    }
+    
+    /* Estilo do Preço */
+    .price-label {
+        font-size: 12px;
+        color: #666;
+    }
+
+    /* Barra de total fixa e menor */
+    .total-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background: #ff6600;
+        color: white;
+        text-align: center;
+        padding: 10px;
+        font-size: 18px;
+        font-weight: bold;
+        z-index: 999;
+    }
+    
+    /* Remover espaços extras do Streamlit */
+    .block-container { padding-top: 1rem; padding-bottom: 5rem; }
+    div[data-testid="stVerticalBlock"] > div { font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ===== NAVEGAÇÃO =====
 with st.sidebar:
     st.title("🔥 Brava Brasa")
-    menu = st.radio("Menu", ["Mesas / Pedidos", "Relatório Detalhado", "Ajustar Preços"])
+    menu = st.radio("Menu", ["Mesas / Pedidos", "Relatório", "Preços"])
 
-if menu == "Relatório Detalhado": st.session_state.pagina = "relatorio"
-elif menu == "Ajustar Preços": st.session_state.pagina = "precos"
+if menu == "Relatório": st.session_state.pagina = "relatorio"
+elif menu == "Preços": st.session_state.pagina = "precos"
 else: 
     if st.session_state.pagina not in ["pedido"]: st.session_state.pagina = "mesas"
 
@@ -102,18 +122,15 @@ else:
 # PÁGINA: MESAS
 # =========================
 if st.session_state.pagina == "mesas":
-    st.header("🪑 Mesas Ativas")
-    lista_mesas = [f"Mesa {i}" for i in range(1, 13)] # Aumentado para 12 mesas
-    
-    cols = st.columns(2)
+    st.subheader("🍽️ Mesas Ativas")
+    lista_mesas = [f"Mesa {i}" for i in range(1, 13)]
+    cols_mesas = st.columns(3) # 3 colunas de mesas para caber mais
     for i, nome in enumerate(lista_mesas):
-        with cols[i % 2]:
+        with cols_mesas[i % 3]:
             itens_mesa = st.session_state.pedidos_ativos.get(nome, {})
             ocupada = any(v > 0 for v in itens_mesa.values())
             cor = "#ff4b4b" if ocupada else "#28a745"
-            
-            st.markdown(f'<div class="card-mesa" style="border: 2px solid {cor};"><h3>{nome}</h3></div>', unsafe_allow_html=True)
-            if st.button(f"Abrir {nome}", key=f"btn_{nome}"):
+            if st.button(nome, key=f"btn_{nome}"):
                 if nome not in st.session_state.pedidos_ativos:
                     st.session_state.pedidos_ativos[nome] = {item: 0 for cat in CARDAPIO_ESTRUTURA.values() for item in cat}
                 st.session_state.mesa_atual = nome
@@ -121,47 +138,63 @@ if st.session_state.pagina == "mesas":
                 st.rerun()
 
 # =========================
-# PÁGINA: PEDIDO (CARDÁPIO)
+# PÁGINA: PEDIDO (CARDÁPIO COMPACTO)
 # =========================
 elif st.session_state.pagina == "pedido":
     mesa = st.session_state.mesa_atual
-    st.header(f"📝 {mesa}")
     
-    if st.button("⬅️ Voltar"):
-        if not any(v > 0 for v in st.session_state.pedidos_ativos[mesa].values()):
-            if mesa in st.session_state.pedidos_ativos:
-                del st.session_state.pedidos_ativos[mesa]
+    col_v, col_f = st.columns([1, 1])
+    with col_v:
+        if st.button("⬅️ Voltar"):
+            st.session_state.pagina = "mesas"
+            st.rerun()
+    with col_f:
+        total_atual = sum(st.session_state.pedidos_ativos[mesa][i] * precos.get(i, 0) for i in st.session_state.pedidos_ativos[mesa])
+        if total_atual > 0:
+            if st.button("✅ Fechar"):
+                agora = datetime.now(BRASIL)
+                pedido_final = {
+                    "mesa": mesa,
+                    "itens": {k: v for k, v in st.session_state.pedidos_ativos[mesa].items() if v > 0},
+                    "total": total_atual, "data": agora.strftime("%Y-%m-%d"), "hora": agora.strftime("%H:%M")
+                }
+                db.collection("pedidos").add(pedido_final)
                 db.collection("pedidos_pendentes").document(mesa).delete()
-        st.session_state.pagina = "mesas"
-        st.rerun()
+                del st.session_state.pedidos_ativos[mesa]
+                st.session_state.pagina = "mesas"
+                st.rerun()
 
-    # Divisão por Categoria usando Abas (Tabs)
+    st.write(f"### {mesa}")
     tab_esp, tab_beb = st.tabs(["🍢 ESPETINHOS", "🥤 BEBIDAS"])
 
-    def render_categoria(lista_itens):
+    def render_compacto(lista_itens):
         for item in lista_itens:
             valor = precos.get(item, 0.0)
             qtd = st.session_state.pedidos_ativos[mesa].get(item, 0)
+            
+            # Layout de linha única: Nome(2) | -(1) | Qtd(1) | +(1)
             c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-            with c1: st.markdown(f"**{item}**\nR$ {valor:.2f}")
+            with c1:
+                st.markdown(f'<div class="item-label">{item}</div><div class="price-label">R$ {valor:.2f}</div>', unsafe_allow_html=True)
             with c2:
-                if st.button("➕", key=f"add_{item}_{mesa}"):
-                    st.session_state.pedidos_ativos[mesa][item] += 1
-                    salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
-                    st.rerun()
-            with c3: st.markdown(f"### {qtd}")
-            with c4:
-                if st.button("➖", key=f"sub_{item}_{mesa}"):
+                if st.button("➖", key=f"sub_{item}"):
                     if st.session_state.pedidos_ativos[mesa][item] > 0:
                         st.session_state.pedidos_ativos[mesa][item] -= 1
                         salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
                         st.rerun()
+            with c3:
+                st.markdown(f"<div style='text-align:center; font-weight:bold; font-size:18px;'>{qtd}</div>", unsafe_allow_html=True)
+            with c4:
+                if st.button("➕", key=f"add_{item}"):
+                    st.session_state.pedidos_ativos[mesa][item] += 1
+                    salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
+                    st.rerun()
+            st.divider()
 
-    with tab_esp: render_categoria(CARDAPIO_ESTRUTURA["🍢 ESPETINHOS"])
-    with tab_beb: render_categoria(CARDAPIO_ESTRUTURA["🥤 BEBIDAS"])
+    with tab_esp: render_compacto(CARDAPIO_ESTRUTURA["🍢 ESPETINHOS"])
+    with tab_beb: render_compacto(CARDAPIO_ESTRUTURA["🥤 BEBIDAS"])
 
-    total = sum(st.session_state.pedidos_ativos[mesa][i] * precos.get(i, 0) for i in st.session_state.pedidos_ativos[mesa])
-    st.markdown(f"<div class='total-bar'>TOTAL: R$ {total:.2f}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='total-bar'>TOTAL: R$ {total_atual:.2f}</div>", unsafe_allow_html=True)
     st.write("\n\n\n")
 
     if total > 0:
