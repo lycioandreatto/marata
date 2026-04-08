@@ -48,8 +48,8 @@ def salvar(dados):
 # ===== ESTADO =====
 if "mesas" not in st.session_state:
     st.session_state.mesas = {}
-if "mesa_iniciada" not in st.session_state:
-    st.session_state.mesa_iniciada = {}  # flag para só marcar como ocupada se tiver pedido
+if "mesa_aberta" not in st.session_state:
+    st.session_state.mesa_aberta = {}  # flag para pedido iniciado
 if "pagina" not in st.session_state:
     st.session_state.pagina = "mesas"
 if "mesa_atual" not in st.session_state:
@@ -62,7 +62,7 @@ if "pedido_detalhe" not in st.session_state:
 # ===== PREÇOS =====
 precos = {"CARNE":8,"FRANGO":7,"CALABRESA":7,"CORAÇÃO":8,"QUEIJO":6,"MISTO":9,"COCA":6,"GUARANA":6,"HEINEKEN":10}
 def nova_mesa():
-    return {"itens": {i:0 for i in precos}, "fechado": False}
+    return {"itens": {i:0 for i in precos}, "fechado": False, "iniciado": False}  # "iniciado" = pedido iniciado
 
 # =========================
 # BOTÃO RELATÓRIO
@@ -84,8 +84,8 @@ if st.session_state.pagina == "mesas":
         for j in range(2):
             if i+j < len(mesas):
                 mesa = mesas[i+j]
-                # status só considera mesa iniciada e não fechada
-                status = "🔴 Ocupada" if st.session_state.mesa_iniciada.get(mesa, False) else "🟢 Livre"
+                # Status baseado em pedido iniciado
+                status = "🔴 Ocupada" if st.session_state.mesas.get(mesa, {}).get("iniciado", False) else "🟢 Livre"
                 with cols[j]:
                     st.markdown(f'<div class="card"><h2>{mesa}</h2><p>{status}</p></div>', unsafe_allow_html=True)
                     if st.button(f"Acessar {mesa}", key=f"acessar_{mesa}"):
@@ -93,7 +93,6 @@ if st.session_state.pagina == "mesas":
                             st.session_state.mesas[mesa] = nova_mesa()
                         st.session_state.mesa_atual = mesa
                         st.session_state.pagina = "pedido"
-                        st.session_state.mesa_iniciada[mesa] = True  # só marca como ocupada quando abre
 
 # =========================
 # PEDIDO
@@ -103,48 +102,58 @@ elif st.session_state.pagina == "pedido":
     pedido = st.session_state.mesas[mesa]
 
     st.subheader(f"📋 {mesa}")
-    st.success("🟢 Pedido ABERTO" if not pedido["fechado"] else "🔒 Pedido FECHADO")
 
-    st.divider()
-    st.subheader("🍢 Itens")
-    cols = st.columns(3)
-    for i,item in enumerate(precos):
-        with cols[i%3]:
-            if st.button(item, key=f"{item}_{mesa}") and not pedido["fechado"]:
-                st.session_state.mesas[mesa]["itens"][item] += 1
+    # Pedido não iniciado
+    if not pedido["iniciado"]:
+        st.info("📌 Pedido não iniciado")
+        if st.button("🟢 Abrir Pedido"):
+            st.session_state.mesas[mesa]["iniciado"] = True
+            st.success("Pedido iniciado! Agora você pode adicionar itens.")
+    else:
+        if pedido["fechado"]:
+            st.error("🔒 Pedido FECHADO")
+        else:
+            st.success("🟢 Pedido ABERTO")
 
-    st.divider()
-    total = sum(qtd*precos[item] for item,qtd in pedido["itens"].items() if qtd>0)
-    for item,qtd in pedido["itens"].items():
-        if qtd>0:
-            valor = qtd * precos[item]
-            col1,col2,col3 = st.columns([4,1,1])
-            with col1: st.write(f"{item} x{qtd}")
-            with col2: st.write(f"R$ {valor}")
-            with col3:
-                if st.button("➖",key=f"menos_{item}_{mesa}") and not pedido["fechado"]:
-                    st.session_state.mesas[mesa]["itens"][item] -= 1
+        st.divider()
+        st.subheader("🍢 Itens")
+        cols = st.columns(3)
+        for i,item in enumerate(precos):
+            with cols[i%3]:
+                if st.button(item, key=f"{item}_{mesa}") and not pedido["fechado"]:
+                    st.session_state.mesas[mesa]["itens"][item] += 1
 
-    st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
-    col1,col2,col3=st.columns(3)
-    with col1:
-        if st.button("🔒 Fechar", key=f"fechar_{mesa}") and not pedido["fechado"]:
-            st.session_state.mesas[mesa]["fechado"] = True
-        elif st.button("🔓 Reabrir", key=f"reabrir_{mesa}") and pedido["fechado"]:
-            st.session_state.mesas[mesa]["fechado"] = False
-    with col2:
-        if st.button("❌ Encerrar", key=f"encerrar_{mesa}"):
-            novo = {"mesa":mesa,"itens":pedido["itens"],"total":total,"data":datetime.now().strftime("%Y-%m-%d"),"hora":datetime.now().strftime("%H:%M")}
-            st.session_state.historico.append(novo)
-            salvar_pedido(novo)
-            st.success("✅ Pedido salvo no Firebase!")
-            st.json(novo)
-            del st.session_state.mesas[mesa]
-            st.session_state.pagina="mesas"
-            st.session_state.mesa_iniciada[mesa] = False
-    with col3:
-        if st.button("⬅️ Voltar", key=f"voltar_{mesa}"):
-            st.session_state.pagina="mesas"
+        st.divider()
+        total = sum(qtd*precos[item] for item,qtd in pedido["itens"].items() if qtd>0)
+        for item,qtd in pedido["itens"].items():
+            if qtd>0:
+                valor = qtd * precos[item]
+                col1,col2,col3 = st.columns([4,1,1])
+                with col1: st.write(f"{item} x{qtd}")
+                with col2: st.write(f"R$ {valor}")
+                with col3:
+                    if st.button("➖",key=f"menos_{item}_{mesa}") and not pedido["fechado"]:
+                        st.session_state.mesas[mesa]["itens"][item] -= 1
+
+        st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
+        col1,col2,col3=st.columns(3)
+        with col1:
+            if st.button("🔒 Fechar", key=f"fechar_{mesa}") and not pedido["fechado"]:
+                st.session_state.mesas[mesa]["fechado"] = True
+            elif st.button("🔓 Reabrir", key=f"reabrir_{mesa}") and pedido["fechado"]:
+                st.session_state.mesas[mesa]["fechado"] = False
+        with col2:
+            if st.button("❌ Encerrar", key=f"encerrar_{mesa}"):
+                novo = {"mesa":mesa,"itens":pedido["itens"],"total":total,"data":datetime.now().strftime("%Y-%m-%d"),"hora":datetime.now().strftime("%H:%M")}
+                st.session_state.historico.append(novo)
+                salvar_pedido(novo)
+                st.success("✅ Pedido salvo no Firebase!")
+                st.json(novo)
+                del st.session_state.mesas[mesa]
+                st.session_state.pagina="mesas"
+        with col3:
+            if st.button("⬅️ Voltar", key=f"voltar_{mesa}"):
+                st.session_state.pagina="mesas"
 
 # =========================
 # RELATÓRIO
