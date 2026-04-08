@@ -135,6 +135,8 @@ if st.session_state.pagina == "mesas":
 elif st.session_state.pagina == "pedido":
 
     mesa = st.session_state.mesa_atual
+
+    # 🔥 PEGA DIRETO DO SESSION_STATE (CORRETO)
     pedido = st.session_state.mesas[mesa]
 
     st.subheader(f"📋 {mesa}")
@@ -153,9 +155,9 @@ elif st.session_state.pagina == "pedido":
 
     for i,item in enumerate(precos):
         with cols[i%3]:
-            if st.button(item):
+            if st.button(item, key=f"{item}_{mesa}"):
                 if not pedido["fechado"]:
-                    pedido["itens"][item]+=1
+                    st.session_state.mesas[mesa]["itens"][item] += 1
                     st.rerun()
 
     st.divider()
@@ -174,29 +176,29 @@ elif st.session_state.pagina == "pedido":
             with col2:
                 st.write(f"R$ {valor}")
             with col3:
-                if st.button("➖",key=f"{item}{mesa}"):
+                if st.button("➖",key=f"menos_{item}_{mesa}"):
                     if not pedido["fechado"]:
-                        pedido["itens"][item]-=1
+                        st.session_state.mesas[mesa]["itens"][item] -= 1
                         st.rerun()
 
     st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
 
     col1,col2,col3=st.columns(3)
 
-    # FECHAR / REABRIR
+    # 🔥 FECHAR / REABRIR (AGORA FUNCIONA)
     with col1:
         if not pedido["fechado"]:
-            if st.button("🔒 Fechar"):
-                pedido["fechado"]=True
+            if st.button("🔒 Fechar", key=f"fechar_{mesa}"):
+                st.session_state.mesas[mesa]["fechado"] = True
                 st.rerun()
         else:
-            if st.button("🔓 Reabrir"):
-                pedido["fechado"]=False
+            if st.button("🔓 Reabrir", key=f"reabrir_{mesa}"):
+                st.session_state.mesas[mesa]["fechado"] = False
                 st.rerun()
 
     # ENCERRAR
     with col2:
-        if st.button("❌ Encerrar"):
+        if st.button("❌ Encerrar", key=f"encerrar_{mesa}"):
 
             novo = {
                 "mesa": mesa,
@@ -215,7 +217,7 @@ elif st.session_state.pagina == "pedido":
 
     # VOLTAR
     with col3:
-        if st.button("⬅️ Voltar"):
+        if st.button("⬅️ Voltar", key=f"voltar_{mesa}"):
             st.session_state.pagina="mesas"
 
 # =========================
