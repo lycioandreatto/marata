@@ -10,108 +10,71 @@ from firebase_admin import credentials, firestore
 # ===== CONFIGURAÇÃO STREAMLIT =====
 st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
 
-# ===== FIREBASE (CONEXÃO SEGURA) =====
+# ===== FIREBASE =====
 if not firebase_admin._apps:
-    try:
-        cred = credentials.Certificate(dict(st.secrets["firebase"]))
-        firebase_admin.initialize_app(cred)
-    except Exception as e:
-        st.error(f"Erro ao conectar ao Firebase: {e}")
+    cred = credentials.Certificate(dict(st.secrets["firebase"]))
+    firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
-# ===== FUNÇÕES DE DADOS =====
-def salvar_pedido_firebase(pedido):
-    db.collection("pedidos").add(pedido)
+# ===== FUNÇÕES DE PERSISTÊNCIA =====
 
 def carregar_precos():
-    precos_padrao = {
-        "CARNE": 8, "FRANGO": 7, "CALABRESA": 7, "CORAÇÃO": 8, 
-        "QUEIJO": 6, "MISTO": 9, "COCA": 6, "GUARANA": 6, "HEINEKEN": 10
-    }
-    try:
-        precos_ref = db.collection("precos").stream()
-        precos_carregados = {doc.id: doc.to_dict().get("valor", 0) for doc in precos_ref}
-        
-        # Preenche com padrão se o Firebase estiver vazio
-        for item, valor in precos_padrao.items():
-            if item not in precos_carregados:
-                precos_carregados[item] = valor
-                db.collection("precos").document(item).set({"valor": valor})
-        return precos_carregados
-    except:
-        return precos_padrao
+    precos_ref = db.collection("precos").stream()
+    precos = {doc.id: doc.to_dict().get("valor", 0) for doc in precos_ref}
+    return precos
 
-def salvar_preco_firebase(item, valor):
-    db.collection("precos").document(item).set({"valor": valor})
+def salvar_rascunho_firebase(mesa, itens):
+    """Salva o estado atual da mesa no Firebase para não perder no F5"""
+    # Remove itens com quantidade zero para economizar espaço
+    itens_filtrados = {k: v for k, v in itens.items() if v > 0}
+    if itens_filtrados:
+        db.collection("pedidos_pendentes").document(mesa).set({"itens": itens_filtrados})
+    else:
+        # Se não tem itens, remove o documento (mesa fica livre)
+        db.collection("pedidos_pendentes").document(mesa).delete()
 
-# ===== ESTILO CSS CUSTOMIZADO =====
-st.markdown("""
-<style>
-    .main { background-color: #f8f9fa; }
-    .stButton>button {
-        width: 100%;
-        border-radius: 10px;
-        height: 3em;
-        font-weight: bold;
-    }
-    .btn-mais { background-color: #28a745 !important; color: white !important; }
-    .btn-menos { background-color: #dc3545 !important; color: white !important; }
-    .card-mesa {
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px solid #ddd;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-    .total-footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        background-color: #ff6600;
-        color: white;
-        text-align: center;
-        padding: 15px;
-        font-size: 24px;
-        font-weight: bold;
-        z-index: 100;
-    }
-</style>
-""", unsafe_allow_html=True)
+def carregar_todos_rascunhos():
+    """Busca todas as mesas que têm pedidos em aberto no Firebase"""
+    docs = db.collection("pedidos_pendentes").stream()
+    return {doc.id: doc.to_dict().get("itens", {}) for doc in docs}
 
-# ===== INICIALIZAÇÃO DE ESTADO =====
+# ===== INICIALIZAÇÃO =====
 BRASIL = pytz.timezone("America/Sao_Paulo")
 precos = carregar_precos()
 
+# Sincroniza o que está no Firebase com o Session State ao iniciar/recarregar
+if "pedidos_ativos" not in st.session_state:
+    rascunhos = carregar_todos_rascunhos()
+    # Garante que todas as chaves de itens existam para cada mesa carregada
+    for mesa in rascunhos:
+        full_itens = {item: 0 for item in precos}
+        full_itens.update(rascunhos[mesa])
+        rascunhos[mesa] = full_itens
+    st.session_state.pedidos_ativos = rascunhos
+
 if "pagina" not in st.session_state: st.session_state.pagina = "mesas"
 if "mesa_selecionada" not in st.session_state: st.session_state.mesa_selecionada = None
-if "pedidos_ativos" not in st.session_state: st.session_state.pedidos_ativos = {}
-
-# ===== NAVEGAÇÃO =====
-st.sidebar.title("🔥 Brava Brasa")
-opcao = st.sidebar.radio("Navegação", ["Mesas", "Relatórios", "Ajustar Preços"])
-
-if opcao == "Relatórios": st.session_state.pagina = "relatorios"
-elif opcao == "Ajustar Preços": st.session_state.pagina = "precos"
-else: 
-    if st.session_state.pagina not in ["pedido"]: st.session_state.pagina = "mesas"
 
 # =========================
 # PÁGINA: GESTÃO DE MESAS
 # =========================
 if st.session_state.pagina == "mesas":
-    st.header("🪑 Mesas Ativas")
-    mesas_lista = [f"Mesa {i}" for i in range(1, 11)]
+    st.header("🪑 Mesas")
+    mesas_disponiveis = [f"Mesa {i}" for i in range(1, 11)]
     
     cols = st.columns(2)
-    for idx, nome_mesa in enumerate(mesas_lista):
+    for idx, nome_mesa in enumerate(mesas_disponiveis):
         with cols[idx % 2]:
-            esta_ocupada = nome_mesa in st.session_state.pedidos_ativos
-            cor = "🔴" if esta_ocupada else "🟢"
+            # Uma mesa só é "Ocupada" (Vermelha) se tiver itens > 0 no Firebase/State
+            itens_da_mesa = st.session_state.pedidos_ativos.get(nome_mesa, {})
+            esta_ocupada = any(v > 0 for v in itens_da_mesa.values())
             
-            st.markdown(f"""<div class="card-mesa"><h3>{cor} {nome_mesa}</h3></div>""", unsafe_allow_html=True)
-            if st.button(f"Abrir/Ver {nome_mesa}", key=f"btn_{nome_mesa}"):
+            cor_status = "🔴 Ocupada" if esta_ocupada else "🟢 Livre"
+            st.markdown(f"""<div style="padding:15px; border-radius:10px; border:2px solid {'#ff4b4b' if esta_ocupada else '#28a745'}; text-align:center;">
+                        <h3>{nome_mesa}</h3><p>{cor_status}</p></div>""", unsafe_allow_html=True)
+            
+            if st.button(f"Selecionar {nome_mesa}", key=f"sel_{nome_mesa}"):
                 if nome_mesa not in st.session_state.pedidos_ativos:
                     st.session_state.pedidos_ativos[nome_mesa] = {item: 0 for item in precos}
                 st.session_state.mesa_selecionada = nome_mesa
@@ -123,117 +86,58 @@ if st.session_state.pagina == "mesas":
 # =========================
 elif st.session_state.pagina == "pedido":
     mesa = st.session_state.mesa_selecionada
-    st.header(f"📝 Pedido: {mesa}")
+    st.subheader(f"📝 Pedido: {mesa}")
     
-    if st.button("⬅️ Voltar para Mesas"):
+    if st.button("⬅️ Voltar (Salva automático)"):
+        # Antes de voltar, verifica se a mesa está vazia para limpá-la
+        if not any(v > 0 for v in st.session_state.pedidos_ativos[mesa].values()):
+            if mesa in st.session_state.pedidos_ativos:
+                del st.session_state.pedidos_ativos[mesa]
+                db.collection("pedidos_pendentes").document(mesa).delete()
+        
         st.session_state.pagina = "mesas"
         st.rerun()
 
     st.divider()
     
-    # Grid de Itens
     for item, valor in precos.items():
-        c1, c2, c3, c4 = st.columns([3, 2, 1, 2])
-        qtd_atual = st.session_state.pedidos_ativos[mesa][item]
+        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+        qtd = st.session_state.pedidos_ativos[mesa][item]
         
-        with c1: st.markdown(f"**{item}**\nR$ {valor}")
+        with c1: st.write(f"**{item}** (R${valor})")
         with c2:
-            if st.button(f"➕", key=f"add_{item}"):
+            if st.button("➕", key=f"add_{item}"):
                 st.session_state.pedidos_ativos[mesa][item] += 1
+                salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
                 st.rerun()
-        with c3: st.markdown(f"### {qtd_atual}")
+        with c3: st.write(f"**{qtd}**")
         with c4:
-            if st.button(f"➖", key=f"sub_{item}"):
+            if st.button("➖", key=f"sub_{item}"):
                 if st.session_state.pedidos_ativos[mesa][item] > 0:
                     st.session_state.pedidos_ativos[mesa][item] -= 1
+                    salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
                     st.rerun()
 
-    # Cálculo Total
+    # Total e Finalização
     total = sum(st.session_state.pedidos_ativos[mesa][i] * precos[i] for i in precos)
-    
-    st.markdown(f"<div class='total-footer'>TOTAL: R$ {total:.2f}</div>", unsafe_allow_html=True)
-    st.write("\n\n") # Espaço para o footer não cobrir o botão
+    st.markdown(f"### Total: R$ {total:.2f}")
 
     if total > 0:
-        if st.button("✅ FINALIZAR E SALVAR", use_container_width=True):
+        if st.button("✅ ENCERRAR CONTA", use_container_width=True):
             agora = datetime.now(BRASIL)
-            dados_final = {
+            pedido_final = {
                 "mesa": mesa,
                 "itens": {k: v for k, v in st.session_state.pedidos_ativos[mesa].items() if v > 0},
                 "total": total,
                 "data": agora.strftime("%Y-%m-%d"),
-                "hora": agora.strftime("%H:%M"),
-                "timestamp": agora
+                "hora": agora.strftime("%H:%M")
             }
-            salvar_pedido_firebase(dados_final)
+            # 1. Salva no relatório definitivo
+            db.collection("pedidos").add(pedido_final)
+            # 2. Remove dos pendentes/rascunhos
+            db.collection("pedidos_pendentes").document(mesa).delete()
             del st.session_state.pedidos_ativos[mesa]
-            st.success("Pedido enviado com sucesso!")
+            
+            st.success("Pedido encerrado e salvo!")
             st.session_state.pagina = "mesas"
             st.rerun()
-
-# =========================
-# PÁGINA: AJUSTAR PREÇOS
-# =========================
-elif st.session_state.pagina == "precos":
-    st.header("⚙️ Ajustar Valores")
-    for item, valor in precos.items():
-        novo_v = st.number_input(f"Preço {item}", value=float(valor), step=0.5, key=f"edit_{item}")
-        if novo_v != float(valor):
-            salvar_preco_firebase(item, novo_v)
-            st.toast(f"Preço de {item} atualizado!")
-
-# =========================
-# PÁGINA: RELATÓRIOS (DETALHADO)
-# =========================
-elif st.session_state.pagina == "relatorios":
-    st.header("📊 Relatório Detalhado")
-    
-    # Seletor de Data (Padrão: Hoje)
-    data_selecionada = st.date_input("Selecione a data", datetime.now(BRASIL))
-    data_str = data_selecionada.strftime("%Y-%m-%d")
-    
-    # Busca no Firebase
-    pedidos_ref = db.collection("pedidos").where("data", "==", data_str).order_by("hora", direction=firestore.Query.DESCENDING).stream()
-    lista_pedidos = [p.to_dict() for p in pedidos_ref]
-    
-    if lista_pedidos:
-        df = pd.DataFrame(lista_pedidos)
-        
-        # Resumo no topo
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("Total de Pedidos", len(lista_pedidos))
-        with c2:
-            st.metric("Faturamento Total", f"R$ {df['total'].sum():.2f}")
-        
-        st.divider()
-        st.subheader("📋 Lista de Comandas")
-
-        # Exibição Detalhada
-        for p in lista_pedidos:
-            # Criamos um "expander" (sanfona) para cada pedido
-            with st.expander(f"🕒 {p['hora']} - {p['mesa']} | Total: R$ {p['total']:.2f}"):
-                st.write("---")
-                # Criar uma tabelinha para os itens deste pedido específico
-                itens_pedido = p.get("itens", {})
-                if itens_pedido:
-                    # Montando os dados para exibir
-                    dados_tabela = []
-                    for nome_item, qtd in itens_pedido.items():
-                        preco_unit = precos.get(nome_item, 0)
-                        subtotal = qtd * preco_unit
-                        dados_tabela.append({
-                            "Item": nome_item,
-                            "Qtd": qtd,
-                            "Preço Unit.": f"R$ {preco_unit:.2f}",
-                            "Subtotal": f"R$ {subtotal:.2f}"
-                        })
-                    
-                    st.table(pd.DataFrame(dados_tabela))
-                else:
-                    st.warning("Nenhum item registrado neste pedido.")
-                
-                st.caption(f"ID do Pedido: {p.get('timestamp')}")
-
-    else:
-        st.info(f"Nenhum pedido encontrado para o dia {data_selecionada.strftime('%d/%m/%Y')}.")
