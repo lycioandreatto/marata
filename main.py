@@ -24,7 +24,7 @@ st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
 st.markdown("""
 <style>
 .stApp{
-background:#000000;  /* preto */
+background:#ffffff;  /* branco */
 font-family:sans-serif;
 }
 
@@ -48,8 +48,9 @@ button{
 background:#ff6600 !important;  /* laranja */
 color:white !important;
 border-radius:8px !important;
-height:60px;
+height:45px;  /* menor */
 width:100%;
+font-size:16px;
 }
 
 .total{
@@ -121,6 +122,7 @@ def nova_mesa():
 # =========================
 if st.button("📊 Relatório"):
     st.session_state.pagina = "relatorio"
+    st.experimental_rerun()
 
 # =========================
 # MESAS
@@ -128,8 +130,6 @@ if st.button("📊 Relatório"):
 if st.session_state.pagina == "mesas":
 
     st.subheader("🪑 Mesas")
-
-    # 🔹 Mostra contador de pedidos salvos
     st.markdown(f'<div class="counter">Pedidos salvos hoje: {len(st.session_state.historico)}</div>', unsafe_allow_html=True)
 
     mesas = ["Mesa 1","Mesa 2","Mesa 3","Mesa 4"]
@@ -137,7 +137,6 @@ if st.session_state.pagina == "mesas":
 
     for i,mesa in enumerate(mesas):
         with cols[i%2]:
-
             status = "🔴 Ocupada" if mesa in st.session_state.mesas else "🟢 Livre"
 
             st.markdown(f"""
@@ -147,31 +146,28 @@ if st.session_state.pagina == "mesas":
             </div>
             """, unsafe_allow_html=True)
 
-            if st.button(f"Acessar {mesa}", key=mesa):
+            if st.button(f"Acessar {mesa}", key=f"acessar_{mesa}"):
                 if mesa not in st.session_state.mesas:
                     st.session_state.mesas[mesa] = nova_mesa()
-
                 st.session_state.mesa_atual = mesa
                 st.session_state.pagina = "pedido"
+                st.experimental_rerun()
 
 # =========================
 # PEDIDO
 # =========================
 elif st.session_state.pagina == "pedido":
-
     mesa = st.session_state.mesa_atual
     pedido = st.session_state.mesas[mesa]
 
     st.subheader(f"📋 {mesa}")
 
-    # STATUS
     if pedido["fechado"]:
         st.error("🔒 Pedido FECHADO")
     else:
         st.success("🟢 Pedido ABERTO")
 
     st.divider()
-
     st.subheader("🍢 Itens")
     cols = st.columns(3)
 
@@ -180,17 +176,15 @@ elif st.session_state.pagina == "pedido":
             if st.button(item, key=f"{item}_{mesa}"):
                 if not pedido["fechado"]:
                     st.session_state.mesas[mesa]["itens"][item] += 1
-                    st.rerun()
+                    st.experimental_rerun()
 
     st.divider()
-    total = 0
+    total = sum(qtd*precos[item] for item,qtd in pedido["itens"].items() if qtd>0)
 
     for item,qtd in pedido["itens"].items():
         if qtd>0:
-            valor = qtd*precos[item]
-            total+=valor
-
-            col1,col2,col3=st.columns([4,1,1])
+            valor = qtd * precos[item]
+            col1,col2,col3 = st.columns([4,1,1])
             with col1:
                 st.write(f"{item} x{qtd}")
             with col2:
@@ -199,26 +193,23 @@ elif st.session_state.pagina == "pedido":
                 if st.button("➖",key=f"menos_{item}_{mesa}"):
                     if not pedido["fechado"]:
                         st.session_state.mesas[mesa]["itens"][item] -= 1
-                        st.rerun()
+                        st.experimental_rerun()
 
     st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
     col1,col2,col3=st.columns(3)
 
-    # 🔒 FECHAR / 🔓 REABRIR
     with col1:
         if not pedido["fechado"]:
             if st.button("🔒 Fechar", key=f"fechar_{mesa}"):
                 st.session_state.mesas[mesa]["fechado"] = True
-                st.rerun()
+                st.experimental_rerun()
         else:
             if st.button("🔓 Reabrir", key=f"reabrir_{mesa}"):
                 st.session_state.mesas[mesa]["fechado"] = False
-                st.rerun()
+                st.experimental_rerun()
 
-    # ❌ ENCERRAR
     with col2:
         if st.button("❌ Encerrar", key=f"encerrar_{mesa}"):
-
             novo = {
                 "mesa": mesa,
                 "itens": pedido["itens"],
@@ -226,36 +217,31 @@ elif st.session_state.pagina == "pedido":
                 "data": datetime.now().strftime("%Y-%m-%d"),
                 "hora": datetime.now().strftime("%H:%M")
             }
-
             st.session_state.historico.append(novo)
             salvar_pedido(novo)
-
-            # 🔹 Confirmação visual
-            st.success("✅ Pedido salvo!")
+            st.success("✅ Pedido salvo no Firebase!")
             st.json(novo)
-
             del st.session_state.mesas[mesa]
             st.session_state.pagina="mesas"
-            st.rerun()
+            st.experimental_rerun()
 
-    # ⬅️ VOLTAR
     with col3:
         if st.button("⬅️ Voltar", key=f"voltar_{mesa}"):
             st.session_state.pagina="mesas"
+            st.experimental_rerun()
 
 # =========================
 # RELATÓRIO
 # =========================
 elif st.session_state.pagina == "relatorio":
-
     st.title("📊 Relatório")
     if st.button("⬅️ Voltar"):
         st.session_state.pagina = "mesas"
+        st.experimental_rerun()
 
     hoje = datetime.now().strftime("%Y-%m-%d")
     pedidos = [p for p in st.session_state.historico if p["data"] == hoje]
     total = sum(p["total"] for p in pedidos)
-
     st.subheader(f"💰 Total do dia: R$ {total}")
 
     if pedidos:
@@ -264,17 +250,16 @@ elif st.session_state.pagina == "relatorio":
 
     st.divider()
     st.subheader("📋 Pedidos")
-
     for i, pedido in enumerate(pedidos):
         if st.button(f"{pedido['hora']} - {pedido['mesa']} - R$ {pedido['total']}", key=f"hist{i}"):
             st.session_state.pedido_detalhe = pedido
             st.session_state.pagina = "detalhe"
+            st.experimental_rerun()
 
 # =========================
 # DETALHE
 # =========================
 elif st.session_state.pagina == "detalhe":
-
     pedido = st.session_state.pedido_detalhe
     st.title(f"📋 {pedido['mesa']}")
 
@@ -284,6 +269,6 @@ elif st.session_state.pagina == "detalhe":
             st.write(f"{item} x{qtd} - R$ {valor}")
 
     st.subheader(f"💰 Total: R$ {pedido['total']}")
-
     if st.button("⬅️ Voltar"):
         st.session_state.pagina = "relatorio"
+        st.experimental_rerun()
