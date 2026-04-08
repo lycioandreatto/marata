@@ -18,13 +18,18 @@ db = firestore.client()
 def salvar_pedido(pedido):
     db.collection("pedidos").add(pedido)
 
+# Ajuste aqui: garante que todos os itens estão presentes
 def carregar_pedidos_firebase():
-    """Carrega todos os pedidos do Firebase"""
+    """Carrega todos os pedidos do Firebase com itens padronizados"""
     pedidos_ref = db.collection("pedidos")
     docs = pedidos_ref.stream()
     historico = []
     for doc in docs:
-        historico.append(doc.to_dict())
+        p = doc.to_dict()
+        # garante que 'itens' tem todas as chaves do menu, mesmo se vier vazio
+        itens_padronizados = {item: p.get("itens", {}).get(item, 0) for item in precos}
+        p["itens"] = itens_padronizados
+        historico.append(p)
     return historico
 
 # ===== CONFIGURAÇÃO STREAMLIT =====
@@ -59,6 +64,12 @@ def salvar_json_local(dados):
     with open(ARQUIVO, "w") as f:
         json.dump(dados, f)
 
+# ===== PREÇOS =====
+precos = {"CARNE":8,"FRANGO":7,"CALABRESA":7,"CORAÇÃO":8,"QUEIJO":6,"MISTO":9,"COCA":6,"GUARANA":6,"HEINEKEN":10}
+
+def nova_mesa():
+    return {"itens": {i:0 for i in precos}, "fechado": False, "iniciado": False}
+
 # ===== ESTADO =====
 if "mesas" not in st.session_state:
     st.session_state.mesas = {}
@@ -77,12 +88,6 @@ if "historico" not in st.session_state:
     st.session_state.historico = historico
 if "pedido_detalhe" not in st.session_state:
     st.session_state.pedido_detalhe = None
-
-# ===== PREÇOS =====
-precos = {"CARNE":8,"FRANGO":7,"CALABRESA":7,"CORAÇÃO":8,"QUEIJO":6,"MISTO":9,"COCA":6,"GUARANA":6,"HEINEKEN":10}
-
-def nova_mesa():
-    return {"itens": {i:0 for i in precos}, "fechado": False, "iniciado": False}
 
 # =========================
 # BOTÃO RELATÓRIO
@@ -195,6 +200,9 @@ elif st.session_state.pagina == "relatorio":
     st.title("📊 Relatório")
     if st.button("⬅️ Voltar"): st.session_state.pagina = "mesas"
 
+    # Atualiza pedidos do Firebase
+    st.session_state.historico = carregar_pedidos_firebase()
+
     hoje = datetime.now(BRASIL).strftime("%Y-%m-%d")
     pedidos = [p for p in st.session_state.historico if p["data"] == hoje]
     total = sum(p["total"] for p in pedidos)
@@ -202,6 +210,7 @@ elif st.session_state.pagina == "relatorio":
     if pedidos:
         df = pd.DataFrame(pedidos)
         st.bar_chart(df["total"])
+    
     st.divider()
     st.subheader("📋 Pedidos")
     for i, pedido in enumerate(pedidos):
