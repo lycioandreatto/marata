@@ -15,6 +15,9 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
+def salvar_pedido(pedido):
+    db.collection("pedidos").add(pedido)
+
 st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
 
 # 🎨 ESTILO
@@ -220,7 +223,7 @@ elif st.session_state.pagina == "pedido":
             }
 
             st.session_state.historico.append(novo)
-            salvar(st.session_state.historico)
+            salvar_pedido(novo)
 
             del st.session_state.mesas[mesa]
             st.session_state.pagina="mesas"
