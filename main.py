@@ -4,12 +4,11 @@ import pytz
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
-import re
 
-# ===== CONFIGURAÇÃO DA PÁGINA =====
+# ===== 1. CONFIGURAÇÃO DA PÁGINA =====
 st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
 
-# ===== CONEXÃO FIREBASE =====
+# ===== 2. CONEXÃO FIREBASE =====
 if not firebase_admin._apps:
     try:
         cred = credentials.Certificate(dict(st.secrets["firebase"]))
@@ -19,7 +18,7 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# ===== ESTRUTURA DO CARDÁPIO =====
+# ===== 3. ESTRUTURA DO CARDÁPIO =====
 CARDAPIO_ESTRUTURA = {
     "🍢 ESPETINHOS": [
         "CARNE", "FRANGO", "CALABRESA", "MISTO", "CORAÇÃO", "QUEIJO"
@@ -59,13 +58,12 @@ def carregar_rascunhos_firebase():
     docs = db.collection("pedidos_pendentes").stream()
     return {doc.id: doc.to_dict().get("itens", {}) for doc in docs}
 
-# ===== INICIALIZAÇÃO E ORDENAÇÃO =====
+# ===== 4. INICIALIZAÇÃO E ESTADO =====
 BRASIL = pytz.timezone("America/Sao_Paulo")
 precos = carregar_precos()
 
 if "pedidos_ativos" not in st.session_state:
     rascunhos = carregar_rascunhos_firebase()
-    # Criar lista de mesas de 1 a 12 de forma ordenada
     mesas_ordenadas = {}
     for i in range(1, 13):
         nome_mesa = f"Mesa {i}"
@@ -78,32 +76,31 @@ if "pedidos_ativos" not in st.session_state:
 if "pagina" not in st.session_state: st.session_state.pagina = "mesas"
 if "mesa_atual" not in st.session_state: st.session_state.mesa_atual = None
 
-# ===== ESTILO CSS ATUALIZADO =====
+# ===== 5. ESTILO CSS (MOBILE FIX & COMANDA) =====
 st.markdown("""
 <style>
-    /* Forçar colunas a ficarem lado a lado mesmo no mobile */
+    /* Forçar 2 colunas reais no mobile */
     [data-testid="column"] {
         width: 50% !important;
         flex: 1 1 50% !important;
         min-width: 45% !important;
     }
-    
-    /* Container para evitar quebra de linha indesejada */
     [data-testid="stHorizontalBlock"] {
         display: flex;
         flex-wrap: wrap;
         flex-direction: row !important;
     }
-
     /* Estilo dos Botões e Cards */
     .stButton>button { width: 100%; border-radius: 8px; height: 3.5em; font-weight: bold; margin-bottom: 5px; }
-    .card-mesa { padding: 10px; border-radius: 12px; text-align: center; margin-top: 10px; }
+    .card-mesa { padding: 10px; border-radius: 12px; text-align: center; margin-top: 10px; font-size: 1.1em; }
     .total-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #ff6600; color: white; 
                  text-align: center; padding: 15px; font-size: 22px; font-weight: bold; z-index: 999; border-top: 2px solid white; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { background-color: #f0f2f6; border-radius: 5px; padding: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ===== NAVEGAÇÃO =====
+# ===== 6. NAVEGAÇÃO =====
 with st.sidebar:
     st.title("🔥 Brava Brasa")
     menu = st.radio("Menu", ["Mesas / Pedidos", "Relatório Detalhado", "Ajustar Preços"])
@@ -114,50 +111,34 @@ else:
     if st.session_state.pagina not in ["pedido"]: st.session_state.pagina = "mesas"
 
 # =========================
-# PÁGINA: MESAS (LÓGICA CORRIGIDA)
+# PÁGINA: MESAS
 # =========================
 if st.session_state.pagina == "mesas":
     st.header("🍽️ Mesas Ativas")
-    
     lista_mesas = [f"Mesa {i}" for i in range(1, 13)]
     
-    # Criamos as colunas fora do loop para garantir o alinhamento
-    # Usamos o loop para preencher as linhas corretamente
     for i in range(0, len(lista_mesas), 2):
-        cols = st.columns(2) # Cria uma "linha" com 2 colunas
-        
-        # Mesa da Esquerda (Par)
-        nome_esq = lista_mesas[i]
-        with cols[0]:
-            itens_mesa = st.session_state.pedidos_ativos.get(nome_esq, {})
-            ocupada = any(v > 0 for v in itens_mesa.values())
-            cor = "#ff4b4b" if ocupada else "#28a745"
-            st.markdown(f'<div class="card-mesa" style="border: 2px solid {cor};"><b>{nome_esq}</b></div>', unsafe_allow_html=True)
-            if st.button(f"Abrir", key=f"btn_{nome_esq}"):
-                st.session_state.mesa_atual = nome_esq
-                st.session_state.pagina = "pedido"
-                st.rerun()
-        
-        # Mesa da Direita (Ímpar) - Verifica se existe (caso tenha número ímpar de mesas)
-        if i + 1 < len(lista_mesas):
-            nome_dir = lista_mesas[i+1]
-            with cols[1]:
-                itens_mesa = st.session_state.pedidos_ativos.get(nome_dir, {})
-                ocupada = any(v > 0 for v in itens_mesa.values())
-                cor = "#ff4b4b" if ocupada else "#28a745"
-                st.markdown(f'<div class="card-mesa" style="border: 2px solid {cor};"><b>{nome_dir}</b></div>', unsafe_allow_html=True)
-                if st.button(f"Abrir", key=f"btn_{nome_dir}"):
-                    st.session_state.mesa_atual = nome_dir
-                    st.session_state.pagina = "pedido"
-                    st.rerun()
+        cols = st.columns(2)
+        for j in range(2):
+            if i + j < len(lista_mesas):
+                nome = lista_mesas[i + j]
+                with cols[j]:
+                    itens_mesa = st.session_state.pedidos_ativos.get(nome, {})
+                    ocupada = any(v > 0 for v in itens_mesa.values())
+                    cor = "#ff4b4b" if ocupada else "#28a745"
+                    st.markdown(f'<div class="card-mesa" style="border: 2px solid {cor};"><b>{nome}</b></div>', unsafe_allow_html=True)
+                    if st.button(f"Abrir", key=f"btn_{nome}"):
+                        st.session_state.mesa_atual = nome
+                        st.session_state.pagina = "pedido"
+                        st.rerun()
 
 # =========================
 # PÁGINA: PEDIDO (CARDÁPIO)
 # =========================
 elif st.session_state.pagina == "pedido":
     mesa = st.session_state.mesa_atual
+    itens_atuais = st.session_state.pedidos_ativos[mesa]
     
-    # Cabeçalho compacto
     c1, c2 = st.columns([1, 1])
     with c1:
         if st.button("⬅️ Voltar"):
@@ -166,6 +147,19 @@ elif st.session_state.pagina == "pedido":
     with c2:
         st.write(f"### {mesa}")
 
+    # --- NOVO: RESUMO DA COMANDA ---
+    pedidos_ativos = {item: qtd for item, qtd in itens_atuais.items() if qtd > 0}
+    if pedidos_ativos:
+        with st.expander("📝 Comanda Atual", expanded=True):
+            subtotal_comanda = 0
+            for item, qtd in pedidos_ativos.items():
+                v_unit = precos.get(item, 0.0)
+                sub = v_unit * qtd
+                subtotal_comanda += sub
+                st.markdown(f"**{qtd}x** {item} <span style='float:right;'>R$ {sub:.2f}</span>", unsafe_allow_html=True)
+            st.divider()
+            st.markdown(f"**Total Parcial: <span style='float:right;'>R$ {subtotal_comanda:.2f}</span>**", unsafe_allow_html=True)
+
     tab_esp, tab_beb = st.tabs(["🍢 ESPETINHOS", "🥤 BEBIDAS"])
 
     def render_categoria(lista_itens):
@@ -173,7 +167,6 @@ elif st.session_state.pagina == "pedido":
             valor = precos.get(item, 0.0)
             qtd = st.session_state.pedidos_ativos[mesa].get(item, 0)
             
-            # Layout de linha única travada pelo CSS acima
             col_txt, col_men, col_num, col_mai = st.columns([2, 1, 1, 1])
             with col_txt: 
                 st.markdown(f"**{item}**\nR$ {valor:.2f}")
@@ -211,7 +204,6 @@ elif st.session_state.pagina == "pedido":
             }
             db.collection("pedidos").add(pedido_final)
             db.collection("pedidos_pendentes").document(mesa).delete()
-            # Reseta a mesa no state para o padrão (vazia)
             st.session_state.pedidos_ativos[mesa] = {item: 0 for cat in CARDAPIO_ESTRUTURA.values() for item in cat}
             st.success("Pedido Salvo!")
             st.session_state.pagina = "mesas"
