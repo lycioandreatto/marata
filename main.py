@@ -4,11 +4,10 @@ from datetime import datetime
 import os
 import pandas as pd
 
-
 import firebase_admin
 from firebase_admin import credentials, firestore
-import streamlit as st
 
+# ===== FIREBASE =====
 if not firebase_admin._apps:
     cred = credentials.Certificate(dict(st.secrets["firebase"]))
     firebase_admin.initialize_app(cred)
@@ -18,19 +17,20 @@ db = firestore.client()
 def salvar_pedido(pedido):
     db.collection("pedidos").add(pedido)
 
+# ===== CONFIGURAÇÃO STREAMLIT =====
 st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
 
-# 🎨 ESTILO
+# ===== ESTILO =====
 st.markdown("""
 <style>
 .stApp{
-background:#f3f3f3;
+background:#000000;  /* preto */
 font-family:sans-serif;
 }
 
 .title{
 text-align:center;
-color:#ff2e8a;
+color:#ff6600;  /* laranja */
 font-size:40px;
 font-weight:bold;
 }
@@ -45,7 +45,7 @@ text-align:center;
 }
 
 button{
-background:#ff2e8a !important;
+background:#ff6600 !important;  /* laranja */
 color:white !important;
 border-radius:8px !important;
 height:60px;
@@ -54,9 +54,17 @@ width:100%;
 
 .total{
 font-size:28px;
-color:#ff2e8a;
+color:#ff6600;  /* laranja */
 font-weight:bold;
 text-align:center;
+}
+
+.counter{
+text-align:center;
+color:#ff6600;
+font-weight:bold;
+font-size:20px;
+margin-bottom:10px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -121,6 +129,9 @@ if st.session_state.pagina == "mesas":
 
     st.subheader("🪑 Mesas")
 
+    # 🔹 Mostra contador de pedidos salvos
+    st.markdown(f'<div class="counter">Pedidos salvos hoje: {len(st.session_state.historico)}</div>', unsafe_allow_html=True)
+
     mesas = ["Mesa 1","Mesa 2","Mesa 3","Mesa 4"]
     cols = st.columns(2)
 
@@ -149,8 +160,6 @@ if st.session_state.pagina == "mesas":
 elif st.session_state.pagina == "pedido":
 
     mesa = st.session_state.mesa_atual
-
-    # 🔥 PEGA DIRETO DO SESSION_STATE (CORRETO)
     pedido = st.session_state.mesas[mesa]
 
     st.subheader(f"📋 {mesa}")
@@ -164,7 +173,6 @@ elif st.session_state.pagina == "pedido":
     st.divider()
 
     st.subheader("🍢 Itens")
-
     cols = st.columns(3)
 
     for i,item in enumerate(precos):
@@ -175,7 +183,6 @@ elif st.session_state.pagina == "pedido":
                     st.rerun()
 
     st.divider()
-
     total = 0
 
     for item,qtd in pedido["itens"].items():
@@ -184,7 +191,6 @@ elif st.session_state.pagina == "pedido":
             total+=valor
 
             col1,col2,col3=st.columns([4,1,1])
-
             with col1:
                 st.write(f"{item} x{qtd}")
             with col2:
@@ -196,10 +202,9 @@ elif st.session_state.pagina == "pedido":
                         st.rerun()
 
     st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
-
     col1,col2,col3=st.columns(3)
 
-    # 🔥 FECHAR / REABRIR (AGORA FUNCIONA)
+    # 🔒 FECHAR / 🔓 REABRIR
     with col1:
         if not pedido["fechado"]:
             if st.button("🔒 Fechar", key=f"fechar_{mesa}"):
@@ -210,7 +215,7 @@ elif st.session_state.pagina == "pedido":
                 st.session_state.mesas[mesa]["fechado"] = False
                 st.rerun()
 
-    # ENCERRAR
+    # ❌ ENCERRAR
     with col2:
         if st.button("❌ Encerrar", key=f"encerrar_{mesa}"):
 
@@ -225,11 +230,15 @@ elif st.session_state.pagina == "pedido":
             st.session_state.historico.append(novo)
             salvar_pedido(novo)
 
+            # 🔹 Confirmação visual
+            st.success("✅ Pedido salvo!")
+            st.json(novo)
+
             del st.session_state.mesas[mesa]
             st.session_state.pagina="mesas"
             st.rerun()
 
-    # VOLTAR
+    # ⬅️ VOLTAR
     with col3:
         if st.button("⬅️ Voltar", key=f"voltar_{mesa}"):
             st.session_state.pagina="mesas"
@@ -240,14 +249,11 @@ elif st.session_state.pagina == "pedido":
 elif st.session_state.pagina == "relatorio":
 
     st.title("📊 Relatório")
-
     if st.button("⬅️ Voltar"):
         st.session_state.pagina = "mesas"
 
     hoje = datetime.now().strftime("%Y-%m-%d")
-
     pedidos = [p for p in st.session_state.historico if p["data"] == hoje]
-
     total = sum(p["total"] for p in pedidos)
 
     st.subheader(f"💰 Total do dia: R$ {total}")
@@ -257,7 +263,6 @@ elif st.session_state.pagina == "relatorio":
         st.bar_chart(df["total"])
 
     st.divider()
-
     st.subheader("📋 Pedidos")
 
     for i, pedido in enumerate(pedidos):
@@ -271,7 +276,6 @@ elif st.session_state.pagina == "relatorio":
 elif st.session_state.pagina == "detalhe":
 
     pedido = st.session_state.pedido_detalhe
-
     st.title(f"📋 {pedido['mesa']}")
 
     for item, qtd in pedido["itens"].items():
