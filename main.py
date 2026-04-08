@@ -6,7 +6,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
 
-# 🎨 ESTILO (MANTIVE SUA IDENTIDADE)
+# 🎨 ESTILO
 st.markdown("""
 <style>
 .stApp{
@@ -75,6 +75,9 @@ if "mesa_atual" not in st.session_state:
 if "historico" not in st.session_state:
     st.session_state.historico = carregar()
 
+if "pedido_detalhe" not in st.session_state:
+    st.session_state.pedido_detalhe = None
+
 # ===== PREÇOS =====
 precos = {
     "CARNE": 8,
@@ -92,11 +95,14 @@ def nova_mesa():
     return {"itens": {i:0 for i in precos}, "fechado": False}
 
 # =========================
-# MESAS
+# BOTÃO RELATÓRIO
 # =========================
 if st.button("📊 Relatório"):
     st.session_state.pagina = "relatorio"
 
+# =========================
+# MESAS
+# =========================
 if st.session_state.pagina == "mesas":
 
     st.subheader("🪑 Mesas")
@@ -201,11 +207,11 @@ elif st.session_state.pagina == "relatorio":
     st.title("📊 Relatório")
 
     if st.button("⬅️ Voltar"):
-        st.session_state.pagina="mesas"
+        st.session_state.pagina = "mesas"
 
     hoje = datetime.now().strftime("%Y-%m-%d")
 
-    pedidos = [p for p in st.session_state.historico if p["data"]==hoje]
+    pedidos = [p for p in st.session_state.historico if p["data"] == hoje]
 
     total = sum(p["total"] for p in pedidos)
 
@@ -214,3 +220,31 @@ elif st.session_state.pagina == "relatorio":
     if pedidos:
         df = pd.DataFrame(pedidos)
         st.bar_chart(df["total"])
+
+    st.divider()
+
+    st.subheader("📋 Pedidos")
+
+    for i, pedido in enumerate(pedidos):
+        if st.button(f"{pedido['hora']} - {pedido['mesa']} - R$ {pedido['total']}", key=f"hist{i}"):
+            st.session_state.pedido_detalhe = pedido
+            st.session_state.pagina = "detalhe"
+
+# =========================
+# DETALHE DO PEDIDO
+# =========================
+elif st.session_state.pagina == "detalhe":
+
+    pedido = st.session_state.pedido_detalhe
+
+    st.title(f"📋 {pedido['mesa']}")
+
+    for item, qtd in pedido["itens"].items():
+        if qtd > 0:
+            valor = qtd * precos[item]
+            st.write(f"{item} x{qtd} - R$ {valor}")
+
+    st.subheader(f"💰 Total: R$ {pedido['total']}")
+
+    if st.button("⬅️ Voltar"):
+        st.session_state.pagina = "relatorio"
