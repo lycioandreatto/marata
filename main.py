@@ -18,19 +18,23 @@ db = firestore.client()
 def salvar_pedido(pedido):
     db.collection("pedidos").add(pedido)
 
-# Ajuste aqui: garante que todos os itens estão presentes
-def carregar_pedidos_firebase():
-    """Carrega todos os pedidos do Firebase com itens padronizados"""
-    pedidos_ref = db.collection("pedidos")
-    docs = pedidos_ref.stream()
-    historico = []
+# ===== PREÇOS FIREBASE =====
+def carregar_precos_firebase():
+    """Carrega preços do Firebase. Se não existir, cria com valores padrão."""
+    precos_ref = db.collection("precos")
+    docs = precos_ref.stream()
+    precos_carregados = {}
     for doc in docs:
-        p = doc.to_dict()
-        # garante que 'itens' tem todas as chaves do menu, mesmo se vier vazio
-        itens_padronizados = {item: p.get("itens", {}).get(item, 0) for item in precos}
-        p["itens"] = itens_padronizados
-        historico.append(p)
-    return historico
+        precos_carregados[doc.id] = doc.to_dict().get("valor", 0)
+    # adiciona itens que não existirem
+    for item, valor in precos_padrao.items():
+        if item not in precos_carregados:
+            precos_carregados[item] = valor
+            db.collection("precos").document(item).set({"valor": valor})
+    return precos_carregados
+
+def salvar_preco_firebase(item, valor):
+    db.collection("precos").document(item).set({"valor": valor})
 
 # ===== CONFIGURAÇÃO STREAMLIT =====
 st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
@@ -64,8 +68,11 @@ def salvar_json_local(dados):
     with open(ARQUIVO, "w") as f:
         json.dump(dados, f)
 
-# ===== PREÇOS =====
-precos = {"CARNE":8,"FRANGO":7,"CALABRESA":7,"CORAÇÃO":8,"QUEIJO":6,"MISTO":9,"COCA":6,"GUARANA":6,"HEINEKEN":10}
+# ===== PREÇOS PADRÃO =====
+precos_padrao = {"CARNE":8,"FRANGO":7,"CALABRESA":7,"CORAÇÃO":8,"QUEIJO":6,"MISTO":9,"COCA":6,"GUARANA":6,"HEINEKEN":10}
+
+# ===== CARREGA PREÇOS DO FIREBASE =====
+precos = carregar_precos_firebase()
 
 def nova_mesa():
     return {"itens": {i:0 for i in precos}, "fechado": False, "iniciado": False}
@@ -81,8 +88,12 @@ if "mesa_atual" not in st.session_state:
     st.session_state.mesa_atual = None
 if "historico" not in st.session_state:
     historico = carregar_json_local()
-    pedidos_firebase = carregar_pedidos_firebase()
-    for p in pedidos_firebase:
+    pedidos_firebase = db.collection("pedidos").stream()
+    for doc in pedidos_firebase:
+        p = doc.to_dict()
+        # garante itens padronizados
+        itens_padronizados = {item: p.get("itens", {}).get(item, 0) for item in precos}
+        p["itens"] = itens_padronizados
         if p not in historico:
             historico.append(p)
     st.session_state.historico = historico
@@ -102,6 +113,15 @@ if st.session_state.pagina != "relatorio":
 if st.session_state.pagina == "mesas":
     st.subheader("🪑 Mesas")
     st.markdown(f'<div class="counter">Pedidos salvos hoje: {len(st.session_state.historico)}</div>', unsafe_allow_html=True)
+
+    # Botão para ajustar preços
+    with st.expander("⚙️ Ajustar preços"):
+        for item in precos:
+            novo_valor = st.number_input(f"{item}", min_value=0, value=precos[item], step=1)
+            if novo_valor != precos[item]:
+                precos[item] = novo_valor
+                salvar_preco_firebase(item, novo_valor)
+                st.success(f"Preço de {item} atualizado para R$ {novo_valor}")
 
     mesas = ["Mesa 1","Mesa 2","Mesa 3","Mesa 4"]
     for i in range(0, len(mesas), 2):
@@ -201,7 +221,7 @@ elif st.session_state.pagina == "relatorio":
     if st.button("⬅️ Voltar"): st.session_state.pagina = "mesas"
 
     # Atualiza pedidos do Firebase
-    st.session_state.historico = carregar_pedidos_firebase()
+    st.session_state.historico = [doc.to_dict() for doc in db.collection("pedidos").stream()]
 
     hoje = datetime.now(BRASIL).strftime("%Y-%m-%d")
     pedidos = [p for p in st.session_state.historico if p["data"] == hoje]
