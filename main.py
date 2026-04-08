@@ -1,12 +1,14 @@
 import streamlit as st
-import urllib.parse
+import json
+from datetime import datetime
+import os
+import pandas as pd
 
-st.set_page_config(page_title="Match do Espeto", page_icon="🔥", layout="wide")
+st.set_page_config(page_title="Brava Brasa", page_icon="🔥", layout="wide")
 
-# ESTILO
+# 🎨 ESTILO (MANTIVE SUA IDENTIDADE)
 st.markdown("""
 <style>
-
 .stApp{
 background:#f3f3f3;
 font-family:sans-serif;
@@ -19,128 +21,196 @@ font-size:40px;
 font-weight:bold;
 }
 
-.subtitle{
-text-align:center;
-margin-bottom:30px;
-}
-
 .card{
 background:white;
 padding:15px;
 border-radius:15px;
 box-shadow:0 3px 10px rgba(0,0,0,0.1);
 margin-bottom:15px;
+text-align:center;
 }
 
 button{
 background:#ff2e8a !important;
 color:white !important;
 border-radius:8px !important;
+height:60px;
+width:100%;
 }
 
 .total{
-font-size:24px;
+font-size:28px;
 color:#ff2e8a;
 font-weight:bold;
+text-align:center;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="title">🔥 MATCH DO ESPETO</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Encontro Perfeito do Sabor</div>', unsafe_allow_html=True)
+st.markdown('<div class="title">🔥 BRAVA BRASA</div>', unsafe_allow_html=True)
 
-# CARDÁPIO
-menu = {
-"Espeto de Carne": {"preco":8,"img":"https://i.imgur.com/Jp1XK9P.jpg"},
-"Espeto de Frango": {"preco":7,"img":"https://i.imgur.com/Qb6KX7A.jpg"},
-"Espeto de Linguiça": {"preco":7,"img":"https://i.imgur.com/ExxZ4pC.jpg"},
-"Queijo Coalho": {"preco":9,"img":"https://i.imgur.com/T1xKQy2.jpg"},
-"Coca Cola": {"preco":5,"img":"https://i.imgur.com/0umadnY.jpg"},
-"Guaraná": {"preco":5,"img":"https://i.imgur.com/q3Z3N6X.jpg"},
-"Água": {"preco":3,"img":"https://i.imgur.com/G9dZL6V.jpg"}
+# ===== ARQUIVO =====
+ARQUIVO = "historico.json"
+
+def carregar():
+    if os.path.exists(ARQUIVO):
+        with open(ARQUIVO, "r") as f:
+            return json.load(f)
+    return []
+
+def salvar(dados):
+    with open(ARQUIVO, "w") as f:
+        json.dump(dados, f)
+
+# ===== ESTADO =====
+if "mesas" not in st.session_state:
+    st.session_state.mesas = {}
+
+if "pagina" not in st.session_state:
+    st.session_state.pagina = "mesas"
+
+if "mesa_atual" not in st.session_state:
+    st.session_state.mesa_atual = None
+
+if "historico" not in st.session_state:
+    st.session_state.historico = carregar()
+
+# ===== PREÇOS =====
+precos = {
+    "CARNE": 8,
+    "FRANGO": 7,
+    "CALABRESA": 7,
+    "CORAÇÃO": 8,
+    "QUEIJO": 6,
+    "MISTO": 9,
+    "COCA": 6,
+    "GUARANA": 6,
+    "HEINEKEN": 10
 }
 
-if "cart" not in st.session_state:
-    st.session_state.cart={}
+def nova_mesa():
+    return {"itens": {i:0 for i in precos}, "fechado": False}
 
-st.header("🍢 Cardápio")
+# =========================
+# MESAS
+# =========================
+if st.button("📊 Relatório"):
+    st.session_state.pagina = "relatorio"
 
-for item,data in menu.items():
+if st.session_state.pagina == "mesas":
 
-    col1,col2,col3,col4=st.columns([1,2,1,1])
+    st.subheader("🪑 Mesas")
+
+    mesas = ["Mesa 1","Mesa 2","Mesa 3","Mesa 4"]
+    cols = st.columns(2)
+
+    for i,mesa in enumerate(mesas):
+        with cols[i%2]:
+
+            status = "🔴 Ocupada" if mesa in st.session_state.mesas else "🟢 Livre"
+
+            st.markdown(f"""
+            <div class="card">
+                <h2>{mesa}</h2>
+                <p>{status}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if st.button(f"Acessar {mesa}", key=mesa):
+                if mesa not in st.session_state.mesas:
+                    st.session_state.mesas[mesa] = nova_mesa()
+
+                st.session_state.mesa_atual = mesa
+                st.session_state.pagina = "pedido"
+
+# =========================
+# PEDIDO
+# =========================
+elif st.session_state.pagina == "pedido":
+
+    mesa = st.session_state.mesa_atual
+    pedido = st.session_state.mesas[mesa]
+
+    st.subheader(f"📋 {mesa}")
+
+    st.divider()
+
+    st.subheader("🍢 Itens")
+
+    cols = st.columns(3)
+
+    for i,item in enumerate(precos):
+        with cols[i%3]:
+            if st.button(item):
+                pedido["itens"][item]+=1
+
+    st.divider()
+
+    total = 0
+
+    for item,qtd in pedido["itens"].items():
+        if qtd>0:
+            valor = qtd*precos[item]
+            total+=valor
+
+            col1,col2,col3=st.columns([4,1,1])
+
+            with col1:
+                st.write(f"{item} x{qtd}")
+            with col2:
+                st.write(f"R$ {valor}")
+            with col3:
+                if st.button("➖",key=f"{item}{mesa}"):
+                    pedido["itens"][item]-=1
+
+    st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
+
+    col1,col2,col3=st.columns(3)
 
     with col1:
-        st.image(data["img"],width=80)
+        if st.button("🔒 Fechar"):
+            pedido["fechado"]=True
 
     with col2:
-        st.write(f"**{item}**")
-        st.write(f"R$ {data['preco']}")
+        if st.button("❌ Encerrar"):
+
+            novo = {
+                "mesa": mesa,
+                "itens": pedido["itens"],
+                "total": total,
+                "data": datetime.now().strftime("%Y-%m-%d"),
+                "hora": datetime.now().strftime("%H:%M")
+            }
+
+            st.session_state.historico.append(novo)
+            salvar(st.session_state.historico)
+
+            del st.session_state.mesas[mesa]
+            st.session_state.pagina="mesas"
+            st.rerun()
 
     with col3:
-        if st.button("+",key=item):
-            st.session_state.cart[item]=st.session_state.cart.get(item,0)+1
+        if st.button("⬅️ Voltar"):
+            st.session_state.pagina="mesas"
 
-    with col4:
-        if item in st.session_state.cart:
-            st.write(f"x{st.session_state.cart[item]}")
-        else:
-            st.write("0")
+# =========================
+# RELATÓRIO
+# =========================
+elif st.session_state.pagina == "relatorio":
 
-# CARRINHO
-st.header("🛒 Seu Pedido")
+    st.title("📊 Relatório")
 
-total=0
-pedido=""
+    if st.button("⬅️ Voltar"):
+        st.session_state.pagina="mesas"
 
-for item,qtd in st.session_state.cart.items():
-    preco=menu[item]["preco"]
-    subtotal=preco*qtd
-    total+=subtotal
+    hoje = datetime.now().strftime("%Y-%m-%d")
 
-    st.write(f"{qtd}x {item} - R$ {subtotal}")
-    pedido+=f"{qtd}x {item} - R$ {subtotal}\n"
+    pedidos = [p for p in st.session_state.historico if p["data"]==hoje]
 
-st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
+    total = sum(p["total"] for p in pedidos)
 
-# DADOS
-st.header("📍 Entrega")
+    st.subheader(f"💰 Total do dia: R$ {total}")
 
-nome=st.text_input("Nome")
-telefone=st.text_input("Telefone")
-endereco=st.text_input("Endereço")
-obs=st.text_area("Observação")
-
-pagamento=st.selectbox(
-"Forma de pagamento",
-["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito"]
-)
-
-numero="5579998439298"
-
-mensagem=f"""
-Pedido - Match do Espeto 🔥
-
-Cliente: {nome}
-Telefone: {telefone}
-
-Itens:
-{pedido}
-
-Total: R$ {total}
-
-Pagamento: {pagamento}
-
-Endereço:
-{endereco}
-
-Obs:
-{obs}
-"""
-
-link=f"https://wa.me/{numero}?text={urllib.parse.quote(mensagem)}"
-
-st.markdown(
-f'<a href="{link}" target="_blank"><button style="width:100%;height:55px;font-size:18px;background:#ff2e8a;color:white;border:none;border-radius:10px;">📲 Fazer Pedido no WhatsApp</button></a>',
-unsafe_allow_html=True
-)
+    if pedidos:
+        df = pd.DataFrame(pedidos)
+        st.bar_chart(df["total"])
