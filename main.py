@@ -77,51 +77,43 @@ if "pedidos_ativos" not in st.session_state:
 if "pagina" not in st.session_state: st.session_state.pagina = "mesas"
 if "mesa_atual" not in st.session_state: st.session_state.mesa_atual = None
 
-# ===== ESTILO CSS (AJUSTADO PARA ELIMINAR ROLAGEM LATERAL) =====
+# ===== ESTILO CSS (ULTRA COMPACTO) =====
 st.markdown("""
 <style>
-    /* Remove preenchimentos extras da página */
-    .block-container { padding-left: 0.5rem !important; padding-right: 0.5rem !important; padding-top: 1rem !important; }
-
-    /* Força as colunas a ocuparem apenas o espaço disponível sem overflow */
-    div[data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        gap: 0.3rem !important;
-        align-items: center !important;
-        justify-content: flex-start !important;
-    }
+    .block-container { padding: 0.5rem 0.5rem !important; }
     
-    /* Ajusta cada coluna para não ter largura mínima exagerada */
-    div[data-testid="column"] {
-        min-width: 0px !important;
-        flex: 1 1 auto !important;
-    }
+    /* Remove padding das colunas nativas */
+    div[data-testid="column"] { padding: 0px !important; flex-basis: content !important; }
 
-    /* Estilo dos Botões de Mesa */
+    /* Estilo dos Botões Gerais */
     .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
     
-    /* Botões de + e - muito mais compactos para mobile */
-    div[data-testid="column"] button {
-        height: 2.2em !important;
+    /* Container dos Controles de Quantidade */
+    .qty-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #f9f9f9;
+        padding: 5px;
+        border-radius: 10px;
+        border: 1px solid #ddd;
+    }
+
+    /* Botões de + e - (Sempre pequenos) */
+    .stButton>button[kind="secondary"] {
+        width: 40px !important;
+        height: 40px !important;
         padding: 0px !important;
-        min-width: 35px !important;
-        margin: 0px !important;
+        font-size: 20px !important;
+        border: none !important;
     }
 
     .card-mesa { padding: 10px; border-radius: 12px; text-align: center; margin-bottom: 5px; }
     
-    /* Barra de total fixa */
     .total-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #ff6600; color: white; 
                  text-align: center; padding: 12px; font-size: 20px; font-weight: bold; z-index: 999; border-top: 2px solid white; }
     
-    /* Ajuste do texto do item para não quebrar a linha prematuramente */
-    .item-info { font-size: 14px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    
-    /* Ajuste das abas */
-    .stTabs [data-baseweb="tab-list"] { gap: 5px; }
-    .stTabs [data-baseweb="tab"] { padding: 8px; }
+    .item-info { font-size: 14px; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,14 +133,12 @@ else:
 if st.session_state.pagina == "mesas":
     st.header("🍽️ Mesas Ativas")
     lista_mesas = [f"Mesa {i}" for i in range(1, 13)]
-    
     cols = st.columns(2)
     for i, nome in enumerate(lista_mesas):
         with cols[i % 2]:
             itens_mesa = st.session_state.pedidos_ativos.get(nome, {})
             ocupada = any(v > 0 for v in itens_mesa.values())
             cor = "#ff4b4b" if ocupada else "#28a745"
-            
             st.markdown(f'<div class="card-mesa" style="border: 2px solid {cor};"><b>{nome}</b></div>', unsafe_allow_html=True)
             if st.button(f"Abrir {nome}", key=f"btn_{nome}"):
                 st.session_state.mesa_atual = nome
@@ -161,13 +151,13 @@ if st.session_state.pagina == "mesas":
 elif st.session_state.pagina == "pedido":
     mesa = st.session_state.mesa_atual
     
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        if st.button("⬅️ Voltar"):
+    col_v, col_m = st.columns([1, 2])
+    with col_v:
+        if st.button("⬅️ Sair"):
             st.session_state.pagina = "mesas"
             st.rerun()
-    with c2:
-        st.markdown(f"### {mesa}")
+    with col_m:
+        st.subheader(f"📍 {mesa}")
 
     tab_esp, tab_beb = st.tabs(["🍢 ESPETINHOS", "🥤 BEBIDAS"])
 
@@ -176,39 +166,38 @@ elif st.session_state.pagina == "pedido":
             valor = precos.get(item, 0.0)
             qtd = st.session_state.pedidos_ativos[mesa].get(item, 0)
             
-            # Proporção ajustada: [4 para texto, 1 para cada botão/número] 
-            # Isso garante que o controle de quantidade fique "espremido" à direita
-            col_txt, col_men, col_num, col_mai = st.columns([4, 1.2, 1, 1.2])
+            # --- LINHA DO ITEM ---
+            st.markdown(f"<div class='item-info'>{item} - R$ {valor:.2f}</div>", unsafe_allow_html=True)
             
-            with col_txt: 
-                st.markdown(f"<div class='item-info'><b>{item}</b><br>R$ {valor:.2f}</div>", unsafe_allow_html=True)
+            # Layout Horizontal Travado para celular
+            c_btn1, c_num, c_btn2 = st.columns([1, 1, 1])
             
-            with col_men:
+            with c_btn1:
                 if st.button("➖", key=f"sub_{item}_{mesa}"):
                     if st.session_state.pedidos_ativos[mesa][item] > 0:
                         st.session_state.pedidos_ativos[mesa][item] -= 1
                         salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
                         st.rerun()
             
-            with col_num: 
-                st.markdown(f"<div style='text-align:center; font-weight:bold; font-size:18px;'>{qtd}</div>", unsafe_allow_html=True)
-            
-            with col_mai:
+            with c_num:
+                st.markdown(f"<h3 style='text-align:center; margin:0;'>{qtd}</h3>", unsafe_allow_html=True)
+                
+            with c_btn2:
                 if st.button("➕", key=f"add_{item}_{mesa}"):
                     st.session_state.pedidos_ativos[mesa][item] += 1
                     salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
                     st.rerun()
-            st.divider()
+            
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
     with tab_esp: render_categoria(CARDAPIO_ESTRUTURA["🍢 ESPETINHOS"])
     with tab_beb: render_categoria(CARDAPIO_ESTRUTURA["🥤 BEBIDAS"])
 
     total = sum(st.session_state.pedidos_ativos[mesa][i] * precos.get(i, 0) for i in st.session_state.pedidos_ativos[mesa])
     st.markdown(f"<div class='total-bar'>TOTAL: R$ {total:.2f}</div>", unsafe_allow_html=True)
-    st.write("\n\n\n")
+    st.write("\n\n\n\n")
 
     if total > 0:
-        st.write("---")
         if st.button("✅ FINALIZAR CONTA", use_container_width=True):
             agora = datetime.now(BRASIL)
             pedido_final = {
