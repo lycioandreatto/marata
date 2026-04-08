@@ -65,6 +65,7 @@ precos = carregar_precos()
 
 if "pedidos_ativos" not in st.session_state:
     rascunhos = carregar_rascunhos_firebase()
+    # Criar lista de mesas de 1 a 12 de forma ordenada
     mesas_ordenadas = {}
     for i in range(1, 13):
         nome_mesa = f"Mesa {i}"
@@ -77,42 +78,26 @@ if "pedidos_ativos" not in st.session_state:
 if "pagina" not in st.session_state: st.session_state.pagina = "mesas"
 if "mesa_atual" not in st.session_state: st.session_state.mesa_atual = None
 
-# ===== ESTILO CSS (TRAVA LAYOUT MOBILE COMPACTO) =====
+# ===== ESTILO CSS (TRAVA LAYOUT MOBILE) =====
 st.markdown("""
 <style>
-    /* Forçar colunas a ficarem lado a lado (Row) em vez de empilhar */
-    [data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        gap: 0.5rem !important;
-    }
-    
+    /* Forçar colunas a não quebrarem no celular */
     [data-testid="column"] {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         min-width: 0px !important;
-        flex: 1 1 auto !important;
+        flex-basis: 0 !important;
+        flex-grow: 1 !important;
     }
-
-    /* Botões de +/- menores */
-    [data-testid="column"] button {
-        height: 2.5em !important;
-        padding: 0px !important;
-        min-width: 40px !important;
-    }
-    
-    /* Botões Grandes (Mesa e Finalizar) permanecem normais */
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
-    
+    /* Estilo dos Botões */
+    .stButton>button { width: 100%; border-radius: 8px; height: 3.5em; font-weight: bold; margin-bottom: 5px; }
     .card-mesa { padding: 10px; border-radius: 12px; text-align: center; margin-bottom: 5px; }
-    
     .total-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #ff6600; color: white; 
                  text-align: center; padding: 15px; font-size: 22px; font-weight: bold; z-index: 999; border-top: 2px solid white; }
-    
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [data-baseweb="tab"] { background-color: #f0f2f6; border-radius: 5px; padding: 10px; }
-    
-    /* Ajuste fino para o texto do item não quebrar linha */
-    .item-text { font-size: 14px; white-space: nowrap; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -131,6 +116,8 @@ else:
 # =========================
 if st.session_state.pagina == "mesas":
     st.header("🍽️ Mesas Ativas")
+    
+    # Garantir que a lista de mesas para exibição está sempre em ordem 1, 2, 3...
     lista_mesas = [f"Mesa {i}" for i in range(1, 13)]
     
     cols = st.columns(2)
@@ -152,6 +139,7 @@ if st.session_state.pagina == "mesas":
 elif st.session_state.pagina == "pedido":
     mesa = st.session_state.mesa_atual
     
+    # Cabeçalho compacto
     c1, c2 = st.columns([1, 1])
     with c1:
         if st.button("⬅️ Voltar"):
@@ -167,10 +155,10 @@ elif st.session_state.pagina == "pedido":
             valor = precos.get(item, 0.0)
             qtd = st.session_state.pedidos_ativos[mesa].get(item, 0)
             
-            # Layout Horizontal Travado: Item(3) | -(1) | Qtd(1) | +(1)
-            col_txt, col_men, col_num, col_mai = st.columns([3.5, 1.2, 1, 1.2])
+            # Layout de linha única travada pelo CSS acima
+            col_txt, col_men, col_num, col_mai = st.columns([2, 1, 1, 1])
             with col_txt: 
-                st.markdown(f"<div class='item-text'><b>{item}</b><br>R$ {valor:.2f}</div>", unsafe_allow_html=True)
+                st.markdown(f"**{item}**\nR$ {valor:.2f}")
             with col_men:
                 if st.button("➖", key=f"sub_{item}_{mesa}"):
                     if st.session_state.pedidos_ativos[mesa][item] > 0:
@@ -178,7 +166,7 @@ elif st.session_state.pagina == "pedido":
                         salvar_rascunho_firebase(mesa, st.session_state.pedidos_ativos[mesa])
                         st.rerun()
             with col_num: 
-                st.markdown(f"<h3 style='text-align:center; margin:0;'>{qtd}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<h3 style='text-align:center;'>{qtd}</h3>", unsafe_allow_html=True)
             with col_mai:
                 if st.button("➕", key=f"add_{item}_{mesa}"):
                     st.session_state.pedidos_ativos[mesa][item] += 1
@@ -205,6 +193,7 @@ elif st.session_state.pagina == "pedido":
             }
             db.collection("pedidos").add(pedido_final)
             db.collection("pedidos_pendentes").document(mesa).delete()
+            # Reseta a mesa no state para o padrão (vazia)
             st.session_state.pedidos_ativos[mesa] = {item: 0 for cat in CARDAPIO_ESTRUTURA.values() for item in cat}
             st.success("Pedido Salvo!")
             st.session_state.pagina = "mesas"
