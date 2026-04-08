@@ -99,9 +99,10 @@ if "pedido_detalhe" not in st.session_state:
 # =========================
 menu = st.sidebar.selectbox("Menu", ["Mesas / Pedidos", "Ajustar Preços", "Relatório"])
 
-# Sincroniza o menu com a página
+# Sincroniza menu com página
 if menu == "Mesas / Pedidos":
-    st.session_state.pagina = "mesas"
+    if st.session_state.pagina not in ["pedido", "detalhe"]:
+        st.session_state.pagina = "mesas"
 elif menu == "Ajustar Preços":
     st.session_state.pagina = "ajustar_precos"
 elif menu == "Relatório":
@@ -127,6 +128,8 @@ if st.session_state.pagina == "mesas":
                         if mesa not in st.session_state.mesas:
                             st.session_state.mesas[mesa] = nova_mesa()
                         st.session_state.mesa_atual = mesa
+                        # Abrir pedido automaticamente ao acessar mesa
+                        st.session_state.mesas[mesa]["iniciado"] = True
                         st.session_state.pagina = "pedido"
 
 # =========================
@@ -182,67 +185,59 @@ if st.session_state.pagina == "pedido" and st.session_state.mesa_atual:
 
     st.subheader(f"📋 {mesa}")
 
-    if not pedido["iniciado"]:
-        st.info("📌 Pedido não iniciado")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🟢 Abrir Pedido"):
-                st.session_state.mesas[mesa]["iniciado"] = True
-        with col2:
-            if st.button("⬅️ Voltar"):
-                st.session_state.pagina = "mesas"
+    if pedido["fechado"]:
+        st.error("🔒 Pedido FECHADO")
     else:
-        if pedido["fechado"]:
-            st.error("🔒 Pedido FECHADO")
-        else:
-            st.success("🟢 Pedido ABERTO")
+        st.success("🟢 Pedido ABERTO")
 
-        st.divider()
-        st.subheader("🍢 Itens")
-        cols = st.columns(3)
-        for i,item in enumerate(precos):
-            with cols[i%3]:
-                if st.button(item, key=f"{item}_{mesa}") and not pedido["fechado"]:
-                    st.session_state.mesas[mesa]["itens"][item] += 1
+    st.divider()
+    st.subheader("🍢 Itens")
+    cols = st.columns(3)
+    for i,item in enumerate(precos):
+        with cols[i%3]:
+            if st.button(item, key=f"{item}_{mesa}") and not pedido["fechado"]:
+                st.session_state.mesas[mesa]["itens"][item] += 1
 
-        st.divider()
-        total = sum(qtd*precos[item] for item,qtd in pedido["itens"].items() if qtd>0)
-        for item,qtd in pedido["itens"].items():
-            if qtd>0:
-                valor = qtd * precos[item]
-                col1,col2,col3 = st.columns([4,1,1])
-                with col1: st.write(f"{item} x{qtd}")
-                with col2: st.write(f"R$ {valor}")
-                with col3:
-                    if st.button("➖",key=f"menos_{item}_{mesa}") and not pedido["fechado"]:
-                        st.session_state.mesas[mesa]["itens"][item] -= 1
+    st.divider()
+    total = sum(qtd*precos[item] for item,qtd in pedido["itens"].items() if qtd>0)
+    for item,qtd in pedido["itens"].items():
+        if qtd>0:
+            valor = qtd * precos[item]
+            col1,col2,col3 = st.columns([4,1,1])
+            with col1: st.write(f"{item} x{qtd}")
+            with col2: st.write(f"R$ {valor}")
+            with col3:
+                if st.button("➖",key=f"menos_{item}_{mesa}") and not pedido["fechado"]:
+                    st.session_state.mesas[mesa]["itens"][item] -= 1
 
-        st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if not pedido["fechado"]:
-                if st.button("🔒 Fechar", key=f"fechar_{mesa}"):
-                    st.session_state.mesas[mesa]["fechado"] = True
-            elif pedido["fechado"]:
-                if st.button("🔓 Reabrir", key=f"reabrir_{mesa}"):
-                    st.session_state.mesas[mesa]["fechado"] = False
-        with col2:
-            if st.button("❌ Encerrar", key=f"encerrar_{mesa}"):
-                agora = datetime.now(BRASIL)
-                novo = {
-                    "mesa": mesa,
-                    "itens": pedido["itens"],
-                    "total": total,
-                    "data": agora.strftime("%Y-%m-%d"),
-                    "hora": agora.strftime("%H:%M")
-                }
-                st.session_state.historico.append(novo)
-                salvar_json_local(st.session_state.historico)
-                salvar_pedido(novo)
-                st.success("✅ Pedido salvo no Firebase!")
-                st.json(novo)
-                del st.session_state.mesas[mesa]
-                st.session_state.pagina = "mesas"
-        with col3:
-            if st.button("⬅️ Voltar", key=f"voltar_{mesa}"):
-                st.session_state.pagina = "mesas"
+    st.markdown(f"<div class='total'>Total: R$ {total}</div>",unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if not pedido["fechado"]:
+            if st.button("🔒 Fechar", key=f"fechar_{mesa}"):
+                st.session_state.mesas[mesa]["fechado"] = True
+        elif pedido["fechado"]:
+            if st.button("🔓 Reabrir", key=f"reabrir_{mesa}"):
+                st.session_state.mesas[mesa]["fechado"] = False
+    with col2:
+        if st.button("❌ Encerrar", key=f"encerrar_{mesa}"):
+            agora = datetime.now(BRASIL)
+            novo = {
+                "mesa": mesa,
+                "itens": pedido["itens"],
+                "total": total,
+                "data": agora.strftime("%Y-%m-%d"),
+                "hora": agora.strftime("%H:%M")
+            }
+            st.session_state.historico.append(novo)
+            salvar_json_local(st.session_state.historico)
+            salvar_pedido(novo)
+            st.success("✅ Pedido salvo no Firebase!")
+            st.json(novo)
+            del st.session_state.mesas[mesa]
+            st.session_state.mesa_atual = None
+            st.session_state.pagina = "mesas"
+    with col3:
+        if st.button("⬅️ Voltar", key=f"voltar_{mesa}"):
+            st.session_state.mesa_atual = None
+            st.session_state.pagina = "mesas"
